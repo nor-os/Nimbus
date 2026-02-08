@@ -1,0 +1,87 @@
+<div class="setup-container">
+  <div class="setup-card">
+    <h1 class="setup-title">Nimbus Setup</h1>
+
+    <div class="stepper">
+      @for (step of steps; track step; let i = $index) {
+        <span class="step" [class.active]="i === currentStep()" [class.done]="i < currentStep()">
+          {{ i + 1 }}. {{ step }}
+        </span>
+      }
+    </div>
+
+    @if (error()) {
+      <div class="setup-error">{{ error() }}</div>
+    }
+
+    <!-- Step 0: Welcome -->
+    @if (currentStep() === 0) {
+      <div class="step-content">
+        <h2>Welcome to Nimbus</h2>
+        <p>
+          Nimbus is a Pulumi-based SaaS Control Panel for managing cloud infrastructure
+          across multiple providers with enterprise-grade security and multi-tenancy.
+        </p>
+        <p>This wizard will help you set up your initial admin account and organization.</p>
+      </div>
+    }
+
+    <!-- Step 1: Admin Account -->
+    @if (currentStep() === 1) {
+      <div class="step-content">
+        <h2>Create Admin Account</h2>
+        <form [formGroup]="adminForm">
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" formControlName="email" type="email" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" formControlName="password" type="password" />
+          </div>
+          <div class="field">
+            <label for="confirmPassword">Confirm Password</label>
+            <input id="confirmPassword" formControlName="confirmPassword" type="password" />
+          </div>
+        </form>
+      </div>
+    }
+
+    <!-- Step 2: Organization -->
+    @if (currentStep() === 2) {
+      <div class="step-content">
+        <h2>Organization</h2>
+        <form [formGroup]="orgForm">
+          <div class="field">
+            <label for="orgName">Organization Name</label>
+            <input id="orgName" formControlName="organizationName" type="text" />
+          </div>
+        </form>
+      </div>
+    }
+
+    <!-- Step 3: Complete -->
+    @if (currentStep() === 3) {
+      <div class="step-content">
+        <h2>Setup Complete</h2>
+        <p>Your Nimbus instance is ready. You have been logged in as the admin.</p>
+      </div>
+    }
+
+    <div class="step-actions">
+      @if (currentStep() > 0 && currentStep() < 3) {
+        <button class="btn btn-secondary" (click)="back()">Back</button>
+      }
+
+      @if (currentStep() < 3) {
+        <button class="btn btn-primary" (click)="next()" [disabled]="loading()">
+          {{ currentStep() === 2 ? (loading() ? 'Setting up...' : 'Finish') : 'Next' }}
+        </button>
+      }
+
+      @if (currentStep() === 3) {
+        <button class="btn btn-primary" (click)="goToDashboard()">Go to Dashboard</button>
+      }
+    </div>
+  </div>
+</div>

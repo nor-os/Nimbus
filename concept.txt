@@ -1,0 +1,115 @@
+A Pulimi based SaaS Control Panel for Multi-User and Multi Tenancy Cloud Backend Management
+
+
++++
+ - PAM incl. session recording
+ - Log-Collection incl. syslog integration
+ - Arc-Funktion via usb-stick as basis for PaaS (incl. hypervisor controller like Proxmox) and PaaS for Databases
+ - Monitoring solution incl. Service-Level Monitoring and Alerting
+ - Ticket System incl. Process Management
+
++++
+
+
+
+
+Features
+========
+- Auditing: Every 
+- CMDB
+  - Translation into semantic layer
+  - Live-updates form Pulumi stream
+  
+  What does "Translation into semantic layer" mean concretely? Is it mapping raw Pulumi resources to higher-level
+  business concepts (e.g., "Customer Environment" instead of raw VPCs/subnets)? 
+  - yes. 
+  
+  What kind of relationships should the semantic layer model between resources?
+  - tenancies (subscriptions), compartments (resource groups) and the resources themselves, so - the CI's shall
+    be mappable to a default semantic layer. I stated: <default> (<azure equivalent>). We need to support by default
+    The cloud providers AWS, Azure, Google and Oracle and their default nomenclature.
+    
+    
+- Client bootstrapping
+  - Method of setting up a client's architecture in a an architecture planner (graphical)
+
+    
+- Permission Layer
+  - Provider Permissions are highest. to exert them, cryptographic proof is required. This needs to support
+    HSMs. For demo-purposes, require presence of a yubikey. (demo purposes means, that if the app is started with --debug, this
+    feature is available.
+    
+    Beyond provider-level permissions with HSM/Yubikey, what other permission tiers exist? (e.g., tenant admin, user,
+       read-only?)
+     - yes, all of them
+    Should permissions be role-based (RBAC), attribute-based (ABAC), or both?
+     - both
+         
+- Configuration Console for the SaaS panel itself
+  - Configuration of settings like 
+    - the permissions of users and groups
+    - auto-creation of users and groups if OIDC OR SAML is used to connect
+    - OIDC/SAML configuration
+    - yubikey and root group configuration
+    - HSM configuration 
+
+- Semantic Layer
+  - e.g. every client has one sub-tenancy of one main (the providers) tenancy. 
+
+Technical Stack
+===============
+  - What's the preferred backend language/framework?
+    - python
+  - What frontend technology should be used for the configuration console?
+    - AngularJS
+  - Which cloud providers need to be supported initially?
+    - OCI
+    - Azure
+    - AWS
+    - Google
+
+Nonfunctionals
+- Must be HA-Compatible and scalable across multiple regions.
+- Multitenancy
+
+  How should tenant isolation be implemented? (Database per tenant, schema per tenant, or row-level security?)
+  - should be configurable: database per tenant or schema per tenant or row-level security.
+    The default setup has a schema per tenant AND row-level security enabled. 
+    A setup assistant helps with the initial setup of database per tenant or schema per tenant or row-level security or schema per tenant AND Row level security
+  
+    In the UI, root-tenancy root users can switch the UI to an "impersonate" mode, 
+    switching into a sub-tenancy and see everything as sub-tenancy root user (or whatever impoersonate rights / mappoing is configured in the impersonation management settings)
+    
+    Re-authentication with a different key / method may be a requirement for this impersonation as well as a 2-step workflow,
+    potentially with involvement of a manual approval. There need to be mechanisms for this.
+  Can tenants have sub-tenants recursively, or is it limited to provider → tenant → sub-tenant?
+    provider → tenant → sub-tenant
+    
+    Notice: The provider can be connected to multiple cloud-backends at the same time and have multiple root tenancies
+    
+  
+  
+Implementation
+==============
+- Pulumi
+- Postgres DB For
+  - Locks
+  - Audit
+    What events should be audited?
+    - every API call, resource change, login, permission change
+    What should the audit log contain and how long should it be retained?
+    - every event, with a type flag and priority flags (info/warn/err ...). Important always: Who caused the event?
+  - Metadata
+  - CMDB
+  - Semantic Layer
+  - Permissions
+  
+
+  with:
+  - Regular State Export
+    Use Pulumi Service
+    Consume:
+     - Audit Logs
+     - Stack Events
+     - Webhooks
+  - Audit trail saving

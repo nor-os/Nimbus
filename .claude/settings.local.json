@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(npm ls:*)",
+      "Bash(node:*)",
+      "Bash(npm view:*)",
+      "Bash(uv run python:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "Bash(/mnt/c/Users/Norman/repos/Pulops/backend/.venv/bin/python:*)",
+      "Bash(pkill:*)",
+      "Bash(npm install:*)",
+      "Bash(docker exec:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(ls:*)",
+      "Bash(uv run ruff check:*)",
+      "Bash(netstat:*)",
+      "Bash(ss:*)",
+      "Bash(grep:*)",
+      "Bash(npx ng build:*)",
+      "Bash(python -m ruff check:*)",
+      "Bash(pip install:*)",
+      "Bash(npm run build:*)",
+      "Bash(uv run alembic:*)",
+      "Bash(uv run:*)",
+      "Bash(xargs:*)",
+      "Bash(netstat.exe:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(npx ng:*)",
+      "Bash(curl:*)",
+      "Bash(uv tool run ruff check:*)"
+    ]
+  }
+}

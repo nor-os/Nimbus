@@ -1,0 +1,69 @@
+<div class="login-container">
+  <div class="login-card">
+    <div class="brand">
+      <span class="brand-mark">N</span>
+      <h1 class="login-title">Nimbus</h1>
+    </div>
+
+    @if (phase() === 'email') {
+      <p class="login-subtitle">Sign in to your account</p>
+    }
+
+    @if (phase() === 'auth') {
+      @if (discoveryResult()?.tenant_name) {
+        <p class="tenant-context">Signing in to {{ discoveryResult()?.tenant_name }}</p>
+      } @else {
+        <p class="login-subtitle">Enter your password to sign in</p>
+      }
+    }
+
+    @if (error()) {
+      <div class="login-error">{{ error() }}</div>
+    }
+
+    <!-- Email Phase -->
+    @if (phase() === 'email') {
+      <form [formGroup]="emailForm" (ngSubmit)="onDiscover()">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" formControlName="email" type="email" autocomplete="email" placeholder="you&#64;company.com" />
+        </div>
+
+        <button type="submit" class="btn btn-primary" [disabled]="emailForm.invalid || loading()">
+          {{ loading() ? 'Looking up...' : 'Continue' }}
+        </button>
+      </form>
+    }
+
+    <!-- Auth Phase -->
+    @if (phase() === 'auth') {
+      @if (discoveryResult()?.has_local_auth) {
+        <form [formGroup]="passwordForm" (ngSubmit)="onLogin()">
+          <div class="email-display">{{ emailForm.value.email }}</div>
+
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" formControlName="password" type="password" placeholder="Enter your password" autocomplete="current-password" />
+          </div>
+
+          <button type="submit" class="btn btn-primary" [disabled]="passwordForm.invalid || loading()">
+            {{ loading() ? 'Signing in...' : 'Sign in' }}
+          </button>
+        </form>
+      }
+
+      @if (discoveryResult()?.sso_providers?.length) {
+        @if (discoveryResult()?.has_local_auth) {
+          <div class="divider"><span>or</span></div>
+        }
+        @for (provider of discoveryResult()?.sso_providers; track provider.id) {
+          <button class="btn btn-sso" (click)="onSSOLogin(provider)">
+            Sign in with {{ provider.name }}
+          </button>
+        }
+      }
+
+      <button class="btn-back" (click)="backToEmail()">&#8592; Use a different email</button>
+    }
+  </div>
+</div>
