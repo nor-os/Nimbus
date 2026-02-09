@@ -4,7 +4,7 @@
  * Dependencies: @angular/core, @angular/forms, @angular/router, app/core/services/identity-provider.service, app/core/services/permission.service
  * Concepts: Claim mappings, RBAC integration, SSO attribute mapping, role assignment
  */
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -14,13 +14,14 @@ import { ClaimMapping } from '@core/models/identity-provider.model';
 import { Role, Group } from '@core/models/permission.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { IconComponent } from '@shared/components/icon/icon.component';
+import { SearchableSelectComponent, SelectOption } from '@shared/components/searchable-select/searchable-select.component';
 import { ConfirmService } from '@shared/services/confirm.service';
 import { ToastService } from '@shared/services/toast.service';
 
 @Component({
   selector: 'nimbus-claim-mapping',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, LayoutComponent, IconComponent],
+  imports: [CommonModule, ReactiveFormsModule, LayoutComponent, IconComponent, SearchableSelectComponent],
   template: `
     <nimbus-layout>
       <div class="claim-mapping-page">
@@ -84,22 +85,12 @@ import { ToastService } from '@shared/services/toast.service';
               <div class="form-row">
                 <div class="form-group">
                   <label for="role_id">Role *</label>
-                  <select id="role_id" formControlName="role_id" class="form-input">
-                    <option value="">Select a role</option>
-                    @for (role of roles(); track role.id) {
-                      <option [value]="role.id">{{ role.name }}</option>
-                    }
-                  </select>
+                  <nimbus-searchable-select formControlName="role_id" [options]="roleOptions()" placeholder="Select role..." />
                 </div>
 
                 <div class="form-group">
                   <label for="group_id">Group (optional)</label>
-                  <select id="group_id" formControlName="group_id" class="form-input">
-                    <option value="">None</option>
-                    @for (group of groups(); track group.id) {
-                      <option [value]="group.id">{{ group.name }}</option>
-                    }
-                  </select>
+                  <nimbus-searchable-select formControlName="group_id" [options]="groupOptions()" placeholder="Select group..." [allowClear]="true" />
                 </div>
 
                 <div class="form-group form-group-sm">
@@ -206,6 +197,10 @@ export class ClaimMappingComponent implements OnInit {
   mappings = signal<ClaimMapping[]>([]);
   roles = signal<Role[]>([]);
   groups = signal<Group[]>([]);
+
+  roleOptions = computed(() => this.roles().map(r => ({ value: r.id, label: r.name })));
+  groupOptions = computed(() => this.groups().map(g => ({ value: g.id, label: g.name })));
+
   loading = signal(false);
   submitting = signal(false);
   errorMessage = signal('');

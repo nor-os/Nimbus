@@ -15,6 +15,7 @@ import {
 } from '@shared/models/semantic.model';
 import { IconPickerComponent } from '@shared/components/icon-picker/icon-picker.component';
 import { PropertySchemaEditorComponent, PropertyDefRow } from '@shared/components/property-schema-editor/property-schema-editor.component';
+import { SearchableSelectComponent, SelectOption } from '@shared/components/searchable-select/searchable-select.component';
 
 export interface TypeDialogData {
   type: SemanticResourceType | null;
@@ -26,7 +27,7 @@ export interface TypeDialogData {
 @Component({
   selector: 'nimbus-type-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule, IconPickerComponent, PropertySchemaEditorComponent],
+  imports: [CommonModule, FormsModule, IconPickerComponent, PropertySchemaEditorComponent, SearchableSelectComponent],
   template: `
     <div class="dialog">
       <h2>{{ isEdit ? 'Edit Type' : 'New Type' }}</h2>
@@ -43,20 +44,11 @@ export interface TypeDialogData {
       <div class="form-row">
         <div class="form-group half">
           <label>Category</label>
-          <select [(ngModel)]="categoryId">
-            @for (cat of dialogData.categories; track cat.id) {
-              <option [value]="cat.id">{{ cat.displayName }}</option>
-            }
-          </select>
+          <nimbus-searchable-select [(ngModel)]="categoryId" [options]="categoryOptions" placeholder="Select category..." />
         </div>
         <div class="form-group half">
           <label>Parent Type</label>
-          <select [(ngModel)]="parentTypeId">
-            <option value="">None</option>
-            @for (t of dialogData.types; track t.id) {
-              <option [value]="t.id">{{ t.displayName }}</option>
-            }
-          </select>
+          <nimbus-searchable-select [(ngModel)]="parentTypeId" [options]="parentTypeOptions" placeholder="None (root type)" [allowClear]="true" />
         </div>
       </div>
       <div class="form-group">
@@ -149,7 +141,13 @@ export class TypeDialogComponent implements OnInit {
   allowedRels: string[] = [];
   propertiesSchema: PropertyDefRow[] = [];
 
+  categoryOptions: SelectOption[] = [];
+  parentTypeOptions: SelectOption[] = [];
+
   ngOnInit(): void {
+    this.categoryOptions = this.dialogData.categories.map(c => ({ value: c.id, label: c.displayName }));
+    this.parentTypeOptions = this.dialogData.types.map(t => ({ value: t.id, label: t.displayName }));
+
     const t = this.dialogData.type;
     if (t) {
       this.isEdit = true;

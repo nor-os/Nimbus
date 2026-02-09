@@ -31,7 +31,19 @@
       "Bash(cat:*)",
       "Bash(npx ng:*)",
       "Bash(curl:*)",
-      "Bash(uv tool run ruff check:*)"
+      "Bash(uv tool run ruff check:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(pip show:*)",
+      "Bash(uv pip show:*)",
+      "Bash(uv pip install:*)",
+      "Bash(for f in app/services/workflow/node_types/*.py app/services/workflow/expression_engine.py app/services/workflow/expression_functions.py app/services/workflow/node_registry.py)",
+      "Bash(do python3 -m py_compile \"$f\")",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(npm run lint)",
+      "Bash(npx eslint:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(.venv/bin/alembic upgrade:*)"
     ]
   }
 }

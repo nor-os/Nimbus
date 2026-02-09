@@ -2,7 +2,8 @@
 Overview: Compartment model for organizing resources within a tenant.
 Architecture: Resource organization hierarchy (Section 4.2)
 Dependencies: sqlalchemy, app.models.base, app.db.base
-Concepts: Compartments, resource organization, tenant-scoped hierarchy
+Concepts: Compartments, resource organization, tenant-scoped hierarchy. Extended in Phase 8
+    with cloud_id and provider_type for CMDB cloud resource mapping.
 """
 
 import uuid
@@ -26,6 +27,8 @@ class Compartment(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cloud_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="compartments")  # noqa: F821
     parent: Mapped["Compartment | None"] = relationship(

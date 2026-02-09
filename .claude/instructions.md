@@ -101,6 +101,49 @@ frontend/src/app/
 └── graphql/                  # queries, mutations, subscriptions
 ```
 
+### Frontend Component Rules
+
+**Layout Requirement**: Every routed page component MUST:
+1. Import `LayoutComponent` from `@shared/components/layout/layout.component`
+2. Add `LayoutComponent` to the `imports` array
+3. Wrap its entire template content with `<nimbus-layout>...</nimbus-layout>`
+
+This provides the shared header, sidebar, and breadcrumb navigation.
+
+**Light Theme Color Palette — MANDATORY for ALL components**:
+
+The application uses a **light theme**. Never use dark backgrounds (#0f172a, #1e293b) as page/card/panel backgrounds, or light colors (#e2e8f0, #c8ccd0) as text. The only exception is tooltips (dark bg + white text is OK).
+
+| Element | Color | Example |
+|---------|-------|---------|
+| Page headings (h1) | `#1e293b` | `font-size: 1.5rem; font-weight: 700; color: #1e293b` |
+| Body text | `#374151` | Table cells, descriptions |
+| Secondary text | `#64748b` | Labels, table headers, muted text |
+| Tertiary/muted | `#94a3b8` | Hints, empty states |
+| Card/panel background | `#fff` | Tables, detail cards, panels |
+| Page background | transparent | Inherited from layout (`#f5f6f8`) |
+| Code block background | `#f8fafc` | JSON viewers, expression editors |
+| Primary border | `#e2e8f0` | Cards, tables, inputs |
+| Row separator border | `#f1f5f9` | Table rows, list items |
+| Hover background | `#f8fafc` | Table rows, list items |
+| Input background | `#fff` | Text inputs, selects, textareas |
+| Input border | `#e2e8f0` | Focus: `#3b82f6` |
+| Primary action | `background: #3b82f6; color: #fff` | Buttons, active tabs |
+| Primary link | `#3b82f6` | Clickable text links |
+| Outline button | `border: 1px solid #e2e8f0; background: #fff` | Secondary actions |
+| Active tab | `background: #eff6ff; color: #3b82f6` | Tab/filter selection |
+| Badge - success | `background: #dcfce7; color: #16a34a` | Active, Completed |
+| Badge - error | `background: #fef2f2; color: #dc2626` | Failed, Error |
+| Badge - warning | `background: #fefce8; color: #ca8a04` | Archived, Cancelled |
+| Badge - neutral | `background: #f1f5f9; color: #64748b` | Draft, Pending |
+| Badge - info | `background: #dbeafe; color: #2563eb` | Running, Info |
+
+**Reference component**: `frontend/src/app/features/users/user-list/user-list.component.ts` — canonical example of correct light theme styling.
+
+**Boolean `@Input()` Binding**: When using a component with a boolean `@Input()` (e.g. `@Input() allowClear = false`), you MUST use property binding syntax: `[allowClear]="true"`. A bare attribute `allowClear` without brackets passes the empty string `""`, not `true`, causing Angular type errors (`Type 'string' is not assignable to type 'boolean'`).
+
+**Searchable Select Component**: Entity dropdowns with dynamic/many options use `<nimbus-searchable-select>` (at `@shared/components/searchable-select/searchable-select.component.ts`). It is a drop-in `<select>` replacement with type-to-filter, keyboard navigation, and ControlValueAccessor support for `[(ngModel)]` and `formControlName`. Small static enum selects (2-5 hardcoded options) remain as native `<select>`.
+
 ---
 
 ## Documentation Standards

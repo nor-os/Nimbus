@@ -14,6 +14,7 @@ import {
   SemanticResourceType,
   SemanticTypeMapping,
 } from '@shared/models/semantic.model';
+import { SearchableSelectComponent, SelectOption } from '@shared/components/searchable-select/searchable-select.component';
 
 export interface TypeMappingDialogData {
   mapping: SemanticTypeMapping | null;
@@ -25,27 +26,27 @@ export interface TypeMappingDialogData {
 @Component({
   selector: 'nimbus-type-mapping-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent],
   template: `
     <div class="dialog">
       <h2>{{ isEdit ? 'Edit Type Mapping' : 'New Type Mapping' }}</h2>
       <div class="form-group">
         <label>Provider Resource Type</label>
-        <select [(ngModel)]="providerResourceTypeId" [disabled]="isEdit">
-          <option value="">Select resource type...</option>
-          @for (prt of dialogData.providerResourceTypes; track prt.id) {
-            <option [value]="prt.id">{{ prt.providerName }} / {{ prt.displayName }} ({{ prt.apiType }})</option>
-          }
-        </select>
+        <nimbus-searchable-select
+          [(ngModel)]="providerResourceTypeId"
+          [options]="prtOptions"
+          placeholder="Select provider resource type..."
+          [disabled]="isEdit"
+        />
       </div>
       <div class="form-group">
         <label>Semantic Type</label>
-        <select [(ngModel)]="semanticTypeId" [disabled]="isEdit">
-          <option value="">Select semantic type...</option>
-          @for (t of dialogData.semanticTypes; track t.id) {
-            <option [value]="t.id">{{ t.category.displayName }} / {{ t.displayName }}</option>
-          }
-        </select>
+        <nimbus-searchable-select
+          [(ngModel)]="semanticTypeId"
+          [options]="semanticTypeOptions"
+          placeholder="Select semantic type..."
+          [disabled]="isEdit"
+        />
       </div>
       <div class="form-group">
         <label>Parameter Mapping (JSON)</label>
@@ -100,7 +101,19 @@ export class TypeMappingDialogComponent implements OnInit {
   notes = '';
   jsonError = '';
 
+  prtOptions: SelectOption[] = [];
+  semanticTypeOptions: SelectOption[] = [];
+
   ngOnInit(): void {
+    this.prtOptions = this.dialogData.providerResourceTypes.map(prt => ({
+      value: prt.id,
+      label: `${prt.providerName} / ${prt.displayName} (${prt.apiType})`,
+    }));
+    this.semanticTypeOptions = this.dialogData.semanticTypes.map(t => ({
+      value: t.id,
+      label: `${t.category.displayName} / ${t.displayName}`,
+    }));
+
     const m = this.dialogData.mapping;
     if (m) {
       this.isEdit = true;

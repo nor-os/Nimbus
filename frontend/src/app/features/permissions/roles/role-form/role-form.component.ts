@@ -4,13 +4,14 @@
  * Dependencies: @angular/core, @angular/forms, @angular/router, app/core/services/permission.service
  * Concepts: RBAC, role creation, permission assignment, domain-grouped picker
  */
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PermissionService } from '@core/services/permission.service';
 import { Permission, Role, RoleDetail } from '@core/models/permission.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
+import { SearchableSelectComponent, SelectOption } from '@shared/components/searchable-select/searchable-select.component';
 import { ToastService } from '@shared/services/toast.service';
 
 interface DomainGroup {
@@ -22,7 +23,7 @@ interface DomainGroup {
 @Component({
   selector: 'nimbus-role-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, LayoutComponent],
+  imports: [CommonModule, ReactiveFormsModule, LayoutComponent, SearchableSelectComponent],
   template: `
     <nimbus-layout>
       <div class="role-form-page">
@@ -59,12 +60,7 @@ interface DomainGroup {
 
           <div class="form-group">
             <label for="parentRoleId">Parent Role</label>
-            <select id="parentRoleId" formControlName="parentRoleId" class="form-input">
-              <option value="">None</option>
-              @for (role of availableParentRoles(); track role.id) {
-                <option [value]="role.id">{{ role.name }}</option>
-              }
-            </select>
+            <nimbus-searchable-select formControlName="parentRoleId" [options]="parentRoleOptions()" placeholder="None (root role)" [allowClear]="true" />
           </div>
 
           <div class="permission-picker">
@@ -197,6 +193,7 @@ export class RoleFormComponent implements OnInit {
   submitting = signal(false);
   errorMessage = signal('');
   availableParentRoles = signal<Role[]>([]);
+  parentRoleOptions = computed(() => this.availableParentRoles().map(r => ({ value: r.id, label: r.name })));
   domainGroups = signal<DomainGroup[]>([]);
   selectedPermissionIds = signal<Set<string>>(new Set());
 

@@ -265,7 +265,7 @@ export class SidebarComponent {
   private permissionCheck = inject(PermissionCheckService);
   private router = inject(Router);
 
-  private expandedGroups = signal<Set<string>>(new Set(['Users & Roles', 'Settings', 'Workflows']));
+  private expandedGroups = signal<Set<string>>(new Set(['Users & Roles', 'Settings', 'Workflows', 'CMDB', 'Services']));
   private activeGroup = signal<string | null>(null);
 
   constructor() {
@@ -292,10 +292,25 @@ export class SidebarComponent {
     {
       label: 'CMDB',
       icon: '&#9634;',
-      disabled: true,
+      permission: 'cmdb:ci:read',
       children: [
-        { label: 'Configuration Items', icon: '', route: '/cmdb', disabled: true },
-        { label: 'Service Catalog', icon: '', route: '/cmdb/catalog', disabled: true },
+        { label: 'Dashboard', icon: '', route: '/cmdb/dashboard', permission: 'cmdb:ci:read' },
+        { label: 'Configuration Items', icon: '', route: '/cmdb', exact: true, permission: 'cmdb:ci:read' },
+        { label: 'Classes', icon: '', route: '/cmdb/classes', permission: 'cmdb:class:read' },
+      ],
+    },
+    {
+      label: 'Services',
+      icon: '&#9881;',
+      permission: 'cmdb:catalog:read',
+      children: [
+        { label: 'Catalog', icon: '', route: '/catalog/services', permission: 'cmdb:catalog:read' },
+        { label: 'Pricing', icon: '', route: '/catalog/pricing', permission: 'cmdb:catalog:manage' },
+        { label: 'Processes', icon: '', route: '/catalog/processes', permission: 'catalog:process:read' },
+        { label: 'Estimations', icon: '', route: '/catalog/estimations', permission: 'catalog:estimation:read' },
+        { label: 'Regions', icon: '', route: '/catalog/regions', permission: 'catalog:region:read' },
+        { label: 'Rate Cards', icon: '', route: '/catalog/rate-cards', permission: 'catalog:staff:read' },
+        { label: 'Profitability', icon: '', route: '/catalog/profitability', permission: 'catalog:profitability:read' },
       ],
     },
     {
@@ -330,6 +345,8 @@ export class SidebarComponent {
       icon: '&#8644;',
       permission: 'approval:decision:submit',
       children: [
+        { label: 'Definitions', icon: '', route: '/workflows/definitions', exact: true, permission: 'workflow:definition:read' },
+        { label: 'Executions', icon: '', route: '/workflows/executions', exact: true, permission: 'workflow:execution:read' },
         { label: 'Approvals', icon: '', route: '/workflows/approvals', permission: 'approval:decision:submit' },
         { label: 'Manage', icon: '', route: '/workflows/manage', permission: 'approval:policy:manage' },
       ],

@@ -163,7 +163,7 @@ Core deliverables:
 ---
 
 ### Phase 8: CMDB Core
-**Status**: Backlog
+**Status**: Complete
 **Goal**: Configuration Management Database with CI classes, relationships, service catalog
 **Depends on**: Phase 5, Phase 2, Phase 4
 

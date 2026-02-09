@@ -2,7 +2,7 @@
 
 Pulumi-based SaaS Control Panel for multi-cloud infrastructure management (Proxmox, AWS, Azure, GCP, OCI). Multi-tenant, enterprise-grade.
 
-**Status**: Phases 1-4, 9-10 complete. Phase 5 (Semantic Layer) is next. 21-phase implementation plan in `plan/phases/`.
+**Status**: Phases 1-6, 8-10 complete. 21-phase implementation plan in `plan/phases/`.
 
 ## Quick Reference
 

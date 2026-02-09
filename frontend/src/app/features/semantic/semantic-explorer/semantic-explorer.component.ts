@@ -31,13 +31,14 @@ import { ProviderDialogComponent } from '../dialogs/provider-dialog.component';
 import { ProviderResourceTypeDialogComponent, PRTDialogData } from '../dialogs/provider-resource-type-dialog.component';
 import { TypeMappingDialogComponent, TypeMappingDialogData } from '../dialogs/type-mapping-dialog.component';
 import { RelationshipKindDialogComponent } from '../dialogs/relationship-kind-dialog.component';
+import { SearchableSelectComponent, SelectOption } from '@shared/components/searchable-select/searchable-select.component';
 
 type ViewMode = 'catalog' | 'providers' | 'relationships';
 
 @Component({
   selector: 'nimbus-semantic-explorer',
   standalone: true,
-  imports: [CommonModule, FormsModule, LayoutComponent, HasPermissionDirective],
+  imports: [CommonModule, FormsModule, LayoutComponent, HasPermissionDirective, SearchableSelectComponent],
   template: `
     <nimbus-layout>
     <div class="explorer">
@@ -84,12 +85,13 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
           @if (activeView() === 'catalog') {
             <div class="filter-area">
               <input type="text" class="search-input" placeholder="Search types..." [ngModel]="searchTerm()" (ngModelChange)="searchTerm.set($event)" />
-              <select [ngModel]="categoryFilter()" (ngModelChange)="categoryFilter.set($event)">
-                <option value="">All categories</option>
-                @for (cat of categories(); track cat.name) {
-                  <option [value]="cat.name">{{ cat.displayName }}</option>
-                }
-              </select>
+              <nimbus-searchable-select
+                [ngModel]="categoryFilter()"
+                (ngModelChange)="categoryFilter.set($event)"
+                [options]="categoryOptions()"
+                placeholder="All categories"
+                [allowClear]="true"
+              />
             </div>
           }
         </div>
@@ -522,6 +524,8 @@ export class SemanticExplorerComponent implements OnInit {
   searchTerm = signal('');
   categoryFilter = signal('');
   selectedType = signal<SemanticResourceType | null>(null);
+
+  categoryOptions = computed(() => this.categories().map(c => ({ value: c.name, label: c.displayName })));
 
   // Stats
   typeCount = computed(() => this.categories().reduce((sum, c) => sum + c.types.length, 0));

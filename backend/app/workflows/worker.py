@@ -52,6 +52,13 @@ from app.workflows.activities.tenant_purge import (
     find_purgeable_tenants,
     purge_single_tenant,
 )
+from app.workflows.activities.workflow_nodes import (
+    compile_subworkflow,
+    create_workflow_approval,
+    execute_node,
+    update_execution_status,
+    update_node_status,
+)
 from app.workflows.approval import ApprovalChainWorkflow
 from app.workflows.audit_archive import AuditArchiveWorkflow
 from app.workflows.audit_export import AuditExportWorkflow
@@ -61,6 +68,7 @@ from app.workflows.schedules import SCHEDULES
 from app.workflows.send_email import SendEmailWorkflow
 from app.workflows.send_webhook_batch import SendWebhookBatchWorkflow
 from app.workflows.tenant_export import TenantExportWorkflow
+from app.workflows.dynamic_workflow import DynamicWorkflowExecutor
 from app.workflows.tenant_purge import TenantPurgeWorkflow
 
 logger = logging.getLogger(__name__)
@@ -111,6 +119,7 @@ async def run_worker() -> None:
             ImpersonationWorkflow,
             SendEmailWorkflow,
             SendWebhookBatchWorkflow,
+            DynamicWorkflowExecutor,
         ],
         activities=[
             create_approval_request_activity,
@@ -133,6 +142,11 @@ async def run_worker() -> None:
             reject_impersonation_session,
             send_email_activity,
             send_webhook_batch_activity,
+            execute_node,
+            update_node_status,
+            update_execution_status,
+            compile_subworkflow,
+            create_workflow_approval,
         ],
     )
 

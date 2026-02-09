@@ -276,8 +276,385 @@ export const routes: Routes = [
         data: { breadcrumb: [{ label: 'Workflows', path: '/workflows/approvals' }, 'Manage'] },
       },
       {
+        path: 'definitions',
+        loadComponent: () =>
+          import('./features/workflows/workflow-list/workflow-list.component').then(
+            (m) => m.WorkflowListComponent,
+          ),
+        canActivate: [permissionGuard('workflow:definition:read')],
+        data: { breadcrumb: [{ label: 'Workflows', path: '/workflows/definitions' }, 'Definitions'] },
+      },
+      {
+        path: 'definitions/new',
+        loadComponent: () =>
+          import('./features/workflows/editor/workflow-editor.component').then(
+            (m) => m.WorkflowEditorComponent,
+          ),
+        canActivate: [permissionGuard('workflow:definition:create')],
+        data: { breadcrumb: [{ label: 'Definitions', path: '/workflows/definitions' }, 'New'] },
+      },
+      {
+        path: 'definitions/:id',
+        loadComponent: () =>
+          import('./features/workflows/workflow-detail/workflow-detail.component').then(
+            (m) => m.WorkflowDetailComponent,
+          ),
+        canActivate: [permissionGuard('workflow:definition:read')],
+        data: { breadcrumb: [{ label: 'Definitions', path: '/workflows/definitions' }, 'Details'] },
+      },
+      {
+        path: 'definitions/:id/edit',
+        loadComponent: () =>
+          import('./features/workflows/editor/workflow-editor.component').then(
+            (m) => m.WorkflowEditorComponent,
+          ),
+        canActivate: [permissionGuard('workflow:definition:update')],
+        data: { breadcrumb: [{ label: 'Definitions', path: '/workflows/definitions' }, 'Edit'] },
+      },
+      {
+        path: 'executions',
+        loadComponent: () =>
+          import('./features/workflows/execution-list/execution-list.component').then(
+            (m) => m.ExecutionListComponent,
+          ),
+        canActivate: [permissionGuard('workflow:execution:read')],
+        data: { breadcrumb: [{ label: 'Workflows', path: '/workflows/definitions' }, 'Executions'] },
+      },
+      {
+        path: 'executions/:id',
+        loadComponent: () =>
+          import('./features/workflows/execution-detail/execution-detail.component').then(
+            (m) => m.ExecutionDetailComponent,
+          ),
+        canActivate: [permissionGuard('workflow:execution:read')],
+        data: { breadcrumb: [{ label: 'Executions', path: '/workflows/executions' }, 'Details'] },
+      },
+      {
         path: '',
-        redirectTo: 'approvals',
+        redirectTo: 'definitions',
+        pathMatch: 'full',
+      },
+    ],
+  },
+  {
+    path: 'cmdb',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/cmdb/ci-list/ci-list.component').then(
+            (m) => m.CIListComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:ci:read')],
+        data: { breadcrumb: 'Configuration Items' },
+      },
+      {
+        path: 'create',
+        loadComponent: () =>
+          import('./features/cmdb/ci-form/ci-form.component').then(
+            (m) => m.CIFormComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:ci:create')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Create'] },
+      },
+      {
+        path: 'classes',
+        loadComponent: () =>
+          import('./features/cmdb/classes/class-browser.component').then(
+            (m) => m.ClassBrowserComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:class:read')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Classes'] },
+      },
+      {
+        path: 'compartments',
+        loadComponent: () =>
+          import('./features/cmdb/compartment-tree/compartment-tree.component').then(
+            (m) => m.CompartmentTreeComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:compartment:read')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Compartments'] },
+      },
+      {
+        path: 'dashboard',
+        loadComponent: () =>
+          import('./features/cmdb/dashboard/cmdb-dashboard.component').then(
+            (m) => m.CmdbDashboardComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:ci:read')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Dashboard'] },
+      },
+      {
+        path: 'templates',
+        loadComponent: () =>
+          import('./features/cmdb/templates/template-list.component').then(
+            (m) => m.TemplateListComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:template:read')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Templates'] },
+      },
+      {
+        path: 'templates/new',
+        loadComponent: () =>
+          import('./features/cmdb/templates/template-editor.component').then(
+            (m) => m.TemplateEditorComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:template:manage')],
+        data: { breadcrumb: [{ label: 'Templates', path: '/cmdb/templates' }, 'New'] },
+      },
+      {
+        path: 'templates/:id/edit',
+        loadComponent: () =>
+          import('./features/cmdb/templates/template-editor.component').then(
+            (m) => m.TemplateEditorComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:template:manage')],
+        data: { breadcrumb: [{ label: 'Templates', path: '/cmdb/templates' }, 'Edit'] },
+      },
+      {
+        path: ':id/graph',
+        loadComponent: () =>
+          import('./features/cmdb/graph-view/graph-view.component').then(
+            (m) => m.GraphViewComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:relationship:read')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Graph'] },
+      },
+      {
+        path: ':id/impact',
+        loadComponent: () =>
+          import('./features/cmdb/impact/impact-analysis.component').then(
+            (m) => m.ImpactAnalysisComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:relationship:read')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Impact'] },
+      },
+      {
+        path: ':id',
+        loadComponent: () =>
+          import('./features/cmdb/ci-detail/ci-detail.component').then(
+            (m) => m.CIDetailComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:ci:read')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Details'] },
+      },
+      {
+        path: ':id/edit',
+        loadComponent: () =>
+          import('./features/cmdb/ci-form/ci-form.component').then(
+            (m) => m.CIFormComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:ci:update')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Edit'] },
+      },
+    ],
+  },
+  {
+    path: 'catalog',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: 'services',
+        loadComponent: () =>
+          import('./features/catalog/service-list.component').then(
+            (m) => m.ServiceListComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:catalog:read')],
+        data: { breadcrumb: 'Service Catalog' },
+      },
+      {
+        path: 'services/new',
+        loadComponent: () =>
+          import('./features/catalog/service-form.component').then(
+            (m) => m.ServiceFormComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:catalog:manage')],
+        data: { breadcrumb: [{ label: 'Service Catalog', path: '/catalog/services' }, 'New'] },
+      },
+      {
+        path: 'services/:id',
+        loadComponent: () =>
+          import('./features/catalog/service-form.component').then(
+            (m) => m.ServiceFormComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:catalog:manage')],
+        data: { breadcrumb: [{ label: 'Service Catalog', path: '/catalog/services' }, 'Edit'] },
+      },
+      {
+        path: 'pricing',
+        loadComponent: () =>
+          import('./features/catalog/pricing-config.component').then(
+            (m) => m.PricingConfigComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:catalog:manage')],
+        data: { breadcrumb: [{ label: 'Service Catalog', path: '/catalog/services' }, 'Pricing'] },
+      },
+      {
+        path: 'tenant-pricing',
+        loadComponent: () =>
+          import('./features/catalog/tenant-pricing.component').then(
+            (m) => m.TenantPricingComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:catalog:manage')],
+        data: { breadcrumb: [{ label: 'Service Catalog', path: '/catalog/services' }, 'Tenant Pricing'] },
+      },
+      {
+        path: 'regions',
+        loadComponent: () =>
+          import('./features/catalog/regions/region-list.component').then(
+            (m) => m.RegionListComponent,
+          ),
+        canActivate: [permissionGuard('catalog:region:read')],
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Regions'] },
+      },
+      {
+        path: 'regions/create',
+        loadComponent: () =>
+          import('./features/catalog/regions/region-form.component').then(
+            (m) => m.RegionFormComponent,
+          ),
+        canActivate: [permissionGuard('catalog:region:manage')],
+        data: { breadcrumb: [{ label: 'Regions', path: '/catalog/regions' }, 'Create'] },
+      },
+      {
+        path: 'regions/:id',
+        loadComponent: () =>
+          import('./features/catalog/regions/region-form.component').then(
+            (m) => m.RegionFormComponent,
+          ),
+        canActivate: [permissionGuard('catalog:region:manage')],
+        data: { breadcrumb: [{ label: 'Regions', path: '/catalog/regions' }, 'Edit'] },
+      },
+      {
+        path: 'acceptance-templates',
+        loadComponent: () =>
+          import('./features/catalog/regions/acceptance-template-editor.component').then(
+            (m) => m.AcceptanceTemplateEditorComponent,
+          ),
+        canActivate: [permissionGuard('catalog:compliance:read')],
+        data: { breadcrumb: [{ label: 'Regions', path: '/catalog/regions' }, 'Acceptance Templates'] },
+      },
+      {
+        path: 'tenant-regions',
+        loadComponent: () =>
+          import('./features/catalog/regions/tenant-region-config.component').then(
+            (m) => m.TenantRegionConfigComponent,
+          ),
+        canActivate: [permissionGuard('catalog:compliance:manage')],
+        data: { breadcrumb: [{ label: 'Regions', path: '/catalog/regions' }, 'Tenant Config'] },
+      },
+      {
+        path: 'rate-cards',
+        loadComponent: () =>
+          import('./features/catalog/rate-cards/staff-list.component').then(
+            (m) => m.StaffListComponent,
+          ),
+        canActivate: [permissionGuard('catalog:staff:read')],
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Rate Cards'] },
+      },
+      {
+        path: 'rate-cards/matrix',
+        loadComponent: () =>
+          import('./features/catalog/rate-cards/rate-card-matrix.component').then(
+            (m) => m.RateCardMatrixComponent,
+          ),
+        canActivate: [permissionGuard('catalog:staff:read')],
+        data: { breadcrumb: [{ label: 'Rate Cards', path: '/catalog/rate-cards' }, 'Matrix'] },
+      },
+      {
+        path: 'activities',
+        loadComponent: () =>
+          import('./features/catalog/activities/activity-template-list.component').then(
+            (m) => m.ActivityTemplateListComponent,
+          ),
+        canActivate: [permissionGuard('catalog:activity:read')],
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Activities'] },
+      },
+      {
+        path: 'activities/new',
+        loadComponent: () =>
+          import('./features/catalog/activities/activity-template-editor.component').then(
+            (m) => m.ActivityTemplateEditorComponent,
+          ),
+        canActivate: [permissionGuard('catalog:activity:manage')],
+        data: { breadcrumb: [{ label: 'Activities', path: '/catalog/activities' }, 'New'] },
+      },
+      {
+        path: 'activities/:id',
+        loadComponent: () =>
+          import('./features/catalog/activities/activity-template-editor.component').then(
+            (m) => m.ActivityTemplateEditorComponent,
+          ),
+        canActivate: [permissionGuard('catalog:activity:manage')],
+        data: { breadcrumb: [{ label: 'Activities', path: '/catalog/activities' }, 'Edit'] },
+      },
+      {
+        path: 'processes',
+        loadComponent: () =>
+          import('./features/catalog/processes/process-list.component').then(
+            (m) => m.ProcessListComponent,
+          ),
+        canActivate: [permissionGuard('catalog:process:read')],
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Processes'] },
+      },
+      {
+        path: 'processes/:id',
+        loadComponent: () =>
+          import('./features/catalog/processes/process-editor.component').then(
+            (m) => m.ProcessEditorComponent,
+          ),
+        canActivate: [permissionGuard('catalog:process:manage')],
+        data: { breadcrumb: [{ label: 'Processes', path: '/catalog/processes' }, 'Edit'] },
+      },
+      {
+        path: 'estimations',
+        loadComponent: () =>
+          import('./features/catalog/estimations/estimation-list.component').then(
+            (m) => m.EstimationListComponent,
+          ),
+        canActivate: [permissionGuard('catalog:estimation:read')],
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Estimations'] },
+      },
+      {
+        path: 'estimations/new',
+        loadComponent: () =>
+          import('./features/catalog/estimations/estimation-builder.component').then(
+            (m) => m.EstimationBuilderComponent,
+          ),
+        canActivate: [permissionGuard('catalog:estimation:manage')],
+        data: { breadcrumb: [{ label: 'Estimations', path: '/catalog/estimations' }, 'New'] },
+      },
+      {
+        path: 'estimations/:id/edit',
+        loadComponent: () =>
+          import('./features/catalog/estimations/estimation-builder.component').then(
+            (m) => m.EstimationBuilderComponent,
+          ),
+        canActivate: [permissionGuard('catalog:estimation:manage')],
+        data: { breadcrumb: [{ label: 'Estimations', path: '/catalog/estimations' }, 'Edit'] },
+      },
+      {
+        path: 'estimations/:id',
+        loadComponent: () =>
+          import('./features/catalog/estimations/estimation-detail.component').then(
+            (m) => m.EstimationDetailComponent,
+          ),
+        canActivate: [permissionGuard('catalog:estimation:read')],
+        data: { breadcrumb: [{ label: 'Estimations', path: '/catalog/estimations' }, 'Details'] },
+      },
+      {
+        path: 'profitability',
+        loadComponent: () =>
+          import('./features/catalog/profitability/profitability-dashboard.component').then(
+            (m) => m.ProfitabilityDashboardComponent,
+          ),
+        canActivate: [permissionGuard('catalog:profitability:read')],
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Profitability'] },
+      },
+      {
+        path: '',
+        redirectTo: 'services',
         pathMatch: 'full',
       },
     ],

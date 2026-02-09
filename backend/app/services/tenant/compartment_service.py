@@ -141,7 +141,7 @@ class CompartmentService:
             WITH RECURSIVE compartment_tree AS (
                 SELECT id, name, description, parent_id, 0 as depth
                 FROM compartments
-                WHERE tenant_id = :tid AND parent_id IS NULL AND deleted_at IS NULL
+                WHERE tenant_id = CAST(:tid AS uuid) AND parent_id IS NULL AND deleted_at IS NULL
                 UNION ALL
                 SELECT c.id, c.name, c.description, c.parent_id, ct.depth + 1
                 FROM compartments c
