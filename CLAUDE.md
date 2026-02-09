@@ -2,13 +2,13 @@
 
 Pulumi-based SaaS Control Panel for multi-cloud infrastructure management (Proxmox, AWS, Azure, GCP, OCI). Multi-tenant, enterprise-grade.
 
-**Status**: Phases 1-3 complete. Phase 4 (Audit Core) is next. 20-phase implementation plan in `plan/phases/`.
+**Status**: Phases 1-4, 9-10 complete. Phase 5 (Semantic Layer) is next. 21-phase implementation plan in `plan/phases/`.
 
 ## Quick Reference
 
 - Architecture doc: `docs/architecture.md`
 - Feature spec: `concept.txt`
-- Implementation plan: `plan/README.md` (20 phases in `plan/phases/`)
+- Implementation plan: `plan/README.md` (21 phases in `plan/phases/`)
 - Cross-phase decisions: `plan/cross-phase-consistency.md`
 - Detailed Claude instructions: `.claude/instructions.md`
 
@@ -19,7 +19,7 @@ Pulumi-based SaaS Control Panel for multi-cloud infrastructure management (Proxm
 | Backend | Python 3.12+, FastAPI, SQLAlchemy (async), Strawberry GraphQL, Temporal |
 | Frontend | Angular 17+, TypeScript, Taiga UI, Rete.js, Apollo Angular |
 | Database | PostgreSQL (`nimbus` + `nimbus_temporal`), MinIO |
-| Cache | Valkey (added Phase 12 — caching, Socket.IO pub/sub) |
+| Cache | Valkey (added Phase 13 — caching, Socket.IO pub/sub) |
 | IaC | Pulumi Automation API |
 | Workflows | Temporal (workflows + schedules — no Celery) |
 | Quality | Ruff (Python), ESLint + Prettier (TS), pytest, Jest, Playwright |
@@ -108,4 +108,4 @@ Temporal Server: port 7233 | Temporal UI: port 8233
 
 ## Cloud Provider Abstraction
 
-All providers implement `CloudProviderInterface` with: `list_resources`, `get_resource`, `get_cost_data`, `map_to_semantic`, `validate_credentials`. Proxmox is the first provider (Phase 7) — free, self-hosted, validates the full pipeline. Cloud providers (AWS, Azure, GCP, OCI) follow in Phase 17. The semantic layer normalizes provider-specific concepts (Bridge/VPC/VNet/VCN -> Network, etc.).
+All providers implement `CloudProviderInterface` with: `list_resources`, `get_resource`, `get_cost_data`, `map_to_semantic`, `validate_credentials`. Proxmox is the first provider (Phase 11) — free, self-hosted, validates the full pipeline. Cloud providers (AWS, Azure, GCP, OCI) follow in Phase 18. The semantic layer (Phase 5) normalizes provider-specific concepts (Bridge/VPC/VNet/VCN -> Network, etc.).

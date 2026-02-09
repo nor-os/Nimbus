@@ -15,7 +15,7 @@ plan/
 │   ├── phase-03.md        # Refined to task-level (complete)
 │   ├── phase-04.md        # Refined to task-level (complete)
 │   ├── ...
-│   └── phase-20.md
+│   └── phase-21.md
 ├── cross-phase-consistency.md
 └── templates/
     └── phase-template.md  # Template for new phases
@@ -83,7 +83,7 @@ Core deliverables:
 - SCIM v2 provisioning endpoints
 - Identity provider claim mappings
 
-*Note: Absorbs old Phase 11 (OIDC/SAML). JIT provisioning deferred to Phase 14.*
+*Note: Absorbs old Phase 11 (OIDC/SAML). JIT provisioning deferred to Phase 15.*
 
 ---
 
@@ -106,17 +106,69 @@ Core deliverables:
 - REST + GraphQL API for audit operations
 - Frontend: audit service, audit log explorer, basic config UI
 
-*Not included (moved to Phase 13): real-time streaming, SIEM, anomaly detection, compliance dashboard, timeline/activity/history views, live feed*
+*Not included (moved to Phase 14): real-time streaming, SIEM, anomaly detection, compliance dashboard, timeline/activity/history views, live feed*
 
 ---
 
-### Phase 5: CMDB Core
+### Phase 5: Semantic Layer
 **Status**: Backlog
-**Goal**: Configuration Management Database with CI classes, relationships, service catalog
-**Depends on**: Phase 2, Phase 4
+**Goal**: Cloud provider abstraction — normalize provider-specific concepts (decoupled from CMDB)
+**Depends on**: Phase 4
 
 Core deliverables:
-- CI class definitions (comprehensive hierarchy)
+- Semantic model definitions (abstract resource types and their properties)
+- Cloud provider interface (abstract `CloudProviderInterface`)
+- Provider-to-semantic mapping engine
+- Semantic relationship types
+- Unified resource view API
+
+*Was old Phase 6. Moved earlier and decoupled from CMDB — no incomplete dependencies. CMDB (Phase 8) now depends on this.*
+
+---
+
+### Phase 6: Visual Workflow Editor
+**Status**: Backlog
+**Goal**: Node-based visual workflow editor using Rete.js for custom automation workflows
+**Depends on**: Phase 10, Phase 9, Phase 4
+
+Core deliverables:
+- Rete.js v2 canvas with Angular render plugin
+- Extensible node type registry
+- Built-in nodes: Start, End, Condition, Switch, Loop, Parallel, Merge, Delay, Sub-Workflow, Approval Gate, Notification, HTTP/Webhook, Script, Variable Set/Get, Transform
+- Expression engine (safe, AST-based)
+- Graph validator and workflow compiler
+- DynamicWorkflowExecutor (Temporal) — interprets compiled graphs at runtime
+- Workflow definition management (CRUD, versioning, draft → active → archived)
+- Execution monitor with per-node status overlay
+- Dry-run testing with breakpoints and mocks
+- Permissions: `workflow:definition:*`, `workflow:execution:*`
+
+*Was old Phase 16. Moved earlier. Establishes Rete.js foundation reused by Phase 7 (Visual Architecture Planner). Future phases add node types (Pulumi Deploy, Drift Scan, Cost Check).*
+
+---
+
+### Phase 7: Visual Architecture Planner
+**Status**: Backlog
+**Goal**: Drag-and-drop infrastructure designer using Rete.js
+**Depends on**: Phase 5, Phase 6, Phase 9, Phase 10
+
+Core deliverables:
+- Rete.js integration (reuse Phase 6 canvas infrastructure)
+- Pre-built components using semantic types from Phase 5
+- Template management
+- Export design as JSON/YAML
+
+*Was old Phase 17. Now depends on Phase 6 for Rete.js canvas foundation and Phase 5 for semantic types. Pulumi code generation deferred until Phase 12.*
+
+---
+
+### Phase 8: CMDB Core
+**Status**: Backlog
+**Goal**: Configuration Management Database with CI classes, relationships, service catalog
+**Depends on**: Phase 5, Phase 2, Phase 4
+
+Core deliverables:
+- CI class definitions based on semantic types (comprehensive hierarchy)
 - Compartment hierarchy (unlimited nesting)
 - Configuration item CRUD with snapshot versioning
 - CI relationships (graph model)
@@ -124,51 +176,12 @@ Core deliverables:
 - Service catalog with pricing
 - CI templates with constraints
 
----
-
-### Phase 6: Semantic Layer
-**Status**: Backlog
-**Goal**: Cloud provider abstraction — normalize provider-specific concepts
-**Depends on**: Phase 5
-
-Core deliverables:
-- Semantic model definitions
-- Cloud provider interface (abstract)
-- Provider-to-semantic mapping engine
-- Unified resource view API
-
----
-
-### Phase 7: Cloud Provider Integration (Proxmox)
-**Status**: Backlog
-**Goal**: First cloud provider — free, self-hosted, validates full pipeline
-**Depends on**: Phase 6
-
-Core deliverables:
-- Proxmox provider implementing CloudProviderInterface
-- Resource discovery (VMs, containers, storage, networks)
-- Credential management (API tokens)
-- Resource usage tracking
-- Pulumi Proxmox provider (`bpg/proxmox`) integration
-
----
-
-### Phase 8: Pulumi Integration
-**Status**: Backlog
-**Goal**: Infrastructure-as-Code via Pulumi Automation API
-**Depends on**: Phase 7
-
-Core deliverables:
-- Pulumi Automation API integration
-- Stack management
-- State export/import
-- Webhook handlers
-- PulumiDeployWorkflow (Temporal) for long-running stack operations
+*Was old Phase 5. Moved later — now depends on Semantic Layer (Phase 5) instead of the other way around.*
 
 ---
 
 ### Phase 9: Notifications
-**Status**: Backlog
+**Status**: Complete
 **Goal**: Multi-channel notification system
 **Depends on**: Phase 3
 
@@ -181,12 +194,12 @@ Core deliverables:
 - Notification history
 - Frontend notification center UI
 
-*Moved from old Phase 15. Approvals (Phase 10), drift (Phase 11), and audit alerts all need notifications.*
+*Moved from old Phase 15. Approvals (Phase 10), drift (Phase 17), and audit alerts all need notifications.*
 
 ---
 
 ### Phase 10: Approval Workflows (Temporal)
-**Status**: Backlog
+**Status**: Complete
 **Goal**: Configurable approval chains using Temporal workflows
 **Depends on**: Phase 9, Phase 1 (Temporal)
 
@@ -203,27 +216,42 @@ Core deliverables:
 
 ---
 
-### Phase 11: Drift Detection
+### Phase 11: Cloud Provider Integration (Proxmox)
 **Status**: Backlog
-**Goal**: Detect and remediate configuration drift
-**Depends on**: Phase 8 (Pulumi state), Phase 10 (approvals)
+**Goal**: First cloud provider — free, self-hosted, validates full pipeline
+**Depends on**: Phase 5, Phase 8
 
 Core deliverables:
-- Drift scan trigger (Temporal Schedule)
-- Drift detection engine
-- Drift delta table model
-- DriftRemediationWorkflow (Temporal): detect → notify → approve → remediate pipeline
-- Drift severity classification
-- Drift report dashboard
+- Proxmox provider implementing CloudProviderInterface
+- Resource discovery (VMs, containers, storage, networks)
+- Credential management (API tokens)
+- Resource usage tracking
+- Pulumi Proxmox provider (`bpg/proxmox`) integration
 
-*Was old Phase 9. Moved because it needs Pulumi state + approval workflows.*
+*Was old Phase 7. Moved later — now depends on Semantic Layer (Phase 5) and CMDB (Phase 8).*
 
 ---
 
-### Phase 12: Real-time & Caching (Valkey)
+### Phase 12: Pulumi Integration
+**Status**: Backlog
+**Goal**: Infrastructure-as-Code via Pulumi Automation API
+**Depends on**: Phase 11
+
+Core deliverables:
+- Pulumi Automation API integration
+- Stack management
+- State export/import
+- Webhook handlers
+- PulumiDeployWorkflow (Temporal) for long-running stack operations
+
+*Was old Phase 8. Moved later — now depends on Proxmox (Phase 11).*
+
+---
+
+### Phase 13: Real-time & Caching (Valkey)
 **Status**: Backlog
 **Goal**: Add Valkey to infrastructure, Socket.IO, GraphQL subscriptions, live updates
-**Depends on**: Phase 5, Phase 9
+**Depends on**: Phase 8, Phase 9
 
 Core deliverables:
 - Valkey added to Docker Compose (`valkey/valkey:8-alpine`, port 6379)
@@ -235,14 +263,14 @@ Core deliverables:
 - Connection management & reconnection in frontend
 - Caching layer (permissions, tenant config)
 
-*Was old Phase 19 (Real-time). Moved earlier to enable real-time features in Phase 13+. Valkey replaces Redis (community fork, same API).*
+*Was old Phase 12. Renumbered. Valkey replaces Redis (community fork, same API).*
 
 ---
 
-### Phase 13: Advanced Audit
+### Phase 14: Advanced Audit
 **Status**: Backlog
 **Goal**: Audit features that need Valkey + Socket.IO
-**Depends on**: Phase 12, Phase 4
+**Depends on**: Phase 13, Phase 4
 
 Core deliverables:
 - Real-time audit event streaming (Socket.IO + Valkey pub/sub)
@@ -254,11 +282,11 @@ Core deliverables:
 - Resource history view
 - Real-time audit feed component
 
-*New phase — split from old Phase 4 (tasks that required streaming/real-time infrastructure).*
+*Was old Phase 13. Renumbered. Split from old Phase 4 (tasks that required streaming/real-time infrastructure).*
 
 ---
 
-### Phase 14: MFA & HSM + JIT Provisioning
+### Phase 15: MFA & HSM + JIT Provisioning
 **Status**: Backlog
 **Goal**: Enhanced auth security + remaining OIDC/SAML work
 **Depends on**: Phase 3
@@ -272,11 +300,11 @@ Core deliverables:
 - JIT group auto-provisioning from IdP claims
 - IdP-initiated SSO flows
 
-*Was old Phase 12 (MFA/HSM). Gains JIT provisioning from old Phase 11.*
+*Was old Phase 14. Renumbered. Gains JIT provisioning from old Phase 11.*
 
 ---
 
-### Phase 15: Impersonation
+### Phase 16: Impersonation
 **Status**: Backlog
 **Goal**: Secure impersonation workflows
 **Depends on**: Phase 10, Phase 4
@@ -287,29 +315,31 @@ Core deliverables:
 - Separate audit trail
 - Re-authentication flow
 
-*Was old Phase 13.*
+*Was old Phase 15. Renumbered.*
 
 ---
 
-### Phase 16: Visual Architecture Planner
+### Phase 17: Drift Detection
 **Status**: Backlog
-**Goal**: Drag-and-drop infrastructure designer
-**Depends on**: Phase 5, Phase 8
+**Goal**: Detect and remediate configuration drift
+**Depends on**: Phase 12 (Pulumi state), Phase 10 (approvals)
 
 Core deliverables:
-- Rete.js integration
-- Pre-built components
-- Template management
-- Pulumi code generation
+- Drift scan trigger (Temporal Schedule)
+- Drift detection engine
+- Drift delta table model
+- DriftRemediationWorkflow (Temporal): detect → notify → approve → remediate pipeline
+- Drift severity classification
+- Drift report dashboard
 
-*Was old Phase 14.*
+*Was old Phase 11. Moved later — needs Pulumi state (Phase 12) + approval workflows (Phase 10).*
 
 ---
 
-### Phase 17: Additional Cloud Providers
+### Phase 18: Additional Cloud Providers
 **Status**: Backlog
 **Goal**: AWS, Azure, GCP, OCI implementations
-**Depends on**: Phase 6, Phase 7
+**Depends on**: Phase 5, Phase 11
 
 Core deliverables:
 - AWS provider implementation
@@ -318,14 +348,14 @@ Core deliverables:
 - OCI provider implementation
 - Cross-cloud unified view
 
-*Was old Phase 16.*
+*Was old Phase 18. Dependencies updated to Phase 5 (Semantic Layer) and Phase 11 (Proxmox).*
 
 ---
 
-### Phase 18: Cost Management
+### Phase 19: Cost Management
 **Status**: Backlog
 **Goal**: Cloud cost tracking and billing
-**Depends on**: Phase 7+
+**Depends on**: Phase 11+
 
 Core deliverables:
 - Cost data aggregation
@@ -333,14 +363,14 @@ Core deliverables:
 - Cost reports/export
 - Budget alerts
 
-*Was old Phase 17.*
+*Was old Phase 19. Dependencies updated to Phase 11+ (Proxmox).*
 
 ---
 
-### Phase 19: Monitoring & Observability
+### Phase 20: Monitoring & Observability
 **Status**: Backlog
 **Goal**: Production-ready observability (Prometheus, Grafana, Loki)
-**Depends on**: Core platform
+**Depends on**: All prior phases
 
 Core deliverables:
 - Prometheus metrics endpoint
@@ -348,11 +378,11 @@ Core deliverables:
 - Alert rules
 - PagerDuty integration
 
-*Was old Phase 18.*
+*Was old Phase 20.*
 
 ---
 
-### Phase 20: Production Hardening
+### Phase 21: Production Hardening
 **Status**: Backlog
 **Goal**: Security audit, performance, documentation
 **Depends on**: All phases
@@ -370,24 +400,25 @@ Core deliverables:
 ```
 Phase 3 (done)
   ├─► Phase 4: Audit Core (done)
-  │     └─► Phase 5: CMDB
-  │           ├─► Phase 6: Semantic Layer
-  │           │     ├─► Phase 7: Proxmox
-  │           │     │     └─► Phase 8: Pulumi
-  │           │     │           └─► Phase 11: Drift
-  │           │     └─► Phase 17: Cloud Providers
-  │           ├─► Phase 12: Real-time + Valkey
-  │           │     └─► Phase 13: Advanced Audit
-  │           └─► Phase 16: Visual Planner
-  ├─► Phase 9: Notifications
-  │     └─► Phase 10: Approvals
-  │           ├─► Phase 11: Drift
-  │           └─► Phase 15: Impersonation
-  └─► Phase 14: MFA + JIT
+  │     ├─► Phase 5: Semantic Layer
+  │     │     ├─► Phase 7: Visual Arch Planner (also needs Phase 6, 9, 10)
+  │     │     ├─► Phase 8: CMDB (also needs Phase 2)
+  │     │     │     ├─► Phase 11: Proxmox
+  │     │     │     │     └─► Phase 12: Pulumi
+  │     │     │     │           └─► Phase 17: Drift (also needs Phase 10)
+  │     │     │     └─► Phase 13: Real-time + Valkey (also needs Phase 9)
+  │     │     │           └─► Phase 14: Advanced Audit
+  │     │     └─► Phase 18: Cloud Providers (also needs Phase 11)
+  │     └─► Phase 16: Impersonation (also needs Phase 10)
+  ├─► Phase 9: Notifications (done)
+  │     └─► Phase 10: Approvals (done)
+  │           └─► Phase 6: Visual Workflow Editor (also needs Phase 9, 4)
+  │                 └─► Phase 7: Visual Arch Planner
+  └─► Phase 15: MFA + JIT
 
-Phase 18: Cost (after Phase 7+)
-Phase 19: Monitoring (after core)
-Phase 20: Hardening (after all)
+Phase 19: Cost (after Phase 11+)
+Phase 20: Monitoring (after core)
+Phase 21: Hardening (after all)
 ```
 
 No circular dependencies. No phase needs features from a later phase.
@@ -396,26 +427,26 @@ No circular dependencies. No phase needs features from a later phase.
 
 ## Old → New Phase Mapping
 
-| Old Phase | New Phase | Change |
+| Previous Phase | New Phase | Change |
 |-----------|-----------|--------|
-| 4: Audit (23 tasks) | **4: Audit Core** (~15 tasks) | Split — streaming/SIEM/anomaly removed |
-| 5: CMDB | **5: CMDB** | Same |
-| 6: Semantic | **6: Semantic** | Same |
-| 7: Proxmox | **7: Proxmox** | Same |
-| 8: Pulumi | **8: Pulumi** | Same |
-| 9: Drift | **11: Drift** | Moved (needs Pulumi + Approvals first) |
-| 10: Approvals | **10: Approvals** | Same slot, now has notifications |
-| 11: OIDC/SAML | **Absorbed into 3** | JIT provisioning → Phase 14 |
-| 12: MFA/HSM | **14: MFA + JIT** | Gains JIT provisioning |
-| 13: Impersonation | **15: Impersonation** | Renumbered |
-| 14: Visual Planner | **16: Visual Planner** | Renumbered |
-| 15: Notifications | **9: Notifications** | **Moved earlier** |
-| 16: Cloud Providers | **17: Cloud Providers** | Renumbered |
-| 17: Cost | **18: Cost** | Renumbered |
-| 18: Monitoring | **19: Monitoring** | Renumbered |
-| 19: Real-time | **12: Real-time + Valkey** | **Moved earlier** |
-| 20: Hardening | **20: Hardening** | Same |
-| — | **13: Advanced Audit** | **New phase** (split from old Phase 4) |
+| 4: Audit Core | **4: Audit Core** | Same |
+| 5: CMDB | **8: CMDB** | Moved later, now depends on SL |
+| 6: Semantic | **5: Semantic Layer** | Moved earlier, decoupled from CMDB |
+| 7: Proxmox | **11: Proxmox** | Moved later |
+| 8: Pulumi | **12: Pulumi** | Moved later |
+| 9: Notifications | **9: Notifications** | Same |
+| 10: Approvals | **10: Approvals** | Same |
+| 11: Drift | **17: Drift** | Moved later |
+| 12: Valkey | **13: Real-time + Valkey** | Renumbered |
+| 13: Advanced Audit | **14: Advanced Audit** | Renumbered |
+| 14: MFA + JIT | **15: MFA + JIT** | Renumbered |
+| 15: Impersonation | **16: Impersonation** | Renumbered |
+| 16: VWE | **6: Visual Workflow Editor** | Moved earlier |
+| 17: Visual Planner | **7: Visual Arch Planner** | Moved earlier, deps changed |
+| 18: Cloud Providers | **18: Cloud Providers** | Same |
+| 19: Cost | **19: Cost** | Same |
+| 20: Monitoring | **20: Monitoring** | Same |
+| 21: Hardening | **21: Hardening** | Same |
 
 ---
 

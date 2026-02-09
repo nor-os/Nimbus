@@ -1,4 +1,4 @@
-# Phase 16: Visual Architecture Planner
+# Phase 16: Impersonation
 
 ## Status
 - [ ] Refinement complete
@@ -7,29 +7,33 @@
 - [ ] Phase review complete
 
 ## Goal
-Drag-and-drop infrastructure designer using Rete.js.
+Secure impersonation workflows using Temporal for durable lifecycle management.
 
-*Was old Phase 14.*
+*Was old Phase 13. Now Phase 16.*
 
 ## Deliverables
-- Rete.js integration in Angular
-- Pre-built component library (VPC, compute, database, etc.)
-- Component connection rules
-- Architecture template management
-- Template-to-Pulumi code generation
-- Template versioning
-- Architecture canvas in frontend
-- Component properties panel
+- Impersonation request model
+- ImpersonationWorkflow (Temporal): request → approve → re-auth → session → auto-revoke
+  - Reuses ApprovalChainWorkflow (Phase 10) as child workflow for approval step
+  - Temporal timer for automatic session expiry (default 30 minutes)
+  - Temporal Signal to extend session duration
+  - Temporal Signal to end session early
+  - Temporal Query for active session status
+- Separate audit trail for impersonation (audit activity at each workflow step)
+- Re-authentication requirement
+- Impersonation UI (request, active session indicator, extend/end controls)
+- Emergency impersonation (HSM required, uses BreakGlassWorkflow)
 
 ## Dependencies
-- Phase 5 complete (CMDB for component definitions)
-- Phase 8 complete (Pulumi for code generation)
+- Phase 10 complete (ApprovalChainWorkflow)
+- Phase 4 complete (audit logging for impersonation trail)
+- Phase 1 Temporal setup (worker, client)
 
 ## Key Questions for Refinement
-- What components to include in initial library?
-- How to represent cross-cloud architectures?
-- Should templates be shareable across tenants?
-- How detailed should generated Pulumi code be?
+- Who can request impersonation (provider admins only)?
+- Should impersonation targets be configurable?
+- How visible should impersonation be to the target?
+- How to handle impersonation during active changes?
 
 ## Estimated Tasks
-~12-15 tasks (to be refined before implementation)
+~8-10 tasks (to be refined before implementation)

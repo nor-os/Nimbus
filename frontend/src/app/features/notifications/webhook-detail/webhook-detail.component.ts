@@ -6,6 +6,7 @@
  */
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NotificationService } from '@core/services/notification.service';
 import { WebhookDelivery } from '@shared/models/notification.model';
@@ -15,8 +16,9 @@ type DeliveryStatus = '' | 'PENDING' | 'DELIVERED' | 'FAILED' | 'DEAD_LETTER';
 @Component({
   selector: 'nimbus-webhook-detail',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LayoutComponent],
   template: `
+    <nimbus-layout>
     <div class="page">
       <div class="page-header">
         <div class="header-left">
@@ -110,59 +112,68 @@ type DeliveryStatus = '' | 'PENDING' | 'DELIVERED' | 'FAILED' | 'DEAD_LETTER';
         </div>
       }
     </div>
+    </nimbus-layout>
   `,
   styles: [`
-    .page { padding: 1.5rem; max-width: 56rem; }
+    .page { max-width: 56rem; }
     .page-header {
       display: flex; justify-content: space-between;
-      align-items: center; margin-bottom: 1rem;
+      align-items: center; margin-bottom: 1.5rem;
     }
     .header-left { display: flex; align-items: center; gap: 0.75rem; }
-    .page-title { font-size: 1.25rem; font-weight: 700; color: #e0e0e0; margin: 0; }
-    .filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-    .filter-select {
-      padding: 0.375rem 0.75rem; background: #1e2433; color: #e0e0e0;
-      border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; font-size: 0.75rem;
+    .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .filters {
+      display: flex; gap: 0.5rem; margin-bottom: 1rem; padding: 0.75rem;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
     }
-    .delivery-list { display: flex; flex-direction: column; gap: 0.25rem; }
+    .filter-select {
+      padding: 0.375rem 0.75rem; background: #fff; color: #1e293b;
+      border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8125rem;
+      font-family: inherit;
+    }
+    .filter-select:focus { border-color: #3b82f6; outline: none; }
+    .delivery-list { display: flex; flex-direction: column; gap: 0.5rem; }
     .delivery-row {
       display: flex; justify-content: space-between; align-items: flex-start;
-      padding: 0.75rem 1rem; background: #1e2433; border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.06);
+      padding: 0.75rem 1rem; background: #fff; border-radius: 8px;
+      border: 1px solid #e2e8f0;
     }
+    .delivery-row:hover { background: #f8fafc; }
     .delivery-info { flex: 1; min-width: 0; }
     .delivery-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
     .status-badge {
       display: inline-block; padding: 0.125rem 0.5rem;
-      font-size: 0.625rem; font-weight: 700; border-radius: 3px;
+      font-size: 0.6875rem; font-weight: 600; border-radius: 12px;
       text-transform: uppercase;
     }
-    .status-pending { background: rgba(234,179,8,0.15); color: #facc15; }
-    .status-delivered { background: rgba(34,197,94,0.15); color: #22c55e; }
-    .status-failed { background: rgba(239,68,68,0.15); color: #f87171; }
-    .status-dead_letter { background: rgba(168,85,247,0.15); color: #c084fc; }
+    .status-pending { background: #fef9c3; color: #a16207; }
+    .status-delivered { background: #dcfce7; color: #16a34a; }
+    .status-failed { background: #fef2f2; color: #dc2626; }
+    .status-dead_letter { background: #f3e8ff; color: #7c3aed; }
     .delivery-time { font-size: 0.6875rem; color: #64748b; }
     .delivery-meta { display: flex; gap: 0.75rem; }
-    .meta-item { font-size: 0.6875rem; color: #9ca3af; }
+    .meta-item { font-size: 0.6875rem; color: #94a3b8; }
     .delivery-error {
-      margin-top: 0.25rem; font-size: 0.6875rem; color: #f87171;
+      margin-top: 0.25rem; font-size: 0.6875rem; color: #dc2626;
       font-family: monospace; word-break: break-all;
     }
     .delivery-actions { flex-shrink: 0; margin-left: 0.75rem; }
     .btn {
-      padding: 0.375rem 0.75rem; border-radius: 4px;
-      font-size: 0.75rem; cursor: pointer; border: none;
+      padding: 0.5rem 1.5rem; border-radius: 6px;
+      font-size: 0.8125rem; font-weight: 500; cursor: pointer; border: none;
+      font-family: inherit; transition: background 0.15s;
     }
-    .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.6875rem; }
+    .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
     .btn-primary { background: #3b82f6; color: #fff; }
-    .btn-secondary { background: rgba(255,255,255,0.08); color: #e0e0e0; }
-    .btn-secondary:hover { background: rgba(255,255,255,0.12); }
-    .btn-secondary:disabled { opacity: 0.4; cursor: default; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
+    .btn-secondary:hover { background: #f8fafc; }
+    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
     .pagination {
       display: flex; align-items: center; justify-content: center;
-      gap: 1rem; margin-top: 1rem;
+      gap: 1rem; padding: 0.75rem; margin-top: 1rem;
     }
-    .page-info { font-size: 0.75rem; color: #9ca3af; }
+    .page-info { font-size: 0.8125rem; color: #64748b; }
     .loading, .empty {
       padding: 2rem; text-align: center; color: #64748b; font-size: 0.8125rem;
     }

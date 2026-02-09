@@ -1,4 +1,4 @@
-# Phase 18: Cost Management
+# Phase 18: Additional Cloud Providers
 
 ## Status
 - [ ] Refinement complete
@@ -7,27 +7,29 @@
 - [ ] Phase review complete
 
 ## Goal
-Cloud cost tracking and billing aggregation.
+AWS, Azure, GCP, and OCI provider implementations.
 
-*Was old Phase 17.*
+*Was old Phase 18 / originally Phase 16.*
 
 ## Deliverables
-- Cost data aggregation service
-- Per-tenant cost tracking
-- Cost allocation rules
-- Cost reports (daily, monthly)
-- Cost export (CSV, PDF)
-- Budget alerts
-- Cost dashboard in frontend
+- AWS provider implementation
+- Azure provider implementation
+- GCP provider implementation
+- OCI provider implementation
+- Provider-specific credential management
+- Cross-cloud resource view
+- Provider selection in frontend
 
 ## Dependencies
-- Phase 7+ complete (at least one provider for cost data)
+- Phase 5 complete (semantic layer interface)
+- Phase 11 complete (Proxmox as reference implementation)
 
 ## Key Questions for Refinement
-- What cost granularity (resource, compartment, tenant)?
-- How to handle cost allocation for shared resources?
-- Should cost forecasting be included?
-- What budget alert thresholds?
+- Which services per provider to support?
+- How to handle provider-specific features?
+- Should providers be implemented in parallel or sequentially?
+- What authentication methods per provider?
+- How to handle OCI-specific concepts (tenancy, compartments) that map closely to Nimbus concepts?
 
 ## Estimated Tasks
-~10-12 tasks (to be refined before implementation)
+~15-20 tasks (to be refined before implementation)

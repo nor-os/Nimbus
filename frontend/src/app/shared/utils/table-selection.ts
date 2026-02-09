@@ -6,7 +6,7 @@
  */
 import { Signal, signal, computed } from '@angular/core';
 
-export interface TableSelection<T> {
+export interface TableSelection {
   selectedIds: Signal<Set<string>>;
   allSelected: Signal<boolean>;
   someSelected: Signal<boolean>;
@@ -20,7 +20,7 @@ export interface TableSelection<T> {
 export function createTableSelection<T>(
   items: Signal<T[]>,
   idFn: (item: T) => string,
-): TableSelection<T> {
+): TableSelection {
   const selectedIds = signal<Set<string>>(new Set());
 
   const selectedCount = computed(() => selectedIds().size);

@@ -4,8 +4,8 @@
  * Dependencies: @angular/core, @angular/router, @angular/forms, app/core/services/user.service, app/core/services/permission.service, app/shared/components/property-table, app/shared/services/dialog.service, app/shared/services/confirm.service, app/shared/services/toast.service
  * Concepts: User management, inline editing, role assignments, group membership, effective permissions, tabbed navigation, dialog-based assignment
  */
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
-import { CommonModule, DatePipe } from '@angular/common';
+import { Component, inject, signal, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { UserService } from '@core/services/user.service';
@@ -14,10 +14,7 @@ import { UserDetail } from '@core/models/user.model';
 import { Role } from '@core/models/permission.model';
 import { Group } from '@core/models/permission.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
-import {
-  PropertyTableComponent,
-  PropertyField,
-} from '@shared/components/property-table/property-table.component';
+import { PropertyTableComponent } from '@shared/components/property-table/property-table.component';
 import { DialogService } from '@shared/services/dialog.service';
 import { ConfirmService } from '@shared/services/confirm.service';
 import { ToastService } from '@shared/services/toast.service';
@@ -47,7 +44,7 @@ import { TenantContextService } from '@core/services/tenant-context.service';
 
           <div class="tenant-actions">
             <button
-              *hasPermission="'impersonation:session:create'"
+              *nimbusHasPermission="'impersonation:session:create'"
               class="btn btn-amber btn-sm"
               (click)="impersonate()"
             >

@@ -7,17 +7,21 @@ Concepts: GraphQL schema, query and mutation aggregation
 
 import strawberry
 
+from app.api.graphql.mutations.approval import ApprovalMutation
 from app.api.graphql.mutations.audit import AuditMutation
 from app.api.graphql.mutations.impersonation import ImpersonationMutation
 from app.api.graphql.mutations.notification import NotificationMutation
 from app.api.graphql.mutations.permissions import PermissionMutation
+from app.api.graphql.mutations.semantic import SemanticMutation
 from app.api.graphql.mutations.tenants import TenantMutation
 from app.api.graphql.mutations.users import UserMutation
+from app.api.graphql.queries.approval import ApprovalQuery
 from app.api.graphql.queries.audit import AuditQuery
 from app.api.graphql.queries.health import HealthQuery
 from app.api.graphql.queries.impersonation import ImpersonationQuery
 from app.api.graphql.queries.notification import NotificationQuery
 from app.api.graphql.queries.permissions import PermissionQuery
+from app.api.graphql.queries.semantic import SemanticQuery
 from app.api.graphql.queries.tenants import TenantQuery
 from app.api.graphql.queries.users import UserQuery
 
@@ -25,7 +29,8 @@ from app.api.graphql.queries.users import UserQuery
 @strawberry.type
 class Query(
     HealthQuery, TenantQuery, PermissionQuery, UserQuery,
-    AuditQuery, ImpersonationQuery, NotificationQuery,
+    AuditQuery, ImpersonationQuery, NotificationQuery, ApprovalQuery,
+    SemanticQuery,
 ):
     pass
 
@@ -33,7 +38,8 @@ class Query(
 @strawberry.type
 class Mutation(
     TenantMutation, PermissionMutation, UserMutation, AuditMutation,
-    ImpersonationMutation, NotificationMutation,
+    ImpersonationMutation, NotificationMutation, ApprovalMutation,
+    SemanticMutation,
 ):
     pass
 

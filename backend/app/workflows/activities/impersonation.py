@@ -1,7 +1,7 @@
 """
 Overview: Temporal activities for impersonation workflow lifecycle.
 Architecture: Impersonation workflow activities (Section 9)
-Dependencies: temporalio, app.services.impersonation, app.services.audit, app.services.audit.taxonomy
+Dependencies: temporalio, app.services.impersonation, app.services.audit
 Concepts: Temporal activities, impersonation lifecycle, audit logging, event taxonomy
 """
 
@@ -104,16 +104,73 @@ async def end_impersonation_session(input: EndInput) -> bool:
 
 @activity.defn
 async def notify_approver(input: NotifyInput) -> bool:
-    """Placeholder: notify approvers about a pending impersonation request.
+    """Notify approvers about a pending impersonation request via NotificationService."""
+    from app.db.session import async_session_factory
+    from app.models.notification import NotificationCategory
+    from app.services.notification.service import NotificationService
 
-    Phase 9 will replace this with real notification delivery.
-    """
-    logger.info(
-        "Impersonation approval requested for session %s — approvers: %s",
-        input.session_id,
-        input.approver_ids or "tenant_admins",
-    )
-    return True
+    try:
+        async with async_session_factory() as db:
+            notification_service = NotificationService(db)
+
+            # Resolve approver IDs: use provided list or fall back to tenant admins
+            approver_ids = input.approver_ids
+            if not approver_ids:
+                from sqlalchemy import select
+
+                from app.models.impersonation import ImpersonationSession
+                from app.models.role import Role
+                from app.models.user_role import UserRole
+
+                # Get tenant_id from session
+                result = await db.execute(
+                    select(ImpersonationSession.tenant_id).where(
+                        ImpersonationSession.id == input.session_id
+                    )
+                )
+                row = result.first()
+                if row:
+                    tenant_id = str(row[0])
+                    admin_result = await db.execute(
+                        select(UserRole.user_id)
+                        .join(Role, Role.id == UserRole.role_id)
+                        .where(UserRole.tenant_id == tenant_id, Role.name == "tenant_admin")
+                        .distinct()
+                    )
+                    approver_ids = [str(r[0]) for r in admin_result.all()]
+
+            if approver_ids:
+                # Get tenant_id from session
+                from sqlalchemy import select
+
+                from app.models.impersonation import ImpersonationSession
+
+                result = await db.execute(
+                    select(ImpersonationSession.tenant_id).where(
+                        ImpersonationSession.id == input.session_id
+                    )
+                )
+                row = result.first()
+                tenant_id = str(row[0]) if row else ""
+
+                await notification_service.send(
+                    tenant_id=tenant_id,
+                    user_ids=approver_ids,
+                    category=NotificationCategory.APPROVAL,
+                    event_type="approval.requested",
+                    title="Impersonation approval requested",
+                    body=f"Session {input.session_id} requires your approval",
+                    related_resource_type="impersonation_session",
+                    related_resource_id=input.session_id,
+                )
+                await db.commit()
+
+        return True
+    except Exception:
+        logger.exception(
+            "Failed to notify approvers for session %s", input.session_id
+        )
+        return False
 
 
 _IMPERSONATION_ACTION_TO_EVENT_TYPE: dict[str, str] = {

@@ -15,7 +15,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { IconComponent } from '@shared/components/icon/icon.component';
 import { ConfirmService } from '@shared/services/confirm.service';
 import { ToastService } from '@shared/services/toast.service';
-import { createTableSelection, TableSelection } from '@shared/utils/table-selection';
+import { createTableSelection } from '@shared/utils/table-selection';
 
 type SortColumn = 'name' | 'scope' | 'type' | 'description' | 'created_at';
 type SortDirection = 'asc' | 'desc';

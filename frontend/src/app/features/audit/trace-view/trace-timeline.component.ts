@@ -6,7 +6,7 @@
  */
 import { Component, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AuditLog, EventCategory } from '@shared/models/audit.model';
+import { AuditLog } from '@shared/models/audit.model';
 
 const CATEGORY_COLORS: Record<string, string> = {
   API: '#60a5fa',

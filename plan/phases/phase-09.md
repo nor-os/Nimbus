@@ -1,13 +1,13 @@
 # Phase 9: Notifications
 
 ## Status
-- [ ] Refinement complete
-- [ ] Implementation in progress
-- [ ] Implementation complete
-- [ ] Phase review complete
+- [x] Refinement complete
+- [x] Implementation in progress
+- [x] Implementation complete
+- [x] Phase review complete
 
 ## Goal
-Multi-channel notification system for events and alerts. Moved earlier in the plan (was old Phase 15) because approvals (Phase 10), drift detection (Phase 11), and audit anomaly alerts all need notifications to be useful.
+Multi-channel notification system for events and alerts. Moved earlier in the plan (was old Phase 15) because approvals (Phase 10), drift detection (Phase 17), and audit anomaly alerts all need notifications to be useful.
 
 ## Deliverables
 - Email notifications (SMTP)

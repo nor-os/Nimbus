@@ -275,7 +275,6 @@ export class TenantListComponent implements OnInit {
   }
 
   private toTreeTenants(tenants: Tenant[]): TreeTenant[] {
-    const allIds = new Set(this.allTenants().map((t) => t.id));
     return tenants.map((t) => ({
       ...t,
       hasChildren: this.allTenants().some((c) => c.parent_id === t.id),

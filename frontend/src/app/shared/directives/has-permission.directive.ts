@@ -21,11 +21,11 @@ import { PermissionCheckService } from '@core/services/permission-check.service'
  *
  * Usage:
  * ```html
- * <button *hasPermission="'users:user:create'">Create User</button>
+ * <button *nimbusHasPermission="'users:user:create'">Create User</button>
  * ```
  */
 @Directive({
-  selector: '[hasPermission]',
+  selector: '[nimbusHasPermission]',
   standalone: true,
 })
 export class HasPermissionDirective {
@@ -33,7 +33,7 @@ export class HasPermissionDirective {
   private readonly templateRef = inject(TemplateRef<unknown>);
   private readonly viewContainer = inject(ViewContainerRef);
 
-  @Input({ required: true }) hasPermission = '';
+  @Input({ required: true }) nimbusHasPermission = '';
 
   private hasView = false;
 
@@ -47,7 +47,7 @@ export class HasPermissionDirective {
   }
 
   private updateView(): void {
-    const permitted = this.permissionCheck.hasPermission(this.hasPermission);
+    const permitted = this.permissionCheck.hasPermission(this.nimbusHasPermission);
 
     if (permitted && !this.hasView) {
       this.viewContainer.createEmbeddedView(this.templateRef);

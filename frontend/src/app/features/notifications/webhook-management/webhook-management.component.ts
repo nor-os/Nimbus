@@ -7,6 +7,7 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { Router } from '@angular/router';
 import { NotificationService } from '@core/services/notification.service';
 import {
@@ -21,8 +22,9 @@ const AUTH_TYPES: WebhookAuthType[] = ['NONE', 'API_KEY', 'BASIC', 'BEARER'];
 @Component({
   selector: 'nimbus-webhook-management',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LayoutComponent],
   template: `
+    <nimbus-layout>
     <div class="page">
       <div class="page-header">
         <h1 class="page-title">Webhooks</h1>
@@ -213,79 +215,88 @@ const AUTH_TYPES: WebhookAuthType[] = ['NONE', 'API_KEY', 'BASIC', 'BEARER'];
         </div>
       }
     </div>
+    </nimbus-layout>
   `,
   styles: [`
-    .page { padding: 1.5rem; max-width: 56rem; }
+    .page { max-width: 56rem; }
     .page-header {
       display: flex; justify-content: space-between;
       align-items: center; margin-bottom: 0.5rem;
     }
-    .page-title { font-size: 1.25rem; font-weight: 700; color: #e0e0e0; margin: 0; }
-    .page-description { font-size: 0.75rem; color: #9ca3af; margin-bottom: 1rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .page-description { font-size: 0.8125rem; color: #64748b; margin-bottom: 1.5rem; }
     .form-card {
-      background: #1e2433; border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;
+      background: #fff; border: 1px solid #e2e8f0;
+      border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;
     }
-    .form-title { font-size: 0.9375rem; font-weight: 600; color: #e0e0e0; margin: 0 0 1rem; }
-    .form-group { margin-bottom: 0.75rem; }
-    .form-label { display: block; font-size: 0.6875rem; color: #9ca3af; margin-bottom: 0.25rem; }
+    .form-title { font-size: 1.0625rem; font-weight: 600; color: #1e293b; margin: 0 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #f1f5f9; }
+    .form-group { margin-bottom: 1rem; }
+    .form-label { display: block; font-size: 0.8125rem; font-weight: 600; color: #374151; margin-bottom: 0.375rem; }
     .form-input, .form-select {
-      width: 100%; padding: 0.5rem 0.75rem; background: #161b26; color: #e0e0e0;
-      border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;
-      font-size: 0.8125rem; box-sizing: border-box;
+      width: 100%; padding: 0.5rem 0.75rem; background: #fff; color: #1e293b;
+      border: 1px solid #e2e8f0; border-radius: 6px;
+      font-size: 0.8125rem; box-sizing: border-box; font-family: inherit;
+      transition: border-color 0.15s;
     }
-    .form-row { display: flex; gap: 0.75rem; }
+    .form-input:focus, .form-select:focus {
+      border-color: #3b82f6; outline: none;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+    .form-row { display: flex; gap: 1rem; }
     .form-group.half { flex: 1; }
-    .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+    .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.25rem; }
     .webhook-list { display: flex; flex-direction: column; gap: 0.5rem; }
     .webhook-card {
       display: flex; justify-content: space-between; align-items: flex-start;
-      padding: 1rem; background: #1e2433; border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.06);
+      padding: 1rem; background: #fff; border-radius: 8px;
+      border: 1px solid #e2e8f0; transition: background 0.15s;
     }
+    .webhook-card:hover { background: #f8fafc; }
     .webhook-card.inactive { opacity: 0.6; }
     .webhook-info { flex: 1; min-width: 0; }
-    .webhook-name { font-size: 0.875rem; font-weight: 600; color: #e0e0e0; }
+    .webhook-name { font-size: 0.875rem; font-weight: 600; color: #1e293b; }
     .badge-inactive {
-      margin-left: 0.5rem; padding: 0.0625rem 0.375rem;
-      background: rgba(239,68,68,0.15); color: #f87171;
-      font-size: 0.625rem; font-weight: 600; border-radius: 3px;
+      margin-left: 0.5rem; padding: 0.125rem 0.5rem;
+      background: #fef2f2; color: #dc2626;
+      font-size: 0.6875rem; font-weight: 600; border-radius: 12px;
     }
     .webhook-url {
-      font-size: 0.75rem; color: #9ca3af; margin-top: 0.125rem;
+      font-size: 0.75rem; color: #64748b; margin-top: 0.25rem;
       word-break: break-all;
     }
     .webhook-meta { display: flex; gap: 0.75rem; margin-top: 0.375rem; }
-    .meta-item { font-size: 0.6875rem; color: #64748b; }
+    .meta-item { font-size: 0.6875rem; color: #94a3b8; }
     .webhook-actions { display: flex; gap: 0.25rem; flex-shrink: 0; margin-left: 0.75rem; }
     .btn-small {
-      width: 1.75rem; height: 1.75rem; display: flex;
+      width: 28px; height: 28px; display: inline-flex;
       align-items: center; justify-content: center;
-      background: none; border: 1px solid rgba(255,255,255,0.1);
-      color: #9ca3af; border-radius: 3px; cursor: pointer; font-size: 0.75rem;
+      background: none; border: none;
+      color: #64748b; border-radius: 4px; cursor: pointer; font-size: 0.75rem;
+      transition: background 0.15s, color 0.15s;
     }
-    .btn-small:hover { background: rgba(255,255,255,0.06); color: #e0e0e0; }
-    .btn-small.btn-danger:hover { color: #ef4444; }
+    .btn-small:hover { background: #f1f5f9; color: #3b82f6; }
+    .btn-small.btn-danger:hover { color: #dc2626; background: #fef2f2; }
     .btn {
-      padding: 0.375rem 0.75rem; border-radius: 4px;
-      font-size: 0.75rem; cursor: pointer; border: none;
+      padding: 0.5rem 1.5rem; border-radius: 6px;
+      font-size: 0.8125rem; font-weight: 500; cursor: pointer; border: none;
+      font-family: inherit; transition: background 0.15s;
     }
     .btn-primary { background: #3b82f6; color: #fff; }
     .btn-primary:hover { background: #2563eb; }
-    .btn-secondary { background: rgba(255,255,255,0.08); color: #e0e0e0; }
-    .btn-secondary:hover { background: rgba(255,255,255,0.12); }
+    .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
+    .btn-secondary:hover { background: #f8fafc; }
     .loading, .empty {
       padding: 2rem; text-align: center; color: #64748b; font-size: 0.8125rem;
     }
     .test-result {
-      margin-top: 0.75rem; padding: 0.625rem 1rem;
-      border-radius: 4px; font-size: 0.75rem;
-      background: rgba(239,68,68,0.1); color: #f87171;
-      border: 1px solid rgba(239,68,68,0.2);
+      margin-top: 0.75rem; padding: 0.75rem 1rem;
+      border-radius: 6px; font-size: 0.8125rem;
+      background: #fef2f2; color: #dc2626;
+      border: 1px solid #fecaca;
     }
     .test-result.success {
-      background: rgba(34,197,94,0.1); color: #22c55e;
-      border-color: rgba(34,197,94,0.2);
+      background: #f0fdf4; color: #16a34a;
+      border-color: #bbf7d0;
     }
   `],
 })

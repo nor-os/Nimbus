@@ -112,7 +112,6 @@ export class AuthService {
   }
 
   loginWithProvider(tenantId: string, providerId: string, idpType: string): void {
-    const baseUrl = this.api['baseUrl'] || '';
     if (idpType === 'oidc') {
       this.api
         .get<{ authorization_url: string }>(

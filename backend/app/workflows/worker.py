@@ -22,6 +22,13 @@ from temporalio.worker import Worker
 
 from app.core.config import get_settings
 from app.core.temporal import get_temporal_client
+from app.workflows.activities.approval import (
+    create_approval_request_activity,
+    expire_approval_steps,
+    record_approval_audit,
+    resolve_approval_request,
+    send_approval_notification,
+)
 from app.workflows.activities.audit import (
     archive_tenant_audit_logs,
     execute_audit_export,
@@ -45,11 +52,14 @@ from app.workflows.activities.tenant_purge import (
     find_purgeable_tenants,
     purge_single_tenant,
 )
+from app.workflows.approval import ApprovalChainWorkflow
 from app.workflows.audit_archive import AuditArchiveWorkflow
 from app.workflows.audit_export import AuditExportWorkflow
 from app.workflows.example import ExampleWorkflow
 from app.workflows.impersonation import ImpersonationWorkflow
 from app.workflows.schedules import SCHEDULES
+from app.workflows.send_email import SendEmailWorkflow
+from app.workflows.send_webhook_batch import SendWebhookBatchWorkflow
 from app.workflows.tenant_export import TenantExportWorkflow
 from app.workflows.tenant_purge import TenantPurgeWorkflow
 
@@ -92,14 +102,22 @@ async def run_worker() -> None:
         client,
         task_queue=settings.temporal_task_queue,
         workflows=[
+            ApprovalChainWorkflow,
             ExampleWorkflow,
             TenantPurgeWorkflow,
             TenantExportWorkflow,
             AuditArchiveWorkflow,
             AuditExportWorkflow,
             ImpersonationWorkflow,
+            SendEmailWorkflow,
+            SendWebhookBatchWorkflow,
         ],
         activities=[
+            create_approval_request_activity,
+            expire_approval_steps,
+            record_approval_audit,
+            resolve_approval_request,
+            send_approval_notification,
             say_hello,
             find_purgeable_tenants,
             purge_single_tenant,

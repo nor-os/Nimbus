@@ -14,7 +14,7 @@ import {
   ElementRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { NotificationService } from '@core/services/notification.service';
 import { Notification } from '@shared/models/notification.model';
 
@@ -30,7 +30,7 @@ import { Notification } from '@shared/models/notification.model';
         title="Notifications"
         aria-label="Notifications"
       >
-        <span class="bell-icon">&#128276;</span>
+        <svg class="bell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         @if (notificationService.unreadCount() > 0) {
           <span class="badge">{{ notificationService.unreadCount() }}</span>
         }
@@ -98,7 +98,8 @@ import { Notification } from '@shared/models/notification.model';
       }
 
       .bell-icon {
-        font-size: 1.125rem;
+        width: 1.125rem;
+        height: 1.125rem;
       }
 
       .badge {
@@ -221,6 +222,7 @@ import { Notification } from '@shared/models/notification.model';
 export class NotificationBellComponent implements OnInit, OnDestroy {
   notificationService = inject(NotificationService);
   private elementRef = inject(ElementRef);
+  private router = inject(Router);
 
   dropdownOpen = signal(false);
   recentNotifications = signal<Notification[]>([]);
@@ -265,6 +267,12 @@ export class NotificationBellComponent implements OnInit, OnDestroy {
           ),
         );
       });
+    }
+
+    // Navigate to approvals page for APPROVAL notifications
+    if (n.category === 'APPROVAL') {
+      this.dropdownOpen.set(false);
+      this.router.navigate(['/workflows/approvals']);
     }
   }
 

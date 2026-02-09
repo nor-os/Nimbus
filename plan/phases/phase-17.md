@@ -1,4 +1,4 @@
-# Phase 17: Additional Cloud Providers
+# Phase 17: Drift Detection
 
 ## Status
 - [ ] Refinement complete
@@ -7,29 +7,31 @@
 - [ ] Phase review complete
 
 ## Goal
-AWS, Azure, GCP, and OCI provider implementations.
+Detect and manage configuration drift between desired (Pulumi state) and actual (cloud provider) state. Uses approval workflows (Phase 10) for remediation approval and notifications (Phase 9) for alerting.
 
-*Was old Phase 16.*
+*Was old Phase 11 / originally Phase 9. Moved because it depends on Pulumi state (Phase 12) and approval workflows (Phase 10).*
 
 ## Deliverables
-- AWS provider implementation
-- Azure provider implementation
-- GCP provider implementation
-- OCI provider implementation
-- Provider-specific credential management
-- Cross-cloud resource view
-- Provider selection in frontend
+- Drift scan trigger (Temporal Schedule)
+- Drift detection engine (compare Pulumi state vs live provider state)
+- Drift delta table model
+- DriftRemediationWorkflow (Temporal): detect → notify → approve → remediate pipeline
+- Drift severity classification
+- Drift notifications (via Phase 9 notification service)
+- Auto-approve option for low-severity drift
+- Drift report dashboard
+- Drift detail view with diff
 
 ## Dependencies
-- Phase 6 complete (semantic layer interface)
-- Phase 7 complete (Proxmox as reference implementation)
+- Phase 12 complete (Pulumi state for comparison)
+- Phase 10 complete (ApprovalChainWorkflow for remediation approval)
+- Phase 1 Temporal setup (worker, client)
 
 ## Key Questions for Refinement
-- Which services per provider to support?
-- How to handle provider-specific features?
-- Should providers be implemented in parallel or sequentially?
-- What authentication methods per provider?
-- How to handle OCI-specific concepts (tenancy, compartments) that map closely to Nimbus concepts?
+- How to calculate drift (state diff vs live check)?
+- What drift severity levels to support?
+- How to handle acceptable vs unacceptable drift?
+- Should drift auto-remediation be supported? → Via Temporal workflow with configurable auto-approve
 
 ## Estimated Tasks
-~15-20 tasks (to be refined before implementation)
+~10-12 tasks (to be refined before implementation)

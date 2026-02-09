@@ -48,17 +48,18 @@ class EmailService:
             subject = f"[Nimbus] {title}"
             rendered_body = body
 
-        # Start Temporal activity
+        # Start Temporal workflow for durable delivery
         try:
             from app.core.config import get_settings
             from app.core.temporal import get_temporal_client
             from app.workflows.activities.notification import SendEmailInput
+            from app.workflows.send_email import SendEmailWorkflow
 
             settings = get_settings()
             client = await get_temporal_client()
 
             await client.start_workflow(
-                "SendEmailWorkflow",
+                SendEmailWorkflow.run,
                 SendEmailInput(
                     to_email=user_email,
                     subject=subject or f"[Nimbus] {title}",

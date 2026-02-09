@@ -4,7 +4,7 @@
  * Dependencies: @angular/core, @angular/common, @angular/forms, app/core/services
  * Concepts: Impersonation sessions, user search, approval workflow, session management
  */
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -38,7 +38,7 @@ type ActiveTab = 'sessions' | 'request';
             class="tab"
             [class.active]="activeTab() === 'request'"
             (click)="activeTab.set('request')"
-            *hasPermission="'impersonation:session:create'"
+            *nimbusHasPermission="'impersonation:session:create'"
           >Request</button>
           <button
             class="tab"
@@ -113,7 +113,7 @@ type ActiveTab = 'sessions' | 'request';
                       Standard
                     </button>
                     <button class="mode-btn override" [class.active]="requestMode === 'OVERRIDE'" (click)="requestMode = 'OVERRIDE'"
-                      *hasPermission="'impersonation:override:create'"
+                      *nimbusHasPermission="'impersonation:override:create'"
                     >
                       Override
                     </button>

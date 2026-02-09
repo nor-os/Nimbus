@@ -6,6 +6,7 @@
  */
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { NotificationService } from '@core/services/notification.service';
 import {
   Notification,
@@ -25,8 +26,9 @@ const CATEGORIES: NotificationCategory[] = [
 @Component({
   selector: 'nimbus-notification-center',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LayoutComponent],
   template: `
+    <nimbus-layout>
     <div class="page">
       <div class="page-header">
         <h1 class="page-title">Notifications</h1>
@@ -106,47 +108,62 @@ const CATEGORIES: NotificationCategory[] = [
         </div>
       }
     </div>
+    </nimbus-layout>
   `,
   styles: [`
-    .page { padding: 1.5rem; max-width: 56rem; }
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-    .page-title { font-size: 1.25rem; font-weight: 700; color: #e0e0e0; margin: 0; }
-    .filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-    .filter-select {
-      padding: 0.375rem 0.75rem; background: #1e2433; color: #e0e0e0;
-      border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; font-size: 0.75rem;
+    .page { max-width: 56rem; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .filters {
+      display: flex; gap: 0.5rem; margin-bottom: 1rem; padding: 0.75rem;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
     }
-    .notification-list { display: flex; flex-direction: column; gap: 0.25rem; }
+    .filter-select {
+      padding: 0.375rem 0.75rem; background: #fff; color: #1e293b;
+      border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8125rem;
+      font-family: inherit;
+    }
+    .filter-select:focus { border-color: #3b82f6; outline: none; }
+    .notification-list { display: flex; flex-direction: column; gap: 0.5rem; }
     .notification-row {
       display: flex; justify-content: space-between; align-items: flex-start;
-      padding: 0.75rem 1rem; background: #1e2433; border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.06);
+      padding: 0.75rem 1rem; background: #fff; border-radius: 8px;
+      border: 1px solid #e2e8f0;
     }
+    .notification-row:hover { background: #f8fafc; }
     .notification-row.unread { border-left: 3px solid #3b82f6; }
     .notification-content { flex: 1; min-width: 0; }
     .notification-meta { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.25rem; }
     .category-badge {
-      padding: 0.125rem 0.375rem; background: rgba(59,130,246,0.15);
-      color: #60a5fa; font-size: 0.625rem; font-weight: 600; border-radius: 3px;
+      padding: 0.125rem 0.5rem; background: #eff6ff;
+      color: #1d4ed8; font-size: 0.6875rem; font-weight: 600; border-radius: 12px;
       text-transform: uppercase;
     }
-    .time { font-size: 0.625rem; color: #64748b; }
-    .notification-title { font-size: 0.8125rem; font-weight: 600; color: #e0e0e0; }
-    .notification-body { font-size: 0.75rem; color: #9ca3af; margin-top: 0.125rem; }
+    .time { font-size: 0.6875rem; color: #64748b; }
+    .notification-title { font-size: 0.8125rem; font-weight: 600; color: #1e293b; }
+    .notification-body { font-size: 0.8125rem; color: #64748b; margin-top: 0.125rem; }
     .notification-actions { display: flex; gap: 0.25rem; flex-shrink: 0; margin-left: 0.5rem; }
     .btn-small {
-      width: 1.5rem; height: 1.5rem; display: flex; align-items: center; justify-content: center;
-      background: none; border: 1px solid rgba(255,255,255,0.1); color: #9ca3af;
-      border-radius: 3px; cursor: pointer; font-size: 0.6875rem;
+      width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+      background: none; border: none; color: #64748b;
+      border-radius: 4px; cursor: pointer; font-size: 0.6875rem;
+      transition: background 0.15s, color 0.15s;
     }
-    .btn-small:hover { background: rgba(255,255,255,0.06); color: #e0e0e0; }
-    .btn-small.btn-danger:hover { color: #ef4444; }
-    .btn { padding: 0.375rem 0.75rem; border-radius: 4px; font-size: 0.75rem; cursor: pointer; border: none; }
-    .btn-secondary { background: rgba(255,255,255,0.08); color: #e0e0e0; }
-    .btn-secondary:hover { background: rgba(255,255,255,0.12); }
-    .btn-secondary:disabled { opacity: 0.4; cursor: default; }
-    .pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1rem; }
-    .page-info { font-size: 0.75rem; color: #9ca3af; }
+    .btn-small:hover { background: #f1f5f9; color: #3b82f6; }
+    .btn-small.btn-danger:hover { color: #dc2626; background: #fef2f2; }
+    .btn {
+      padding: 0.5rem 1.5rem; border-radius: 6px; font-size: 0.8125rem;
+      font-weight: 500; cursor: pointer; border: none; font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
+    .btn-secondary:hover { background: #f8fafc; }
+    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pagination {
+      display: flex; align-items: center; justify-content: center;
+      gap: 1rem; padding: 0.75rem; margin-top: 1rem;
+    }
+    .page-info { font-size: 0.8125rem; color: #64748b; }
     .loading, .empty { padding: 2rem; text-align: center; color: #64748b; font-size: 0.8125rem; }
     .header-actions { display: flex; gap: 0.5rem; }
   `],

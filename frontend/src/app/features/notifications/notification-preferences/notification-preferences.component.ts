@@ -6,6 +6,7 @@
  */
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { NotificationService } from '@core/services/notification.service';
 import {
   NotificationCategory,
@@ -21,8 +22,9 @@ const CHANNELS: NotificationChannel[] = ['EMAIL', 'IN_APP'];
 @Component({
   selector: 'nimbus-notification-preferences',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LayoutComponent],
   template: `
+    <nimbus-layout>
     <div class="page">
       <div class="page-header">
         <h1 class="page-title">Notification Preferences</h1>
@@ -35,35 +37,37 @@ const CHANNELS: NotificationChannel[] = ['EMAIL', 'IN_APP'];
         Webhooks are managed at the tenant level in Settings &gt; Webhooks.
       </p>
 
-      <table class="pref-table">
-        <thead>
-          <tr>
-            <th>Category</th>
-            @for (channel of channels; track channel) {
-              <th>{{ channel }}</th>
-            }
-          </tr>
-        </thead>
-        <tbody>
-          @for (cat of categories; track cat) {
+      <div class="table-container">
+        <table class="pref-table">
+          <thead>
             <tr>
-              <td class="cat-label">{{ cat }}</td>
+              <th>Category</th>
               @for (channel of channels; track channel) {
-                <td>
-                  <label class="toggle">
-                    <input
-                      type="checkbox"
-                      [checked]="isEnabled(cat, channel)"
-                      (change)="toggle(cat, channel)"
-                    />
-                    <span class="toggle-slider"></span>
-                  </label>
-                </td>
+                <th>{{ channel }}</th>
               }
             </tr>
-          }
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            @for (cat of categories; track cat) {
+              <tr>
+                <td class="cat-label">{{ cat }}</td>
+                @for (channel of channels; track channel) {
+                  <td>
+                    <label class="toggle">
+                      <input
+                        type="checkbox"
+                        [checked]="isEnabled(cat, channel)"
+                        (change)="toggle(cat, channel)"
+                      />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
 
       @if (saving()) {
         <div class="status">Saving...</div>
@@ -72,29 +76,33 @@ const CHANNELS: NotificationChannel[] = ['EMAIL', 'IN_APP'];
         <div class="status success">Preferences saved.</div>
       }
     </div>
+    </nimbus-layout>
   `,
   styles: [`
-    .page { padding: 1.5rem; max-width: 40rem; }
+    .page { max-width: 40rem; }
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-    .page-title { font-size: 1.25rem; font-weight: 700; color: #e0e0e0; margin: 0; }
-    .page-description { font-size: 0.75rem; color: #9ca3af; margin-bottom: 1rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .page-description { font-size: 0.8125rem; color: #64748b; margin-bottom: 1.5rem; }
+    .table-container { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
     .pref-table { width: 100%; border-collapse: collapse; }
     .pref-table th {
-      padding: 0.5rem 0.75rem; text-align: center; font-size: 0.6875rem;
-      font-weight: 600; color: #9ca3af; text-transform: uppercase;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 0.625rem 0.75rem; text-align: center; font-size: 0.75rem;
+      font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;
+      border-bottom: 1px solid #e2e8f0; background: #f8fafc;
     }
     .pref-table th:first-child { text-align: left; }
     .pref-table td {
       padding: 0.625rem 0.75rem; text-align: center;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
+      border-bottom: 1px solid #f1f5f9;
     }
-    .cat-label { text-align: left; font-size: 0.8125rem; color: #e0e0e0; font-weight: 500; }
+    .pref-table tbody tr:last-child td { border-bottom: none; }
+    .pref-table tbody tr:hover { background: #f8fafc; }
+    .cat-label { text-align: left; font-size: 0.8125rem; color: #1e293b; font-weight: 500; }
     .toggle { position: relative; display: inline-block; width: 2rem; height: 1.125rem; }
     .toggle input { opacity: 0; width: 0; height: 0; }
     .toggle-slider {
       position: absolute; cursor: pointer; inset: 0;
-      background: rgba(255,255,255,0.1); border-radius: 0.5625rem;
+      background: #cbd5e1; border-radius: 0.5625rem;
       transition: background 0.2s;
     }
     .toggle-slider::before {
@@ -104,11 +112,14 @@ const CHANNELS: NotificationChannel[] = ['EMAIL', 'IN_APP'];
     }
     .toggle input:checked + .toggle-slider { background: #3b82f6; }
     .toggle input:checked + .toggle-slider::before { transform: translateX(0.875rem); }
-    .btn { padding: 0.375rem 0.75rem; border-radius: 4px; font-size: 0.75rem; cursor: pointer; border: none; }
+    .btn {
+      padding: 0.5rem 1.5rem; border-radius: 6px; font-size: 0.8125rem;
+      font-weight: 500; cursor: pointer; border: none; font-family: inherit; transition: background 0.15s;
+    }
     .btn-primary { background: #3b82f6; color: #fff; }
     .btn-primary:hover { background: #2563eb; }
-    .status { margin-top: 0.75rem; font-size: 0.75rem; color: #9ca3af; }
-    .status.success { color: #22c55e; }
+    .status { margin-top: 0.75rem; font-size: 0.8125rem; color: #64748b; }
+    .status.success { color: #16a34a; }
   `],
 })
 export class NotificationPreferencesComponent implements OnInit {

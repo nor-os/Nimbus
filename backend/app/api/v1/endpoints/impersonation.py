@@ -69,6 +69,23 @@ async def request_impersonation(
         requires_approval = config[f"{mode_key}_requires_approval"]
         duration_minutes = config[f"{mode_key}_duration_minutes"]
 
+        # Resolve approval chain parameters from policy (if any)
+        from app.services.approval.service import ApprovalService
+
+        approval_service = ApprovalService(db)
+        op_type = f"impersonation.{mode_key}"
+        policy = await approval_service.get_policy(str(body.tenant_id), op_type)
+
+        chain_mode = "SEQUENTIAL"
+        quorum_required = 1
+        timeout_minutes = 1440
+        escalation_user_ids: list[str] = []
+        if policy and policy.is_active:
+            chain_mode = policy.chain_mode.value
+            quorum_required = policy.quorum_required
+            timeout_minutes = policy.timeout_minutes
+            escalation_user_ids = [str(u) for u in (policy.escalation_user_ids or [])]
+
         # Start Temporal workflow
         settings = get_settings()
         try:
@@ -82,6 +99,12 @@ async def request_impersonation(
                     requires_approval=requires_approval,
                     duration_minutes=duration_minutes,
                     max_duration_minutes=config["max_duration_minutes"],
+                    tenant_id=str(body.tenant_id),
+                    requester_id=str(current_user.id),
+                    chain_mode=chain_mode,
+                    quorum_required=quorum_required,
+                    timeout_minutes=timeout_minutes,
+                    escalation_user_ids=escalation_user_ids,
                 ),
                 id=workflow_id,
                 task_queue=settings.temporal_task_queue,
@@ -157,23 +180,68 @@ async def approve_impersonation(
         )
         await db.commit()
 
-        # Send Temporal signal
-        if session.workflow_id:
+        # Send Temporal signal to the child ApprovalChainWorkflow
+        # Find the approval request for this session to get the child workflow ID
+        from sqlalchemy import select as sa_select
+
+        from app.models.approval_request import ApprovalRequest
+
+        approval_req_result = await db.execute(
+            sa_select(ApprovalRequest).where(
+                ApprovalRequest.context["session_id"].astext == str(session_id),
+                ApprovalRequest.tenant_id == session.tenant_id,
+            )
+        )
+        approval_request = approval_req_result.scalar_one_or_none()
+
+        if approval_request and approval_request.workflow_id:
             try:
                 from app.core.temporal import get_temporal_client
-                from app.workflows.impersonation import ImpersonationWorkflow
+                from app.workflows.approval import ApprovalChainWorkflow
 
                 client = await get_temporal_client()
-                handle = client.get_workflow_handle(session.workflow_id)
+                handle = client.get_workflow_handle(approval_request.workflow_id)
+
+                # Find the step for this approver
+                from app.models.approval_step import ApprovalStep, ApprovalStepStatus
+
+                step_result = await db.execute(
+                    sa_select(ApprovalStep).where(
+                        ApprovalStep.approval_request_id == approval_request.id,
+                        ApprovalStep.approver_id == current_user.id,
+                        ApprovalStep.status == ApprovalStepStatus.PENDING,
+                    )
+                )
+                step = step_result.scalar_one_or_none()
+                step_id = str(step.id) if step else ""
+
                 await handle.signal(
-                    ImpersonationWorkflow.approval_decision,
+                    ApprovalChainWorkflow.submit_decision,
+                    step_id,
                     body.decision,
                     body.reason,
                 )
             except Exception:
                 logger.warning(
-                    "Failed to send approval signal to workflow %s",
-                    session.workflow_id,
+                    "Failed to send approval signal to child workflow",
+                    exc_info=True,
+                )
+        elif session.workflow_id:
+            # Fallback: try signaling the parent workflow directly (legacy path)
+            try:
+                from app.core.temporal import get_temporal_client
+
+                client = await get_temporal_client()
+                handle = client.get_workflow_handle(session.workflow_id)
+                # Parent no longer has approval_decision signal, just log
+                logger.warning(
+                    "No child approval workflow found for session %s, signal skipped",
+                    session_id,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to signal workflow for session %s",
+                    session_id,
                     exc_info=True,
                 )
 

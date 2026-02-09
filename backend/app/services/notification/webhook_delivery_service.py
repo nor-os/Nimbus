@@ -90,6 +90,7 @@ class WebhookDeliveryService:
                 SendWebhookBatchInput,
                 WebhookTarget,
             )
+            from app.workflows.send_webhook_batch import SendWebhookBatchWorkflow
 
             settings = get_settings()
             client = await get_temporal_client()
@@ -102,7 +103,7 @@ class WebhookDeliveryService:
             )
 
             await client.start_workflow(
-                "SendWebhookBatchWorkflow",
+                SendWebhookBatchWorkflow.run,
                 SendWebhookBatchInput(
                     delivery_ids=delivery_ids,
                     target=target,

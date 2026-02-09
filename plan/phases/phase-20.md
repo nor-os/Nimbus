@@ -1,4 +1,4 @@
-# Phase 20: Production Hardening
+# Phase 20: Monitoring & Observability
 
 ## Status
 - [ ] Refinement complete
@@ -7,26 +7,28 @@
 - [ ] Phase review complete
 
 ## Goal
-Production readiness with performance, security, and documentation.
+Production-ready observability with metrics, logging, and alerting.
+
+*Was old Phase 19 / originally Phase 18.*
 
 ## Deliverables
-- Performance profiling and optimization
-- Security audit and fixes
-- Load testing results
-- Penetration testing (if applicable)
-- API documentation completion
-- Deployment guide (Docker, Kubernetes)
-- Operations runbook
-- Disaster recovery testing
+- Prometheus metrics endpoint
+- Custom application metrics
+- Grafana dashboard templates
+- Loki log aggregation
+- Alert rules (Prometheus)
+- PagerDuty integration
+- Structured logging review
+- Observability documentation
 
 ## Dependencies
-- All prior phases complete
+- All prior phases (metrics cover all features)
 
 ## Key Questions for Refinement
-- What performance targets (latency, throughput)?
-- What security standards to comply with?
-- Should third-party security audit be performed?
-- What deployment targets (Docker Compose, K8s, cloud-native)?
+- What SLIs/SLOs to define?
+- Which metrics are critical vs nice-to-have?
+- How to handle alert fatigue?
+- Should distributed tracing be included?
 
 ## Estimated Tasks
-~12-15 tasks (to be refined before implementation)
+~8-10 tasks (to be refined before implementation)

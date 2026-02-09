@@ -254,6 +254,59 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'workflows',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: 'approvals',
+        loadComponent: () =>
+          import('./features/approvals/approval-inbox/approval-inbox.component').then(
+            (m) => m.ApprovalInboxComponent,
+          ),
+        canActivate: [permissionGuard('approval:decision:submit')],
+        data: { breadcrumb: [{ label: 'Workflows', path: '/workflows/approvals' }, 'Approvals'] },
+      },
+      {
+        path: 'manage',
+        loadComponent: () =>
+          import('./features/approvals/approval-policy-manage/approval-policy-manage.component').then(
+            (m) => m.ApprovalPolicyManageComponent,
+          ),
+        canActivate: [permissionGuard('approval:policy:manage')],
+        data: { breadcrumb: [{ label: 'Workflows', path: '/workflows/approvals' }, 'Manage'] },
+      },
+      {
+        path: '',
+        redirectTo: 'approvals',
+        pathMatch: 'full',
+      },
+    ],
+  },
+  {
+    path: 'semantic',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/semantic/semantic-explorer/semantic-explorer.component').then(
+            (m) => m.SemanticExplorerComponent,
+          ),
+        canActivate: [permissionGuard('semantic:type:read')],
+        data: { breadcrumb: 'Semantic Explorer' },
+      },
+      {
+        path: 'types/:id',
+        loadComponent: () =>
+          import('./features/semantic/type-detail/type-detail.component').then(
+            (m) => m.TypeDetailComponent,
+          ),
+        canActivate: [permissionGuard('semantic:type:read')],
+        data: { breadcrumb: [{ label: 'Semantic Explorer', path: '/semantic' }, 'Details'] },
+      },
+    ],
+  },
+  {
     path: 'notifications',
     loadComponent: () =>
       import('./features/notifications/notification-center/notification-center.component').then(

@@ -6,7 +6,7 @@ This document tracks design decisions that span multiple phases, ensuring consis
 
 ## 1. Compartment Model
 
-**Issue**: Compartments are used for permission scoping in Phase 3 but defined in CMDB (Phase 5).
+**Issue**: Compartments are used for permission scoping in Phase 3 but defined in CMDB (Phase 8).
 
 **Resolution**: Split implementation across phases.
 
@@ -14,29 +14,29 @@ This document tracks design decisions that span multiple phases, ensuring consis
 |-------|----------------|
 | Phase 2 | Basic Compartment model: id, tenant_id, parent_id, name, description, timestamps |
 | Phase 3 | Uses Phase 2 Compartment for permission scoping |
-| Phase 5 | Extends Compartment with CMDB fields: cloud_id, provider_type. Adds full hierarchy service. |
+| Phase 8 | Extends Compartment with CMDB fields: cloud_id, provider_type. Adds full hierarchy service. |
 
 **Files Affected**:
 - Phase 2: Task 2.13 creates basic model
 - Phase 3: Q18 references Phase 2 Compartment
-- Phase 5: Task 5.1 extends model, Task 5.7 extends service
+- Phase 8: Task 8.1 extends model, Task 8.7 extends service
 
 ---
 
 ## 2. Break-Glass Emergency Access (HSM Split)
 
-**Issue**: Phase 3 break-glass references HSM verification, but HSM is implemented in Phase 14.
+**Issue**: Phase 3 break-glass references HSM verification, but HSM is implemented in Phase 15.
 
 **Resolution**: Split break-glass into basic and HSM-required versions.
 
 | Phase | Implementation |
 |-------|----------------|
 | Phase 3 | Basic break-glass: multi-approval, time-limited access, audit trail |
-| Phase 14 | HSM-required break-glass: adds hardware security module verification |
+| Phase 15 | HSM-required break-glass: adds hardware security module verification |
 
 **Files Affected**:
 - Phase 3: Task 3.11 (Basic), Task 3.20 (Basic UI) - model prepared for HSM fields
-- Phase 14: Adds HSM verification requirement, UI integration
+- Phase 15: Adds HSM verification requirement, UI integration
 
 ---
 
@@ -44,7 +44,7 @@ This document tracks design decisions that span multiple phases, ensuring consis
 
 **Issue**: Several features (break-glass, approvals) need notifications before full notification system.
 
-**Resolution**: Phase 9 (Notifications) is now early enough in the plan to be available for Phase 10 (Approvals) and Phase 11 (Drift). Only Phase 3 break-glass still uses placeholder notifications.
+**Resolution**: Phase 9 (Notifications) is now early enough in the plan to be available for Phase 10 (Approvals) and Phase 17 (Drift). Only Phase 3 break-glass still uses placeholder notifications.
 
 | Phase | Implementation |
 |-------|----------------|
@@ -119,7 +119,7 @@ Examples:
 
 **Files Affected**:
 - Phase 3: Q16 documents format, Task 3.1 implements
-- Phase 5: CMDB uses class-specific permissions
+- Phase 8: CMDB uses class-specific permissions
 
 ---
 
@@ -154,7 +154,7 @@ Examples:
 
 **Files Affected**:
 - Phase 4: Audit infrastructure
-- Phase 5: CMDB operations use Phase 4 audit service
+- Phase 8: CMDB operations use Phase 4 audit service
 
 ---
 
@@ -162,20 +162,20 @@ Examples:
 
 **Issue**: Multiple phases need real-time updates. Socket.IO requires a pub/sub backend for multi-process support.
 
-**Resolution**: Valkey (community Redis fork, drop-in replacement, same API, `valkey/valkey:8-alpine`) is introduced in Phase 12 alongside Socket.IO infrastructure. This is earlier than originally planned (old Phase 19) to enable real-time features for Phase 13 (Advanced Audit).
+**Resolution**: Valkey (community Redis fork, drop-in replacement, same API, `valkey/valkey:8-alpine`) is introduced in Phase 13 alongside Socket.IO infrastructure. This is earlier than originally planned (old Phase 19) to enable real-time features for Phase 14 (Advanced Audit).
 
 | Phase | Usage |
 |-------|-------|
 | Phase 9 | In-app notifications (PostgreSQL-backed initially) |
-| Phase 12 | **Valkey added to Docker Compose.** Socket.IO + Valkey adapter. Live notification upgrade. Caching layer. |
-| Phase 13 | Live audit event streaming, SIEM integration |
-| Phase 16 | Visual planner real-time collaboration (future) |
+| Phase 13 | **Valkey added to Docker Compose.** Socket.IO + Valkey adapter. Live notification upgrade. Caching layer. |
+| Phase 14 | Live audit event streaming, SIEM integration |
+| Phase 7 | Visual planner real-time collaboration (future) |
 
 **Why Valkey instead of Redis**: Valkey is the community fork of Redis after the license change. Same API, same client libraries (`redis-py`, `ioredis`), different license (BSD). Drop-in replacement.
 
 **Files Affected**:
-- Phase 12: Docker Compose updated, Socket.IO infrastructure, Valkey caching
-- Phase 13: Audit streaming via Socket.IO + Valkey pub/sub
+- Phase 13: Docker Compose updated, Socket.IO infrastructure, Valkey caching
+- Phase 14: Audit streaming via Socket.IO + Valkey pub/sub
 - Later phases: Extend with domain-specific events
 
 ---
@@ -195,13 +195,14 @@ Examples:
 |-------|----------------|
 | Phase 1 | Temporal Server setup (Docker Compose), SDK scaffold, worker entrypoint, example workflow + schedule |
 | Phase 2 | TenantPurgeWorkflow (scheduled daily) |
-| Phase 3 | BreakGlassWorkflow (basic, HSM deferred to Phase 14) |
+| Phase 3 | BreakGlassWorkflow (basic, HSM deferred to Phase 15) |
 | Phase 4 | AuditArchiveWorkflow (scheduled daily), AuditExportWorkflow |
-| Phase 8 | PulumiDeployWorkflow (preview → approve → execute → verify, saga rollback) |
+| Phase 6 | DynamicWorkflowExecutor (interprets visual workflow graphs at runtime) |
 | Phase 10 | ApprovalChainWorkflow (reusable core workflow consumed by other phases) |
-| Phase 11 | DriftRemediationWorkflow (detect → notify → approve → remediate), drift scan Schedule |
-| Phase 13 | AnomalyDetectionWorkflow (scheduled hourly) |
-| Phase 15 | ImpersonationWorkflow (request → approve → session → auto-revoke via timer) |
+| Phase 12 | PulumiDeployWorkflow (preview → approve → execute → verify, saga rollback) |
+| Phase 14 | AnomalyDetectionWorkflow (scheduled hourly) |
+| Phase 16 | ImpersonationWorkflow (request → approve → session → auto-revoke via timer) |
+| Phase 17 | DriftRemediationWorkflow (detect → notify → approve → remediate), drift scan Schedule |
 
 **Key Conventions**:
 - Workflow definitions: `backend/app/workflows/` (not in `services/`)
@@ -210,18 +211,19 @@ Examples:
 - Task queue: `nimbus-workflows`
 - Namespace: `nimbus`
 - Temporal Server database: `nimbus_temporal` (separate from app database)
-- Valkey introduced in Phase 12 for caching and Socket.IO pub/sub (not a task broker)
+- Valkey introduced in Phase 13 for caching and Socket.IO pub/sub (not a task broker)
 
 **Files Affected**:
 - Phase 1: Docker Compose, `backend/app/workflows/`, `backend/app/core/temporal.py`
 - Phase 2: `backend/app/workflows/tenant_purge.py`
 - Phase 3: `backend/app/workflows/break_glass.py`
 - Phase 4: `backend/app/workflows/audit_archive.py`, `backend/app/workflows/audit_export.py`
-- Phase 8: `backend/app/workflows/pulumi_deploy.py`
+- Phase 6: `backend/app/workflows/dynamic_workflow.py`
 - Phase 10: `backend/app/workflows/approval.py`
-- Phase 11: `backend/app/workflows/drift_remediation.py`
-- Phase 13: `backend/app/workflows/anomaly_detection.py`
-- Phase 15: `backend/app/workflows/impersonation.py`
+- Phase 12: `backend/app/workflows/pulumi_deploy.py`
+- Phase 14: `backend/app/workflows/anomaly_detection.py`
+- Phase 16: `backend/app/workflows/impersonation.py`
+- Phase 17: `backend/app/workflows/drift_remediation.py`
 
 ---
 
@@ -229,18 +231,18 @@ Examples:
 
 **Issue**: Original plan had OCI as first cloud provider (Phase 7), requiring a cloud account and billing for development.
 
-**Resolution**: Use Proxmox VE as the first provider (Phase 7). Proxmox is free, self-hosted, has a full REST API, and a Pulumi provider (`bpg/proxmox`). It validates the entire CloudProviderInterface → semantic layer → CMDB → Pulumi deploy pipeline without cloud costs. Real cloud providers (AWS, Azure, GCP, OCI) move to Phase 17.
+**Resolution**: Use Proxmox VE as the first provider (Phase 11). Proxmox is free, self-hosted, has a full REST API, and a Pulumi provider (`bpg/proxmox`). It validates the entire CloudProviderInterface → semantic layer → CMDB → Pulumi deploy pipeline without cloud costs. Real cloud providers (AWS, Azure, GCP, OCI) move to Phase 18.
 
 | Phase | Implementation |
 |-------|----------------|
-| Phase 6 | CloudProviderInterface (abstract), semantic model definitions |
-| Phase 7 | ProxmoxProvider — first concrete implementation, validates patterns |
-| Phase 17 | AWSProvider, AzureProvider, GCPProvider, OCIProvider |
+| Phase 5 | CloudProviderInterface (abstract), semantic model definitions |
+| Phase 11 | ProxmoxProvider — first concrete implementation, validates patterns |
+| Phase 18 | AWSProvider, AzureProvider, GCPProvider, OCIProvider |
 
 **Files Affected**:
-- Phase 6: CloudProviderInterface definition
-- Phase 7: `backend/app/services/providers/proxmox.py`, Pulumi `bpg/proxmox` integration
-- Phase 17: `backend/app/services/providers/{aws,azure,gcp,oci}.py`
+- Phase 5: CloudProviderInterface definition
+- Phase 11: `backend/app/services/providers/proxmox.py`, Pulumi `bpg/proxmox` integration
+- Phase 18: `backend/app/services/providers/{aws,azure,gcp,oci}.py`
 
 ---
 
@@ -289,16 +291,16 @@ Examples:
 
 **Resolution**: Split audit into two phases:
 - **Phase 4 (Audit Core)**: ~15 tasks covering data models, logging service, redaction, middleware, retention/archival, query/search, export, REST/GraphQL API, and basic frontend (explorer + config UI)
-- **Phase 13 (Advanced Audit)**: ~10 tasks covering real-time streaming, SIEM integration, anomaly detection, compliance dashboard, timeline/activity/history views, and live feed — all requiring Phase 12 (Valkey + Socket.IO)
+- **Phase 14 (Advanced Audit)**: ~10 tasks covering real-time streaming, SIEM integration, anomaly detection, compliance dashboard, timeline/activity/history views, and live feed — all requiring Phase 13 (Valkey + Socket.IO)
 
 | Phase | Scope |
 |-------|-------|
 | Phase 4 | Core logging, hash chain, redaction, retention, query, export, basic UI |
-| Phase 13 | Real-time streaming, SIEM, anomaly detection, compliance dashboard, timeline views |
+| Phase 14 | Real-time streaming, SIEM, anomaly detection, compliance dashboard, timeline views |
 
 **Files Affected**:
 - Phase 4: All `backend/app/services/audit/` core files, basic frontend components
-- Phase 13: `streaming_service.py`, `siem_*.py`, `anomaly_service.py`, compliance/timeline/activity/feed frontend components
+- Phase 14: `streaming_service.py`, `siem_*.py`, `anomaly_service.py`, compliance/timeline/activity/feed frontend components
 
 ---
 
@@ -306,32 +308,60 @@ Examples:
 
 **Issue**: Old Phase 11 (OIDC/SAML Authentication) was a standalone phase, but Phase 3 already needed IdP integration for enterprise permission management. Building IdP configuration separately from the permission system that consumes it creates unnecessary coupling complexity.
 
-**Resolution**: Phase 3 absorbs the core OIDC/SAML work (IdP configuration, claim mappings, SP-initiated flows). JIT provisioning and IdP-initiated SSO flows move to Phase 14 (MFA & HSM + JIT) since they are optional enhancements that don't block the core permission system.
+**Resolution**: Phase 3 absorbs the core OIDC/SAML work (IdP configuration, claim mappings, SP-initiated flows). JIT provisioning and IdP-initiated SSO flows move to Phase 15 (MFA & HSM + JIT) since they are optional enhancements that don't block the core permission system.
 
 | Phase | Implementation |
 |-------|----------------|
 | Phase 3 | IdP configuration (OIDC + SAML via Authlib), claim-to-role mapping, SP-initiated flows, SCIM |
-| Phase 14 | JIT user/group auto-provisioning, IdP-initiated SSO, MFA, HSM |
+| Phase 15 | JIT user/group auto-provisioning, IdP-initiated SSO, MFA, HSM |
 
 **Files Affected**:
 - Phase 3: `IdentityProviderService`, IdP configuration endpoints, SCIM v2
-- Phase 14: JIT provisioning logic, IdP-initiated flow handlers
+- Phase 15: JIT provisioning logic, IdP-initiated flow handlers
+
+---
+
+## 16. Visual Workflow Editor (Rete.js Foundation)
+
+**Issue**: Both the Visual Workflow Editor (Phase 6) and Visual Architecture Planner (Phase 7) need Rete.js integration. Building them independently would duplicate the canvas infrastructure.
+
+**Resolution**: Phase 6 (Visual Workflow Editor) establishes the Rete.js v2 canvas foundation — custom Angular node rendering, zoom/pan, connection system, properties panel, serialization. Phase 7 (Visual Architecture Planner) reuses this infrastructure for infrastructure topology editing. The workflow editor also provides an extensible node type registry that future phases can extend with domain-specific node types.
+
+| Phase | Implementation |
+|-------|----------------|
+| Phase 6 | Rete.js v2 + Angular render plugin, canvas infrastructure, node type registry, expression engine, graph validator, workflow compiler, DynamicWorkflowExecutor (Temporal) |
+| Phase 7 | Reuses Phase 6 Rete.js canvas, adds infrastructure-specific components and Pulumi code generation |
+| Phase 12 (future) | Registers Pulumi Deploy/Destroy node types in workflow editor |
+| Phase 17 (future) | Registers Drift Scan/Remediate node types in workflow editor |
+| Phase 19 (future) | Registers Cost Check/Budget Alert node types in workflow editor |
+
+**Key Decisions**:
+- Interpreter pattern: DynamicWorkflowExecutor reads graph at runtime (no code generation)
+- Safe expression engine: AST-based, no eval/exec/imports
+- Full DAG + loops: Parallel, Condition, Switch, For-Each, While with max_iterations safety
+- Permissions: `workflow:definition:*`, `workflow:execution:*` — any permitted user can design workflows
+- Graph stored as JSONB with versioned schema
+
+**Files Affected**:
+- Phase 6: `backend/app/services/workflow/`, `backend/app/workflows/dynamic_workflow.py`, `frontend/src/app/features/workflows/`
+- Phase 7: Extends Rete.js canvas from Phase 6
 
 ---
 
 ## Cross-Reference Matrix
 
-| Feature | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 | Phase 8 | Phase 9 | Phase 10 | Phase 11 | Phase 12 | Phase 13 | Phase 14 | Phase 15 |
-|---------|---------|---------|---------|---------|---------|---------|---------|----------|----------|----------|----------|----------|----------|
-| Compartment | - | Create | Use | - | Extend | - | - | - | - | - | - | - | - |
-| Break-glass | - | - | Basic | Audit | - | - | - | - | - | - | - | HSM | - |
-| Notifications | - | - | Placeholder | - | - | - | Full | Use | Use | Upgrade | Use | - | - |
-| Roles | - | Placeholder | Full | - | - | - | - | - | - | - | - | - | - |
-| Audit | - | - | - | Core | Use | - | - | - | - | - | Advanced | - | Use |
-| Socket.IO | - | - | - | - | - | - | - | - | - | Create | Use | - | - |
-| Valkey | - | - | - | - | - | - | - | - | - | Create | Use | - | - |
-| Permissions | - | - | Create | Use | Use | - | - | - | - | - | - | - | - |
-| Temporal | Setup | Purge | BreakGlass | Archive | - | Deploy | - | Approval | Drift | - | Anomaly | - | Impersonate |
+| Feature | Ph1 | Ph2 | Ph3 | Ph4 | Ph5 | Ph6 | Ph7 | Ph8 | Ph9 | Ph10 | Ph11 | Ph12 | Ph13 | Ph14 | Ph15 | Ph16 | Ph17 |
+|---------|-----|-----|-----|-----|-----|-----|-----|-----|-----|------|------|------|------|------|------|------|------|
+| Compartment | - | Create | Use | - | - | - | - | Extend | - | - | - | - | - | - | - | - | - |
+| Break-glass | - | - | Basic | Audit | - | - | - | - | - | - | - | - | - | - | HSM | - | - |
+| Notifications | - | - | Placeholder | - | - | Use | - | - | Full | Use | - | - | Upgrade | Use | - | Use | Use |
+| Roles | - | Placeholder | Full | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| Audit | - | - | - | Core | - | Use | - | Use | - | - | - | - | - | Advanced | - | Use | - |
+| Socket.IO | - | - | - | - | - | - | - | - | - | - | - | - | Create | Use | - | - | - |
+| Valkey | - | - | - | - | - | - | - | - | - | - | - | - | Create | Use | - | - | - |
+| Permissions | - | - | Create | Use | - | Use | Use | Use | - | - | - | - | - | - | - | - | - |
+| Temporal | Setup | Purge | BreakGlass | Archive | - | DynWorkflow | - | - | - | Approval | - | Deploy | - | Anomaly | - | Impersonate | Drift |
+| Rete.js | - | - | - | - | - | Create | Reuse | - | - | - | - | - | - | - | - | - | - |
 
 ---
 

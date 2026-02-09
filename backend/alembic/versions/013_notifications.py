@@ -334,7 +334,7 @@ def upgrade() -> None:
             SELECT gen_random_uuid(), r.id, p.id, now(), now()
             FROM roles r
             CROSS JOIN permissions p
-            WHERE r.name = 'tenant_admin'
+            WHERE r.name IN ('Tenant Admin', 'Provider Admin')
               AND p.domain = 'notification'
               AND NOT EXISTS (
                   SELECT 1 FROM role_permissions rp

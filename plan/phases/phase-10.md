@@ -1,10 +1,10 @@
 # Phase 10: Approval Workflows (Temporal)
 
 ## Status
-- [ ] Refinement complete
-- [ ] Implementation in progress
-- [ ] Implementation complete
-- [ ] Phase review complete
+- [x] Refinement complete
+- [x] Implementation in progress
+- [x] Implementation complete
+- [x] Phase review complete
 
 ## Goal
 Configurable approval chains using Temporal workflows. This phase defines the reusable ApprovalChainWorkflow that other phases (drift, impersonation, break-glass, deployments) consume. Now has the notification system (Phase 9) available for approval notifications.

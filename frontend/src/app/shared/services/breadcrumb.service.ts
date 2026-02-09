@@ -89,7 +89,7 @@ export class BreadcrumbService {
 
   private resolveLabel(label: string, route: ActivatedRoute): string {
     const params = route.snapshot.params;
-    for (const [paramKey, paramValue] of Object.entries(params)) {
+    for (const [paramKey] of Object.entries(params)) {
       const overrideKey = ':' + paramKey;
       if (this.labelOverrides.has(overrideKey)) {
         return this.labelOverrides.get(overrideKey)!;

@@ -513,7 +513,6 @@ export class AuditExplorerComponent implements OnInit {
             this.loadLogs();
           }});
           if (log.event_category) {
-            const catPrefix = log.event_category.toLowerCase();
             items.push({ label: `Filter by category "${log.event_category}"`, action: () => {
               const tax = this.taxonomy();
               if (tax) {

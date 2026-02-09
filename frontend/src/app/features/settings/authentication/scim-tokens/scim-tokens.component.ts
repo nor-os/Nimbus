@@ -4,7 +4,7 @@
  * Dependencies: @angular/core, @angular/forms, @angular/router, app/core/services/identity-provider.service
  * Concepts: SCIM provisioning, API tokens, secure token display, token lifecycle
  */
-import { Component, computed, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
@@ -14,7 +14,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { IconComponent } from '@shared/components/icon/icon.component';
 import { ConfirmService } from '@shared/services/confirm.service';
 import { ToastService } from '@shared/services/toast.service';
-import { createTableSelection, TableSelection } from '@shared/utils/table-selection';
+import { createTableSelection } from '@shared/utils/table-selection';
 
 @Component({
   selector: 'nimbus-scim-tokens',

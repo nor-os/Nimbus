@@ -10,6 +10,7 @@ import {
   computed,
   ElementRef,
   Injector,
+  Type,
   ViewChild,
   AfterViewChecked,
 } from '@angular/core';
@@ -42,7 +43,7 @@ import { DialogService, DIALOG_DATA } from '@shared/services/dialog.service';
     .dialog-card {
       background: #fff; border-radius: 8px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-      max-width: 560px; width: 90vw; max-height: 85vh;
+      max-width: 680px; width: 90vw; max-height: 85vh;
       overflow-y: auto; animation: slideUp 0.15s ease-out;
     }
     @keyframes fadeIn {
@@ -60,7 +61,7 @@ export class DialogHostComponent implements AfterViewChecked {
   private parentInjector = inject(Injector);
 
   @ViewChild('dialogCard') dialogCard?: ElementRef<HTMLElement>;
-  private needsFocus = false;
+  private focusedDialogComponent: Type<unknown> | null = null;
 
   activeComponent = computed(() => this.dialogService.activeDialog()?.component ?? null);
 
@@ -74,12 +75,14 @@ export class DialogHostComponent implements AfterViewChecked {
   });
 
   ngAfterViewChecked(): void {
-    if (this.dialogService.activeDialog() && this.dialogCard && !this.needsFocus) {
-      this.needsFocus = true;
-      setTimeout(() => {
-        this.focusFirst();
-        this.needsFocus = false;
-      });
+    const dialog = this.dialogService.activeDialog();
+    if (!dialog) {
+      this.focusedDialogComponent = null;
+      return;
+    }
+    if (this.dialogCard && this.focusedDialogComponent !== dialog.component) {
+      this.focusedDialogComponent = dialog.component;
+      setTimeout(() => this.focusFirst());
     }
   }
 

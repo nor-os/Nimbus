@@ -1,8 +1,8 @@
 """
-Overview: Temporal workflow for impersonation lifecycle — approval, activation, expiry.
-Architecture: Durable impersonation workflow with signals for approval and session control (Section 9)
-Dependencies: temporalio, app.workflows.activities.impersonation
-Concepts: Temporal workflow, signals, approval gating, session lifecycle
+Overview: Temporal workflow for impersonation lifecycle — uses ApprovalChainWorkflow for approval.
+Architecture: Durable impersonation workflow with child approval workflow (Section 9)
+Dependencies: temporalio, app.workflows.approval, app.workflows.activities.impersonation
+Concepts: Temporal workflow, child workflow, approval gating, session lifecycle
 """
 
 from dataclasses import dataclass, field
@@ -11,17 +11,25 @@ from datetime import timedelta
 from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
+    from app.workflows.activities.approval import (
+        CreateApprovalRequestInput,
+        CreateApprovalRequestResult,
+        create_approval_request_activity,
+    )
     from app.workflows.activities.impersonation import (
         ActivateInput,
         AuditInput,
         EndInput,
-        NotifyInput,
         activate_impersonation_session,
         end_impersonation_session,
         expire_impersonation_session,
-        notify_approver,
         record_impersonation_audit,
         reject_impersonation_session,
+    )
+    from app.workflows.approval import (
+        ApprovalChainInput,
+        ApprovalChainResult,
+        ApprovalChainWorkflow,
     )
 
 
@@ -31,23 +39,23 @@ class ImpersonationWorkflowInput:
     mode: str
     requires_approval: bool
     duration_minutes: int
+    tenant_id: str = ""
     approver_ids: list[str] = field(default_factory=list)
     max_duration_minutes: int = 240
+    chain_mode: str = "SEQUENTIAL"
+    quorum_required: int = 1
+    timeout_minutes: int = 1440
+    escalation_user_ids: list[str] = field(default_factory=list)
+    requester_id: str = ""
 
 
 @workflow.defn
 class ImpersonationWorkflow:
     def __init__(self) -> None:
-        self._approval_decision: str | None = None
-        self._approval_reason: str | None = None
         self._session_ended: bool = False
         self._extend_minutes: int = 0
         self._access_token: str | None = None
-
-    @workflow.signal
-    async def approval_decision(self, decision: str, reason: str | None = None) -> None:
-        self._approval_decision = decision
-        self._approval_reason = reason
+        self._approval_request_id: str | None = None
 
     @workflow.signal
     async def end_session(self) -> None:
@@ -60,9 +68,9 @@ class ImpersonationWorkflow:
     @workflow.query
     def get_status(self) -> dict:
         return {
-            "approval_decision": self._approval_decision,
             "session_ended": self._session_ended,
             "access_token": self._access_token,
+            "approval_request_id": self._approval_request_id,
         }
 
     @workflow.run
@@ -78,58 +86,87 @@ class ImpersonationWorkflow:
             start_to_close_timeout=timedelta(seconds=30),
         )
 
-        # 2. Approval gate
+        # 2. Approval gate — use ApprovalChainWorkflow as child workflow
         if input.requires_approval:
-            # Notify approvers
-            await workflow.execute_activity(
-                notify_approver,
-                NotifyInput(
-                    session_id=input.session_id,
-                    approver_ids=input.approver_ids or None,
+            # Create approval request via activity
+            approval_result: CreateApprovalRequestResult = await workflow.execute_activity(
+                create_approval_request_activity,
+                CreateApprovalRequestInput(
+                    tenant_id=input.tenant_id,
+                    requester_id=input.requester_id,
+                    operation_type=f"impersonation.{input.mode.lower()}",
+                    title=f"Impersonation request ({input.mode})",
+                    description=f"Session {input.session_id} requires approval",
+                    context={"session_id": input.session_id, "mode": input.mode},
+                    parent_workflow_id=f"impersonation-{input.session_id}",
                 ),
                 start_to_close_timeout=timedelta(seconds=30),
             )
 
-            # Wait for approval decision (24h timeout)
-            try:
-                await workflow.wait_condition(
-                    lambda: self._approval_decision is not None,
-                    timeout=timedelta(hours=24),
-                )
-            except TimeoutError:
-                # Approval timeout — expire the session
-                await workflow.execute_activity(
-                    expire_impersonation_session,
-                    input.session_id,
-                    start_to_close_timeout=timedelta(seconds=30),
-                )
-                await workflow.execute_activity(
-                    record_impersonation_audit,
-                    AuditInput(
-                        session_id=input.session_id,
-                        action="approval_timeout",
-                    ),
-                    start_to_close_timeout=timedelta(seconds=30),
-                )
-                return {"status": "expired", "reason": "approval_timeout"}
+            self._approval_request_id = approval_result.request_id
 
-            # Handle rejection
-            if self._approval_decision == "reject":
-                await workflow.execute_activity(
-                    reject_impersonation_session,
-                    input.session_id,
-                    start_to_close_timeout=timedelta(seconds=30),
-                )
-                await workflow.execute_activity(
-                    record_impersonation_audit,
-                    AuditInput(
-                        session_id=input.session_id,
-                        action="rejected",
-                        details={"reason": self._approval_reason},
-                    ),
-                    start_to_close_timeout=timedelta(seconds=30),
-                )
-                return {"status": "rejected", "reason": self._approval_reason}
+            # Determine approver_ids and chain params from the approval request
+            approver_ids = approval_result.approver_ids or input.approver_ids
+            chain_mode = approval_result.chain_mode or input.chain_mode
+            quorum_required = approval_result.quorum_required or input.quorum_required
+            timeout_minutes = approval_result.timeout_minutes or input.timeout_minutes
+            escalation_user_ids = approval_result.escalation_user_ids or input.escalation_user_ids
+
+            # Start ApprovalChainWorkflow as CHILD WORKFLOW
+            chain_result: ApprovalChainResult = await workflow.execute_child_workflow(
+                ApprovalChainWorkflow.run,
+                ApprovalChainInput(
+                    request_id=approval_result.request_id,
+                    tenant_id=input.tenant_id,
+                    requester_id=input.requester_id,
+                    approver_ids=approver_ids,
+                    chain_mode=chain_mode,
+                    quorum_required=quorum_required,
+                    timeout_minutes=timeout_minutes,
+                    escalation_user_ids=escalation_user_ids,
+                    title=f"Impersonation request ({input.mode})",
+                    description=f"Session {input.session_id} requires approval",
+                ),
+                id=f"approval-{approval_result.request_id}",
+            )
+
+            if not chain_result.approved:
+                # Handle rejection/expiry
+                if chain_result.status == "REJECTED":
+                    await workflow.execute_activity(
+                        reject_impersonation_session,
+                        input.session_id,
+                        start_to_close_timeout=timedelta(seconds=30),
+                    )
+                    await workflow.execute_activity(
+                        record_impersonation_audit,
+                        AuditInput(
+                            session_id=input.session_id,
+                            action="rejected",
+                            details={"approval_status": chain_result.status},
+                        ),
+                        start_to_close_timeout=timedelta(seconds=30),
+                    )
+                else:
+                    await workflow.execute_activity(
+                        expire_impersonation_session,
+                        input.session_id,
+                        start_to_close_timeout=timedelta(seconds=30),
+                    )
+                    await workflow.execute_activity(
+                        record_impersonation_audit,
+                        AuditInput(
+                            session_id=input.session_id,
+                            action="approval_timeout",
+                            details={"approval_status": chain_result.status},
+                        ),
+                        start_to_close_timeout=timedelta(seconds=30),
+                    )
+
+                return {
+                    "status": chain_result.status.lower(),
+                    "reason": chain_result.status,
+                }
 
         # 3. Activate the session
         result = await workflow.execute_activity(

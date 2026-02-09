@@ -16,7 +16,7 @@ import { IdentityProviderService } from '@core/services/identity-provider.servic
 import { Role } from '@core/models/permission.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { IconComponent } from '@shared/components/icon/icon.component';
-import { createTableSelection, TableSelection } from '@shared/utils/table-selection';
+import { createTableSelection } from '@shared/utils/table-selection';
 import { ConfirmService } from '@shared/services/confirm.service';
 import { ToastService } from '@shared/services/toast.service';
 import { DialogService } from '@shared/services/dialog.service';

@@ -6,12 +6,7 @@
  */
 import { Component, input, output, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AuditLog, EventCategory } from '@shared/models/audit.model';
-
-interface GroupedCategory {
-  category: string;
-  events: AuditLog[];
-}
+import { AuditLog } from '@shared/models/audit.model';
 
 @Component({
   selector: 'nimbus-trace-grouped-list',

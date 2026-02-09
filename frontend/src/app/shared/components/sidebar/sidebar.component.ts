@@ -6,7 +6,9 @@
  */
 import { Component, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, NavigationEnd, RouterLink, RouterLinkActive } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter } from 'rxjs';
 import { TenantContextService } from '@core/services/tenant-context.service';
 import { PermissionCheckService } from '@core/services/permission-check.service';
 
@@ -53,6 +55,7 @@ interface NavItem {
             @if (group.children) {
               <button
                 class="nav-group-header"
+                [class.locked]="isActiveGroup(group.label)"
                 (click)="toggleGroup(group.label)"
                 [attr.aria-expanded]="isExpanded(group.label)"
               >
@@ -186,6 +189,12 @@ interface NavItem {
       opacity: 0.35;
       cursor: default;
     }
+    .nav-group-header.locked {
+      cursor: default;
+    }
+    .nav-group-header.locked .nav-chevron {
+      opacity: 0.3;
+    }
 
     .nav-chevron {
       margin-left: auto;
@@ -254,8 +263,18 @@ interface NavItem {
 export class SidebarComponent {
   tenantContext = inject(TenantContextService);
   private permissionCheck = inject(PermissionCheckService);
+  private router = inject(Router);
 
-  private expandedGroups = signal<Set<string>>(new Set(['Users & Roles', 'Settings']));
+  private expandedGroups = signal<Set<string>>(new Set(['Users & Roles', 'Settings', 'Workflows']));
+  private activeGroup = signal<string | null>(null);
+
+  constructor() {
+    this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      takeUntilDestroyed(),
+    ).subscribe(() => this.updateActiveGroup());
+    this.updateActiveGroup();
+  }
 
   showProviderSection = computed(() => this.tenantContext.canManageClients());
 
@@ -286,6 +305,13 @@ export class SidebarComponent {
       route: '/architecture',
     },
     {
+      label: 'Semantic Explorer',
+      icon: '&#9670;',
+      route: '/semantic',
+      exact: true,
+      permission: 'semantic:type:read',
+    },
+    {
       label: 'Users & Roles',
       icon: '&#9823;',
       permission: 'users:user:list',
@@ -302,8 +328,11 @@ export class SidebarComponent {
     {
       label: 'Workflows',
       icon: '&#8644;',
-      disabled: true,
-      route: '/workflows',
+      permission: 'approval:decision:submit',
+      children: [
+        { label: 'Approvals', icon: '', route: '/workflows/approvals', permission: 'approval:decision:submit' },
+        { label: 'Manage', icon: '', route: '/workflows/manage', permission: 'approval:policy:manage' },
+      ],
     },
     {
       label: 'Audit Log',
@@ -361,6 +390,7 @@ export class SidebarComponent {
   }
 
   toggleGroup(label: string): void {
+    if (this.activeGroup() === label) return;
     const current = this.expandedGroups();
     const next = new Set(current);
     if (next.has(label)) {
@@ -373,5 +403,38 @@ export class SidebarComponent {
 
   isExpanded(label: string): boolean {
     return this.expandedGroups().has(label);
+  }
+
+  isActiveGroup(label: string): boolean {
+    return this.activeGroup() === label;
+  }
+
+  private updateActiveGroup(): void {
+    const url = this.router.url.split('?')[0].split('#')[0];
+    for (const group of this.allNavGroups) {
+      if (group.children) {
+        for (const child of group.children) {
+          if (child.route && this.isRouteMatch(url, child.route, !!child.exact)) {
+            this.activeGroup.set(group.label);
+            const current = this.expandedGroups();
+            if (!current.has(group.label)) {
+              const next = new Set(current);
+              next.add(group.label);
+              this.expandedGroups.set(next);
+            }
+            return;
+          }
+        }
+      } else if (group.route && this.isRouteMatch(url, group.route, !!group.exact)) {
+        this.activeGroup.set(group.label);
+        return;
+      }
+    }
+    this.activeGroup.set(null);
+  }
+
+  private isRouteMatch(url: string, route: string, exact: boolean): boolean {
+    if (exact) return url === route;
+    return url === route || url.startsWith(route + '/');
   }
 }

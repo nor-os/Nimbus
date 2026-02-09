@@ -4,7 +4,7 @@
  * Dependencies: @angular/core, @angular/common
  * Concepts: Quotas, resource limits, visual indicators
  */
-import { Component, Input, computed, signal } from '@angular/core';
+import { Component, Input, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TenantQuota } from '@core/models/tenant.model';
 
