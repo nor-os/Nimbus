@@ -13,6 +13,9 @@ from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
 from app.api.graphql.types.audit import (
+    CategoryRetentionOverrideInput,
+    CategoryRetentionOverrideType,
+    EventCategoryGQL,
     ExportRequestInput,
     ExportStatusType,
     RedactionRuleCreateInput,
@@ -46,6 +49,7 @@ class AuditMutation:
                 cold_days=input.cold_days,
                 archive_enabled=input.archive_enabled,
             )
+            overrides = await service.list_category_overrides(str(tenant_id))
             await db.commit()
             return RetentionPolicyType(
                 id=policy.id,
@@ -53,9 +57,66 @@ class AuditMutation:
                 hot_days=policy.hot_days,
                 cold_days=policy.cold_days,
                 archive_enabled=policy.archive_enabled,
+                category_overrides=[
+                    CategoryRetentionOverrideType(
+                        id=ov.id,
+                        tenant_id=ov.tenant_id,
+                        event_category=EventCategoryGQL(ov.event_category.value),
+                        hot_days=ov.hot_days,
+                        cold_days=ov.cold_days,
+                        created_at=ov.created_at,
+                        updated_at=ov.updated_at,
+                    )
+                    for ov in overrides
+                ],
                 created_at=policy.created_at,
                 updated_at=policy.updated_at,
             )
+
+    @strawberry.mutation
+    async def upsert_category_retention_override(
+        self, info: Info, tenant_id: uuid.UUID, input: CategoryRetentionOverrideInput
+    ) -> CategoryRetentionOverrideType:
+        """Create or update a per-category retention override."""
+        await check_graphql_permission(info, "audit:retention:update", str(tenant_id))
+        from app.db.session import async_session_factory
+        from app.services.audit.retention import RetentionService
+
+        async with async_session_factory() as db:
+            service = RetentionService(db)
+            override = await service.upsert_category_override(
+                str(tenant_id),
+                event_category=input.event_category.value,
+                hot_days=input.hot_days,
+                cold_days=input.cold_days,
+            )
+            await db.commit()
+            return CategoryRetentionOverrideType(
+                id=override.id,
+                tenant_id=override.tenant_id,
+                event_category=EventCategoryGQL(override.event_category.value),
+                hot_days=override.hot_days,
+                cold_days=override.cold_days,
+                created_at=override.created_at,
+                updated_at=override.updated_at,
+            )
+
+    @strawberry.mutation
+    async def delete_category_retention_override(
+        self, info: Info, tenant_id: uuid.UUID, event_category: EventCategoryGQL
+    ) -> bool:
+        """Delete a per-category retention override (reverts to global default)."""
+        await check_graphql_permission(info, "audit:retention:update", str(tenant_id))
+        from app.db.session import async_session_factory
+        from app.services.audit.retention import RetentionService
+
+        async with async_session_factory() as db:
+            service = RetentionService(db)
+            deleted = await service.delete_category_override(
+                str(tenant_id), event_category.value
+            )
+            await db.commit()
+            return deleted
 
     @strawberry.mutation
     async def create_redaction_rule(

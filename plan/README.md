@@ -15,7 +15,8 @@ plan/
 │   ├── phase-03.md        # Refined to task-level (complete)
 │   ├── phase-04.md        # Refined to task-level (complete)
 │   ├── ...
-│   └── phase-21.md
+│   ├── phase-21.md
+│   └── phase-22.md
 ├── cross-phase-consistency.md
 └── templates/
     └── phase-template.md  # Template for new phases
@@ -395,6 +396,23 @@ Core deliverables:
 
 ---
 
+### Phase 22: Enterprise Architecture Management
+**Status**: Backlog
+**Goal**: Application architecture modeling, business capability mapping, technology radar
+**Depends on**: Phase 5, Phase 6, Phase 7, Phase 8
+
+Core deliverables:
+- Application portfolio registry (lifecycle: Plan → Build → Run → Retire)
+- Business capability hierarchy with application mapping and heatmaps
+- Application-to-infrastructure mapping (link apps to topologies + CMDB CIs)
+- Technology radar (Assess/Trial/Adopt/Hold) with standards enforcement
+- Application landscape visualization and portfolio health dashboard
+- Cross-layer drill-down: business capability → application → infrastructure
+
+*Distinct from Phase 7 (infrastructure topology). This phase models the application/business layer that sits above infrastructure.*
+
+---
+
 ## Dependency Graph
 
 ```
@@ -419,6 +437,7 @@ Phase 3 (done)
 Phase 19: Cost (after Phase 11+)
 Phase 20: Monitoring (after core)
 Phase 21: Hardening (after all)
+Phase 22: Enterprise Architecture (after Phase 5, 6, 7, 8)
 ```
 
 No circular dependencies. No phase needs features from a later phase.

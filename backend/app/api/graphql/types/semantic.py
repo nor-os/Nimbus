@@ -1,10 +1,9 @@
 """
 Overview: GraphQL types and input types for the semantic layer catalog — categories, types,
-    relationships, providers, provider resource types, and type mappings with full CRUD support.
+    relationships, and providers with full CRUD support.
 Architecture: GraphQL type definitions for semantic layer (Section 5)
 Dependencies: strawberry
-Concepts: Semantic types, providers, provider resource types, type mappings, type hierarchy,
-    is_system protection, CRUD inputs
+Concepts: Semantic types, providers, type hierarchy, is_system protection, CRUD inputs
 """
 
 import uuid
@@ -21,13 +20,6 @@ class ProviderTypeGQL(Enum):
     ON_PREM = "on_prem"
     SAAS = "saas"
     CUSTOM = "custom"
-
-
-@strawberry.enum
-class ProviderResourceTypeStatusGQL(Enum):
-    AVAILABLE = "available"
-    PREVIEW = "preview"
-    DEPRECATED = "deprecated"
 
 
 # -- Output types -------------------------------------------------------
@@ -63,41 +55,6 @@ class SemanticProviderType:
 
 
 @strawberry.type
-class SemanticProviderResourceTypeType:
-    id: uuid.UUID
-    provider_id: uuid.UUID
-    provider_name: str
-    api_type: str
-    display_name: str
-    description: str | None
-    documentation_url: str | None
-    parameter_schema: JSON | None
-    status: ProviderResourceTypeStatusGQL
-    is_system: bool
-    semantic_type_name: str | None
-    semantic_type_id: uuid.UUID | None
-    created_at: datetime
-    updated_at: datetime
-
-
-@strawberry.type
-class SemanticTypeMappingType:
-    id: uuid.UUID
-    provider_resource_type_id: uuid.UUID
-    semantic_type_id: uuid.UUID
-    provider_name: str
-    provider_api_type: str
-    provider_display_name: str
-    semantic_type_name: str
-    semantic_type_display_name: str
-    parameter_mapping: JSON | None
-    notes: str | None
-    is_system: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-@strawberry.type
 class SemanticResourceTypeType:
     id: uuid.UUID
     name: str
@@ -111,7 +68,6 @@ class SemanticResourceTypeType:
     allowed_relationship_kinds: JSON | None
     sort_order: int
     is_system: bool
-    mappings: list[SemanticTypeMappingType]
     children: list["SemanticResourceTypeType"]
     created_at: datetime
     updated_at: datetime
@@ -145,6 +101,25 @@ class SemanticRelationshipKindType:
     description: str | None
     inverse_name: str
     is_system: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+@strawberry.type
+class SemanticActivityTypeType:
+    id: uuid.UUID
+    name: str
+    display_name: str
+    category: str | None
+    description: str | None
+    icon: str | None
+    applicable_semantic_categories: JSON | None
+    applicable_semantic_types: JSON | None
+    default_relationship_kind_id: uuid.UUID | None
+    default_relationship_kind_name: str | None
+    properties_schema: JSON | None
+    is_system: bool
+    sort_order: int
     created_at: datetime
     updated_at: datetime
 
@@ -218,40 +193,6 @@ class SemanticProviderUpdateInput:
 
 
 @strawberry.input
-class SemanticProviderResourceTypeInput:
-    provider_id: uuid.UUID
-    api_type: str
-    display_name: str
-    description: str | None = None
-    documentation_url: str | None = None
-    parameter_schema: JSON | None = None
-    status: ProviderResourceTypeStatusGQL = ProviderResourceTypeStatusGQL.AVAILABLE
-
-
-@strawberry.input
-class SemanticProviderResourceTypeUpdateInput:
-    display_name: str | None = None
-    description: str | None = strawberry.UNSET
-    documentation_url: str | None = strawberry.UNSET
-    parameter_schema: JSON | None = strawberry.UNSET
-    status: ProviderResourceTypeStatusGQL | None = None
-
-
-@strawberry.input
-class SemanticTypeMappingInput:
-    provider_resource_type_id: uuid.UUID
-    semantic_type_id: uuid.UUID
-    parameter_mapping: JSON | None = None
-    notes: str | None = None
-
-
-@strawberry.input
-class SemanticTypeMappingUpdateInput:
-    parameter_mapping: JSON | None = strawberry.UNSET
-    notes: str | None = strawberry.UNSET
-
-
-@strawberry.input
 class SemanticRelationshipKindInput:
     name: str
     display_name: str
@@ -264,3 +205,30 @@ class SemanticRelationshipKindUpdateInput:
     display_name: str | None = None
     description: str | None = strawberry.UNSET
     inverse_name: str | None = None
+
+
+@strawberry.input
+class SemanticActivityTypeInput:
+    name: str
+    display_name: str
+    category: str | None = None
+    description: str | None = None
+    icon: str | None = None
+    applicable_semantic_categories: JSON | None = None
+    applicable_semantic_types: JSON | None = None
+    default_relationship_kind_id: uuid.UUID | None = None
+    properties_schema: JSON | None = None
+    sort_order: int = 0
+
+
+@strawberry.input
+class SemanticActivityTypeUpdateInput:
+    display_name: str | None = None
+    category: str | None = strawberry.UNSET
+    description: str | None = strawberry.UNSET
+    icon: str | None = strawberry.UNSET
+    applicable_semantic_categories: JSON | None = strawberry.UNSET
+    applicable_semantic_types: JSON | None = strawberry.UNSET
+    default_relationship_kind_id: uuid.UUID | None = strawberry.UNSET
+    properties_schema: JSON | None = strawberry.UNSET
+    sort_order: int | None = None

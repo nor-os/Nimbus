@@ -42,8 +42,8 @@ import { TraceViewComponent } from '../trace-view/trace-view.component';
         <div class="page-header">
           <h1>Audit Log</h1>
           <div class="header-actions">
-            <button class="btn btn-sm" (click)="exportLogs('json')">Export JSON</button>
-            <button class="btn btn-sm" (click)="exportLogs('csv')">Export CSV</button>
+            <button class="btn btn-secondary" (click)="exportLogs('json')">Export JSON</button>
+            <button class="btn btn-secondary" (click)="exportLogs('csv')">Export CSV</button>
           </div>
         </div>
 
@@ -210,7 +210,7 @@ import { TraceViewComponent } from '../trace-view/trace-view.component';
     .audit-page { padding: 0; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 1rem;
+      margin-bottom: 1.5rem;
     }
     .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
     .header-actions { display: flex; gap: 0.5rem; }
@@ -307,13 +307,14 @@ import { TraceViewComponent } from '../trace-view/trace-view.component';
       gap: 1rem; padding: 0.75rem;
     }
     .page-info { color: #64748b; font-size: 0.8125rem; }
-    .btn-sm {
-      padding: 0.375rem 0.75rem; border: 1px solid #e2e8f0;
+    .btn {
+      padding: 0.5rem 1rem; border: none;
       border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.8125rem;
-      font-family: inherit; transition: background 0.15s;
+      font-weight: 500; font-family: inherit; transition: all 0.15s;
     }
-    .btn-sm:hover { background: #f8fafc; }
-    .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
+    .btn-secondary:hover { background: #f8fafc; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   `],
 })
 export class AuditExplorerComponent implements OnInit {

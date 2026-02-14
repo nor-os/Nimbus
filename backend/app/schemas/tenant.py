@@ -24,6 +24,8 @@ class TenantUpdate(BaseModel):
     contact_email: EmailStr | None = None
     billing_info: dict | None = None
     description: str | None = None
+    invoice_currency: str | None = Field(None, min_length=3, max_length=3)
+    primary_region_id: uuid.UUID | None = None
 
 
 class TenantResponse(BaseModel):
@@ -35,6 +37,8 @@ class TenantResponse(BaseModel):
     is_root: bool
     level: int
     description: str | None
+    invoice_currency: str | None
+    primary_region_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
 

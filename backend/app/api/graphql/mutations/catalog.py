@@ -7,26 +7,77 @@ Concepts: Catalog mutations enforce permission checks and commit within session 
 """
 
 import uuid
+from datetime import date
 
 import strawberry
 from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
-from app.api.graphql.queries.catalog import _assoc_to_gql, _offering_to_gql, _price_list_to_gql
+from app.api.graphql.queries.catalog import (
+    _assoc_to_gql,
+    _offering_to_gql,
+    _pin_to_gql,
+    _price_list_to_gql,
+)
 from app.api.graphql.types.catalog import (
     CIClassActivityAssociationCreateInput,
     CIClassActivityAssociationType,
+    PinMinimumChargeCreateInput,
+    PinMinimumChargeType,
+    PinMinimumChargeUpdateInput,
     PriceListCreateInput,
     PriceListItemCreateInput,
     PriceListItemType,
     PriceListItemUpdateInput,
+    PriceListOverlayItemCreateInput,
+    PriceListOverlayItemType,
+    PriceListOverlayItemUpdateInput,
     PriceListType,
+    PriceListVersionInput,
     ServiceOfferingCreateInput,
     ServiceOfferingType,
     ServiceOfferingUpdateInput,
-    TenantPriceOverrideCreateInput,
-    TenantPriceOverrideType,
+    TenantPriceListPinType,
 )
+
+
+def _overlay_item_to_gql(item) -> PriceListOverlayItemType:
+    return PriceListOverlayItemType(
+        id=item.id,
+        tenant_id=item.tenant_id,
+        pin_id=item.pin_id,
+        overlay_action=item.overlay_action,
+        base_item_id=item.base_item_id,
+        service_offering_id=item.service_offering_id,
+        provider_sku_id=item.provider_sku_id,
+        activity_definition_id=item.activity_definition_id,
+        delivery_region_id=item.delivery_region_id,
+        coverage_model=item.coverage_model,
+        price_per_unit=item.price_per_unit,
+        currency=item.currency,
+        markup_percent=item.markup_percent,
+        discount_percent=getattr(item, "discount_percent", None),
+        min_quantity=item.min_quantity,
+        max_quantity=item.max_quantity,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+def _pin_minimum_to_gql(charge) -> PinMinimumChargeType:
+    return PinMinimumChargeType(
+        id=charge.id,
+        tenant_id=charge.tenant_id,
+        pin_id=charge.pin_id,
+        category=charge.category,
+        minimum_amount=charge.minimum_amount,
+        currency=charge.currency,
+        period=charge.period,
+        effective_from=charge.effective_from,
+        effective_to=charge.effective_to,
+        created_at=charge.created_at,
+        updated_at=charge.updated_at,
+    )
 
 
 @strawberry.type
@@ -58,6 +109,9 @@ class CatalogMutation:
                 "service_type": input.service_type,
                 "operating_model": input.operating_model,
                 "default_coverage_model": input.default_coverage_model,
+                "minimum_amount": input.minimum_amount,
+                "minimum_currency": input.minimum_currency,
+                "minimum_period": input.minimum_period,
             }
             o = await service.create_offering(str(tenant_id), data)
 
@@ -108,6 +162,12 @@ class CatalogMutation:
                 data["default_coverage_model"] = input.default_coverage_model
             if input.is_active is not None:
                 data["is_active"] = input.is_active
+            if input.minimum_amount is not strawberry.UNSET:
+                data["minimum_amount"] = input.minimum_amount
+            if input.minimum_currency is not strawberry.UNSET:
+                data["minimum_currency"] = input.minimum_currency
+            if input.minimum_period is not strawberry.UNSET:
+                data["minimum_period"] = input.minimum_period
 
             o = await service.update_offering(str(id), str(tenant_id), data)
 
@@ -220,8 +280,10 @@ class CatalogMutation:
                 "ci_class_id": str(input.ci_class_id),
                 "activity_template_id": str(input.activity_template_id),
                 "relationship_type": input.relationship_type,
+                "relationship_type_id": str(input.relationship_type_id) if input.relationship_type_id else None,
             })
             await db.commit()
+            await db.refresh(assoc, ["ci_class", "activity_template"])
             return _assoc_to_gql(assoc)
 
     @strawberry.mutation
@@ -268,11 +330,11 @@ class CatalogMutation:
             data = {
                 "name": input.name,
                 "is_default": input.is_default,
-                "effective_from": input.effective_from,
-                "effective_to": input.effective_to,
+                "delivery_region_id": str(input.delivery_region_id) if input.delivery_region_id else None,
             }
             pl = await service.create_price_list(target_tenant, data)
             await db.commit()
+            await db.refresh(pl, ["items"])
             return _price_list_to_gql(pl)
 
     @strawberry.mutation
@@ -323,6 +385,9 @@ class CatalogMutation:
                 "coverage_model": input.coverage_model,
                 "min_quantity": input.min_quantity,
                 "max_quantity": input.max_quantity,
+                "provider_sku_id": getattr(input, "provider_sku_id", None),
+                "activity_definition_id": getattr(input, "activity_definition_id", None),
+                "markup_percent": getattr(input, "markup_percent", None),
             }
             item = await service.add_price_item(str(price_list_id), data)
             await db.commit()
@@ -330,6 +395,9 @@ class CatalogMutation:
                 id=item.id,
                 price_list_id=item.price_list_id,
                 service_offering_id=item.service_offering_id,
+                provider_sku_id=getattr(item, "provider_sku_id", None),
+                activity_definition_id=getattr(item, "activity_definition_id", None),
+                markup_percent=getattr(item, "markup_percent", None),
                 delivery_region_id=item.delivery_region_id,
                 coverage_model=item.coverage_model,
                 price_per_unit=item.price_per_unit,
@@ -374,6 +442,9 @@ class CatalogMutation:
                 id=item.id,
                 price_list_id=item.price_list_id,
                 service_offering_id=item.service_offering_id,
+                provider_sku_id=getattr(item, "provider_sku_id", None),
+                activity_definition_id=getattr(item, "activity_definition_id", None),
+                markup_percent=getattr(item, "markup_percent", None),
                 delivery_region_id=item.delivery_region_id,
                 coverage_model=item.coverage_model,
                 price_per_unit=item.price_per_unit,
@@ -384,49 +455,212 @@ class CatalogMutation:
                 updated_at=item.updated_at,
             )
 
-    # ── Tenant Price Overrides ────────────────────────────────────────
+    # ── Price List Overlay Items ──────────────────────────────────────
 
     @strawberry.mutation
-    async def create_tenant_price_override(
+    async def create_price_list_overlay_item(
         self,
         info: Info,
         tenant_id: uuid.UUID,
-        input: TenantPriceOverrideCreateInput,
-    ) -> TenantPriceOverrideType:
-        """Create a tenant price override."""
+        pin_id: uuid.UUID,
+        input: PriceListOverlayItemCreateInput,
+    ) -> PriceListOverlayItemType:
+        """Create a price list overlay item on a pin."""
         await check_graphql_permission(
             info, "cmdb:catalog:manage", str(tenant_id)
         )
 
         from app.db.session import async_session_factory
-        from app.services.cmdb.catalog_service import CatalogService
+        from app.services.cmdb.overlay_service import OverlayService
 
         async with async_session_factory() as db:
-            service = CatalogService(db)
-            data = {
-                "service_offering_id": input.service_offering_id,
-                "price_per_unit": input.price_per_unit,
-                "discount_percent": input.discount_percent,
-                "delivery_region_id": input.delivery_region_id,
-                "coverage_model": input.coverage_model,
+            service = OverlayService(db)
+            item = await service.create_price_list_overlay(
+                str(tenant_id), str(pin_id), {
+                    "overlay_action": input.overlay_action,
+                    "base_item_id": str(input.base_item_id) if input.base_item_id else None,
+                    "service_offering_id": str(input.service_offering_id) if input.service_offering_id else None,
+                    "provider_sku_id": str(input.provider_sku_id) if input.provider_sku_id else None,
+                    "activity_definition_id": str(input.activity_definition_id) if input.activity_definition_id else None,
+                    "delivery_region_id": str(input.delivery_region_id) if input.delivery_region_id else None,
+                    "coverage_model": input.coverage_model,
+                    "price_per_unit": input.price_per_unit,
+                    "currency": input.currency,
+                    "markup_percent": input.markup_percent,
+                    "discount_percent": input.discount_percent,
+                    "min_quantity": input.min_quantity,
+                    "max_quantity": input.max_quantity,
+                },
+            )
+            await db.commit()
+            return _overlay_item_to_gql(item)
+
+    @strawberry.mutation
+    async def update_price_list_overlay_item(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        item_id: uuid.UUID,
+        input: PriceListOverlayItemUpdateInput,
+    ) -> PriceListOverlayItemType:
+        """Update a price list overlay item."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.overlay_service import OverlayService
+
+        async with async_session_factory() as db:
+            service = OverlayService(db)
+            data: dict = {}
+            if input.price_per_unit is not None:
+                data["price_per_unit"] = input.price_per_unit
+            if input.currency is not None:
+                data["currency"] = input.currency
+            if input.markup_percent is not strawberry.UNSET:
+                data["markup_percent"] = input.markup_percent
+            if input.discount_percent is not strawberry.UNSET:
+                data["discount_percent"] = input.discount_percent
+            if input.min_quantity is not strawberry.UNSET:
+                data["min_quantity"] = input.min_quantity
+            if input.max_quantity is not strawberry.UNSET:
+                data["max_quantity"] = input.max_quantity
+            if input.coverage_model is not strawberry.UNSET:
+                data["coverage_model"] = input.coverage_model
+            if input.delivery_region_id is not strawberry.UNSET:
+                data["delivery_region_id"] = str(input.delivery_region_id) if input.delivery_region_id else None
+
+            item = await service.update_price_list_overlay(str(item_id), str(tenant_id), data)
+            await db.commit()
+            return _overlay_item_to_gql(item)
+
+    @strawberry.mutation
+    async def delete_price_list_overlay_item(
+        self, info: Info, tenant_id: uuid.UUID, item_id: uuid.UUID
+    ) -> bool:
+        """Delete a price list overlay item."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.overlay_service import OverlayService
+
+        async with async_session_factory() as db:
+            service = OverlayService(db)
+            result = await service.delete_price_list_overlay(str(item_id), str(tenant_id))
+            await db.commit()
+            return result
+
+    # ── Pin Minimum Charges ────────────────────────────────────────────
+
+    @strawberry.mutation
+    async def create_pin_minimum_charge(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        pin_id: uuid.UUID,
+        input: PinMinimumChargeCreateInput,
+    ) -> PinMinimumChargeType:
+        """Create a minimum charge on a price list pin."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.pin_minimum_service import PinMinimumChargeService
+
+        async with async_session_factory() as db:
+            service = PinMinimumChargeService(db)
+            charge = await service.create_minimum(str(tenant_id), str(pin_id), {
+                "category": input.category,
+                "minimum_amount": input.minimum_amount,
+                "currency": input.currency,
+                "period": input.period,
                 "effective_from": input.effective_from,
                 "effective_to": input.effective_to,
-            }
-            o = await service.create_override(str(tenant_id), data)
+            })
             await db.commit()
-            return TenantPriceOverrideType(
-                id=o.id,
-                tenant_id=o.tenant_id,
-                service_offering_id=o.service_offering_id,
-                delivery_region_id=o.delivery_region_id,
-                coverage_model=o.coverage_model,
-                price_per_unit=o.price_per_unit,
-                discount_percent=o.discount_percent,
-                effective_from=o.effective_from,
-                effective_to=o.effective_to,
-                created_at=o.created_at,
-                updated_at=o.updated_at,
+            return _pin_minimum_to_gql(charge)
+
+    @strawberry.mutation
+    async def update_pin_minimum_charge(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        charge_id: uuid.UUID,
+        input: PinMinimumChargeUpdateInput,
+    ) -> PinMinimumChargeType:
+        """Update a pin minimum charge."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.pin_minimum_service import PinMinimumChargeService
+
+        async with async_session_factory() as db:
+            service = PinMinimumChargeService(db)
+            data: dict = {}
+            if input.minimum_amount is not None:
+                data["minimum_amount"] = input.minimum_amount
+            if input.currency is not None:
+                data["currency"] = input.currency
+            if input.period is not None:
+                data["period"] = input.period
+            if input.effective_from is not None:
+                data["effective_from"] = input.effective_from
+            if input.effective_to is not strawberry.UNSET:
+                data["effective_to"] = input.effective_to
+
+            charge = await service.update_minimum(str(charge_id), str(tenant_id), data)
+            await db.commit()
+            return _pin_minimum_to_gql(charge)
+
+    @strawberry.mutation
+    async def delete_pin_minimum_charge(
+        self, info: Info, tenant_id: uuid.UUID, charge_id: uuid.UUID
+    ) -> bool:
+        """Delete a pin minimum charge."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.pin_minimum_service import PinMinimumChargeService
+
+        async with async_session_factory() as db:
+            service = PinMinimumChargeService(db)
+            result = await service.delete_minimum(str(charge_id), str(tenant_id))
+            await db.commit()
+            return result
+
+    # ── Price List Region Constraints ─────────────────────────────────
+
+    @strawberry.mutation
+    async def set_price_list_region_constraints(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        price_list_id: uuid.UUID,
+        region_ids: list[uuid.UUID],
+    ) -> list[uuid.UUID]:
+        """Set region constraints for a price list."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.region_constraint_service import RegionConstraintService
+
+        async with async_session_factory() as db:
+            service = RegionConstraintService(db)
+            result = await service.set_price_list_regions(
+                str(price_list_id), [str(r) for r in region_ids]
             )
+            await db.commit()
+            return [uuid.UUID(r) for r in result]
 
     @strawberry.mutation
     async def copy_price_list(
@@ -454,13 +688,19 @@ class CatalogMutation:
                 client_tenant_id=str(client_tenant_id) if client_tenant_id else None,
             )
             await db.commit()
+            await db.refresh(pl, ["items"])
             return _price_list_to_gql(pl)
 
+    # ── Price List Versioning ──────────────────────────────────────────
+
     @strawberry.mutation
-    async def delete_tenant_price_override(
-        self, info: Info, tenant_id: uuid.UUID, id: uuid.UUID
-    ) -> bool:
-        """Delete a tenant price override."""
+    async def create_price_list_version(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        input: PriceListVersionInput,
+    ) -> PriceListType:
+        """Create a new version of a price list by cloning items and bumping version."""
         await check_graphql_permission(
             info, "cmdb:catalog:manage", str(tenant_id)
         )
@@ -470,6 +710,106 @@ class CatalogMutation:
 
         async with async_session_factory() as db:
             service = CatalogService(db)
-            result = await service.delete_override(str(id), str(tenant_id))
+            pl = await service.create_price_list_version(
+                str(input.price_list_id), input.bump
+            )
+            await db.commit()
+            await db.refresh(pl, ["items"])
+            return _price_list_to_gql(pl)
+
+    @strawberry.mutation
+    async def publish_price_list(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        price_list_id: uuid.UUID,
+    ) -> PriceListType:
+        """Publish a draft price list; archives the previous published version."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.catalog_service import CatalogService
+
+        async with async_session_factory() as db:
+            service = CatalogService(db)
+            pl = await service.publish_price_list(str(price_list_id))
+            await db.commit()
+            await db.refresh(pl, ["items"])
+            return _price_list_to_gql(pl)
+
+    @strawberry.mutation
+    async def archive_price_list(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        price_list_id: uuid.UUID,
+    ) -> PriceListType:
+        """Archive a price list."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.catalog_service import CatalogService
+
+        async with async_session_factory() as db:
+            service = CatalogService(db)
+            pl = await service.archive_price_list(str(price_list_id))
+            await db.commit()
+            await db.refresh(pl, ["items"])
+            return _price_list_to_gql(pl)
+
+    # ── Tenant Price List Pins ─────────────────────────────────────────
+
+    @strawberry.mutation
+    async def pin_tenant_to_price_list(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        price_list_id: uuid.UUID,
+        effective_from: date | None = None,
+        effective_to: date | None = None,
+    ) -> TenantPriceListPinType:
+        """Pin a tenant to a specific price list version for a date range."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.catalog_service import CatalogService
+
+        async with async_session_factory() as db:
+            service = CatalogService(db)
+            pin = await service.pin_tenant_to_price_list(
+                str(tenant_id), str(price_list_id),
+                effective_from=effective_from,
+                effective_to=effective_to,
+            )
+            await db.commit()
+            await db.refresh(pin, ["price_list"])
+            return _pin_to_gql(pin)
+
+    @strawberry.mutation
+    async def unpin_tenant_from_price_list(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        price_list_id: uuid.UUID,
+    ) -> bool:
+        """Remove a tenant's pin from a price list version."""
+        await check_graphql_permission(
+            info, "cmdb:catalog:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.catalog_service import CatalogService
+
+        async with async_session_factory() as db:
+            service = CatalogService(db)
+            result = await service.unpin_tenant_from_price_list(
+                str(tenant_id), str(price_list_id)
+            )
             await db.commit()
             return result

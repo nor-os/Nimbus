@@ -17,6 +17,7 @@ from sqlalchemy import select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cmdb.ci_class_activity_association import CIClassActivityAssociation
+from app.models.cmdb.relationship_type import RelationshipType
 from app.models.semantic_type import SemanticRelationshipKind
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ class CIClassActivityService:
             ci_class_id=data["ci_class_id"],
             activity_template_id=data["activity_template_id"],
             relationship_type=data.get("relationship_type"),
+            relationship_type_id=data.get("relationship_type_id"),
         )
         self.db.add(assoc)
         await self.db.flush()
@@ -107,6 +109,16 @@ class CIClassActivityService:
         assoc.deleted_at = datetime.now(UTC)
         await self.db.flush()
         return True
+
+    async def list_operational_relationship_types(self) -> list[RelationshipType]:
+        """Return relationship types applicable to operational (activity) context."""
+        result = await self.db.execute(
+            select(RelationshipType).where(
+                RelationshipType.domain.in_(["operational", "both"]),
+                RelationshipType.deleted_at.is_(None),
+            ).order_by(RelationshipType.name)
+        )
+        return list(result.scalars().all())
 
     async def list_relationship_type_suggestions(
         self, tenant_id: str

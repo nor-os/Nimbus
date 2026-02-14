@@ -1,6 +1,6 @@
 """
 Overview: GraphQL queries for browsing the semantic type catalog — categories, types,
-    relationships, providers, provider resource types, and type mappings.
+    relationships, and providers.
 Architecture: GraphQL query resolvers for the semantic layer (Section 5)
 Dependencies: strawberry, app.services.semantic.service
 Concepts: Read-only catalog queries with permission checks and converter helpers.
@@ -13,16 +13,14 @@ from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
 from app.api.graphql.types.semantic import (
-    ProviderResourceTypeStatusGQL,
     ProviderTypeGQL,
+    SemanticActivityTypeType,
     SemanticCategoryType,
     SemanticCategoryWithTypesType,
-    SemanticProviderResourceTypeType,
     SemanticProviderType,
     SemanticRelationshipKindType,
     SemanticResourceTypeListType,
     SemanticResourceTypeType,
-    SemanticTypeMappingType,
 )
 
 
@@ -40,26 +38,6 @@ def _category_to_type(c) -> SemanticCategoryType:
     )
 
 
-def _type_mapping_to_gql(m) -> SemanticTypeMappingType:
-    prt = m.provider_resource_type_rel
-    stype = m.semantic_type_rel
-    return SemanticTypeMappingType(
-        id=m.id,
-        provider_resource_type_id=m.provider_resource_type_id,
-        semantic_type_id=m.semantic_type_id,
-        provider_name=prt.provider_rel.name if prt and prt.provider_rel else "",
-        provider_api_type=prt.api_type if prt else "",
-        provider_display_name=prt.display_name if prt else "",
-        semantic_type_name=stype.name if stype else "",
-        semantic_type_display_name=stype.display_name if stype else "",
-        parameter_mapping=m.parameter_mapping,
-        notes=m.notes,
-        is_system=m.is_system,
-        created_at=m.created_at,
-        updated_at=m.updated_at,
-    )
-
-
 def _type_to_gql(t) -> SemanticResourceTypeType:
     return SemanticResourceTypeType(
         id=t.id,
@@ -74,7 +52,6 @@ def _type_to_gql(t) -> SemanticResourceTypeType:
         allowed_relationship_kinds=t.allowed_relationship_kinds,
         sort_order=t.sort_order,
         is_system=t.is_system,
-        mappings=[_type_mapping_to_gql(m) for m in (t.type_mappings or [])],
         children=[_type_to_gql(c) for c in (t.children or [])],
         created_at=t.created_at,
         updated_at=t.updated_at,
@@ -82,9 +59,6 @@ def _type_to_gql(t) -> SemanticResourceTypeType:
 
 
 def _provider_to_gql(p) -> SemanticProviderType:
-    active_types = [
-        rt for rt in (p.resource_types or []) if rt.deleted_at is None
-    ]
     return SemanticProviderType(
         id=p.id,
         name=p.name,
@@ -95,39 +69,30 @@ def _provider_to_gql(p) -> SemanticProviderType:
         website_url=p.website_url,
         documentation_url=p.documentation_url,
         is_system=p.is_system,
-        resource_type_count=len(active_types),
+        resource_type_count=0,
         created_at=p.created_at,
         updated_at=p.updated_at,
     )
 
 
-def _prt_to_gql(prt) -> SemanticProviderResourceTypeType:
-    # Find the first active mapping's semantic type, if any
-    active_mappings = [
-        tm for tm in (prt.type_mappings or []) if tm.deleted_at is None
-    ]
-    first_mapping = active_mappings[0] if active_mappings else None
-    return SemanticProviderResourceTypeType(
-        id=prt.id,
-        provider_id=prt.provider_id,
-        provider_name=prt.provider_rel.name if prt.provider_rel else "",
-        api_type=prt.api_type,
-        display_name=prt.display_name,
-        description=prt.description,
-        documentation_url=prt.documentation_url,
-        parameter_schema=prt.parameter_schema,
-        status=ProviderResourceTypeStatusGQL(prt.status),
-        is_system=prt.is_system,
-        semantic_type_name=(
-            first_mapping.semantic_type_rel.name
-            if first_mapping and first_mapping.semantic_type_rel
-            else None
-        ),
-        semantic_type_id=(
-            first_mapping.semantic_type_id if first_mapping else None
-        ),
-        created_at=prt.created_at,
-        updated_at=prt.updated_at,
+def _activity_type_to_gql(at) -> SemanticActivityTypeType:
+    drk = getattr(at, "default_relationship_kind", None)
+    return SemanticActivityTypeType(
+        id=at.id,
+        name=at.name,
+        display_name=at.display_name,
+        category=at.category,
+        description=at.description,
+        icon=at.icon,
+        applicable_semantic_categories=at.applicable_semantic_categories,
+        applicable_semantic_types=at.applicable_semantic_types,
+        default_relationship_kind_id=at.default_relationship_kind_id,
+        default_relationship_kind_name=drk.display_name if drk else None,
+        properties_schema=at.properties_schema,
+        is_system=at.is_system,
+        sort_order=at.sort_order,
+        created_at=at.created_at,
+        updated_at=at.updated_at,
     )
 
 
@@ -275,52 +240,40 @@ class SemanticQuery:
                 return None
             return _provider_to_gql(p)
 
-    # -- Provider resource type queries ------------------------------------
+    # -- Activity type queries ---------------------------------------------
 
     @strawberry.field
-    async def semantic_provider_resource_types(
+    async def semantic_activity_types(
         self,
         info: Info,
         tenant_id: uuid.UUID,
-        provider_id: uuid.UUID | None = None,
-        status: str | None = None,
-    ) -> list[SemanticProviderResourceTypeType]:
-        """List provider resource types, optionally filtered by provider and status."""
-        await check_graphql_permission(info, "semantic:provider:read", str(tenant_id))
+        category: str | None = None,
+    ) -> list[SemanticActivityTypeType]:
+        """List semantic activity types, optionally filtered by category."""
+        await check_graphql_permission(info, "semantic:activity-type:read", str(tenant_id))
 
         from app.db.session import async_session_factory
-        from app.services.semantic.service import SemanticService
+        from app.services.semantic.activity_type_service import ActivityTypeService
 
         async with async_session_factory() as db:
-            service = SemanticService(db)
-            prts = await service.list_provider_resource_types(
-                provider_id=provider_id,
-                status=status,
-            )
-            return [_prt_to_gql(prt) for prt in prts]
-
-    # -- Type mapping queries ----------------------------------------------
+            service = ActivityTypeService(db)
+            types = await service.list_activity_types(category)
+            return [_activity_type_to_gql(t) for t in types]
 
     @strawberry.field
-    async def semantic_type_mappings(
+    async def semantic_activity_type(
         self,
         info: Info,
         tenant_id: uuid.UUID,
-        provider_resource_type_id: uuid.UUID | None = None,
-        semantic_type_id: uuid.UUID | None = None,
-        provider_id: uuid.UUID | None = None,
-    ) -> list[SemanticTypeMappingType]:
-        """List type mappings, optionally filtered."""
-        await check_graphql_permission(info, "semantic:mapping:read", str(tenant_id))
+        id: uuid.UUID,
+    ) -> SemanticActivityTypeType | None:
+        """Get a single semantic activity type by ID."""
+        await check_graphql_permission(info, "semantic:activity-type:read", str(tenant_id))
 
         from app.db.session import async_session_factory
-        from app.services.semantic.service import SemanticService
+        from app.services.semantic.activity_type_service import ActivityTypeService
 
         async with async_session_factory() as db:
-            service = SemanticService(db)
-            mappings = await service.list_type_mappings(
-                provider_resource_type_id=provider_resource_type_id,
-                semantic_type_id=semantic_type_id,
-                provider_id=provider_id,
-            )
-            return [_type_mapping_to_gql(m) for m in mappings]
+            service = ActivityTypeService(db)
+            at = await service.get_activity_type(str(id))
+            return _activity_type_to_gql(at) if at else None

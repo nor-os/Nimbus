@@ -2,8 +2,7 @@
 Overview: Pydantic schemas for semantic layer API — request/response validation.
 Architecture: API schema definitions for semantic type catalog (Section 5)
 Dependencies: pydantic, uuid, datetime, enum
-Concepts: Semantic types, categories, relationship kinds, providers, provider resource types,
-    type mappings
+Concepts: Semantic types, categories, relationship kinds, providers
 """
 
 import uuid
@@ -18,12 +17,6 @@ class ProviderTypeEnum(StrEnum):
     ON_PREM = "on_prem"
     SAAS = "saas"
     CUSTOM = "custom"
-
-
-class ProviderResourceTypeStatusEnum(StrEnum):
-    AVAILABLE = "available"
-    PREVIEW = "preview"
-    DEPRECATED = "deprecated"
 
 
 class SemanticCategoryResponse(BaseModel):
@@ -81,35 +74,6 @@ class SemanticProviderResponse(BaseModel):
     provider_type: str
     website_url: str | None
     documentation_url: str | None
-    is_system: bool
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class SemanticProviderResourceTypeResponse(BaseModel):
-    id: uuid.UUID
-    provider_id: uuid.UUID
-    api_type: str
-    display_name: str
-    description: str | None
-    documentation_url: str | None
-    parameter_schema: dict | None
-    status: str
-    is_system: bool
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class SemanticTypeMappingResponse(BaseModel):
-    id: uuid.UUID
-    provider_resource_type_id: uuid.UUID
-    semantic_type_id: uuid.UUID
-    parameter_mapping: dict | None
-    notes: str | None
     is_system: bool
     created_at: datetime
     updated_at: datetime

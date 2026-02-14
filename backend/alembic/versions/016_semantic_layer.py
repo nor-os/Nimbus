@@ -253,6 +253,7 @@ def _seed_data() -> None:
                     "default_value": p.default_value,
                     "unit": p.unit,
                     "description": p.description,
+                    "allowed_values": p.allowed_values,
                 }
                 for p in stype.properties
             ]

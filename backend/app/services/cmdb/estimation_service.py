@@ -96,14 +96,49 @@ class EstimationService:
                 data["client_tenant_id"], str(region_id)
             )
 
+        # Auto-resolve sell price from pricing engine when not explicitly given
+        sell_price = data.get("sell_price_per_unit", Decimal("0"))
+        price_list_id_val = data.get("price_list_id")
+
+        if sell_price == 0 or sell_price is None:
+            try:
+                from app.services.cmdb.catalog_service import CatalogService
+                catalog_svc = CatalogService(self.db)
+                price = await catalog_svc.get_effective_price(
+                    data["client_tenant_id"],
+                    data["service_offering_id"],
+                    delivery_region_id=str(region_id) if region_id else None,
+                    coverage_model=data.get("coverage_model"),
+                    price_list_id=str(price_list_id_val) if price_list_id_val else None,
+                )
+                if price:
+                    sell_price = price["price_per_unit"]
+            except Exception:
+                logger.warning("Failed to auto-resolve sell price", exc_info=True)
+
+        # Auto-resolve quantity from CI count when not explicitly given
+        quantity = data.get("quantity", Decimal("1"))
+        if quantity == Decimal("1"):
+            try:
+                from app.services.cmdb.catalog_service import CatalogService
+                catalog_svc = CatalogService(self.db)
+                ci_count = await catalog_svc.get_ci_count_for_offering(
+                    data["client_tenant_id"], data["service_offering_id"]
+                )
+                if ci_count > 0:
+                    quantity = Decimal(str(ci_count))
+            except Exception:
+                logger.warning("Failed to resolve CI count", exc_info=True)
+
         estimation = ServiceEstimation(
             tenant_id=tenant_id,
             client_tenant_id=data["client_tenant_id"],
             service_offering_id=data["service_offering_id"],
             delivery_region_id=region_id,
             coverage_model=data.get("coverage_model"),
-            quantity=data.get("quantity", Decimal("1")),
-            sell_price_per_unit=data.get("sell_price_per_unit", Decimal("0")),
+            price_list_id=price_list_id_val,
+            quantity=quantity,
+            sell_price_per_unit=sell_price or Decimal("0"),
             sell_currency=data.get("sell_currency", "EUR"),
         )
         self.db.add(estimation)
@@ -130,9 +165,31 @@ class EstimationService:
                 "Only draft estimations can be updated", "INVALID_STATUS"
             )
 
+        price_list_changed = (
+            "price_list_id" in data
+            and data["price_list_id"] != estimation.price_list_id
+        )
+
         for key, val in data.items():
             if hasattr(estimation, key) and key not in ("id", "tenant_id", "status"):
                 setattr(estimation, key, val)
+
+        # Re-resolve sell price when price_list_id changes and no explicit sell price
+        if price_list_changed and "sell_price_per_unit" not in data:
+            try:
+                from app.services.cmdb.catalog_service import CatalogService
+                catalog_svc = CatalogService(self.db)
+                price = await catalog_svc.get_effective_price(
+                    str(estimation.client_tenant_id),
+                    str(estimation.service_offering_id),
+                    delivery_region_id=str(estimation.delivery_region_id) if estimation.delivery_region_id else None,
+                    coverage_model=estimation.coverage_model,
+                    price_list_id=str(estimation.price_list_id) if estimation.price_list_id else None,
+                )
+                if price:
+                    estimation.sell_price_per_unit = price["price_per_unit"]
+            except Exception:
+                logger.warning("Failed to re-resolve sell price", exc_info=True)
 
         await self._recalculate(estimation)
         return estimation
@@ -348,6 +405,38 @@ class EstimationService:
                 item.rate_card_id = None
 
             item.line_cost = item.estimated_hours * item.hourly_rate
+
+        await self.db.flush()
+        await self._recalculate(estimation)
+        return estimation
+
+    async def refresh_estimation_prices(
+        self, estimation_id: str, tenant_id: str
+    ) -> ServiceEstimation:
+        """Re-resolve sell price from pricing engine using estimation's price_list_id."""
+        estimation = await self.get_estimation(estimation_id, tenant_id)
+        if not estimation:
+            raise EstimationServiceError("Estimation not found", "NOT_FOUND")
+        if estimation.status != "draft":
+            raise EstimationServiceError(
+                "Only draft estimations can be modified", "INVALID_STATUS"
+            )
+
+        try:
+            from app.services.cmdb.catalog_service import CatalogService
+            catalog_svc = CatalogService(self.db)
+            price = await catalog_svc.get_effective_price(
+                str(estimation.client_tenant_id),
+                str(estimation.service_offering_id),
+                delivery_region_id=str(estimation.delivery_region_id) if estimation.delivery_region_id else None,
+                coverage_model=estimation.coverage_model,
+                price_list_id=str(estimation.price_list_id) if estimation.price_list_id else None,
+            )
+            if price:
+                estimation.sell_price_per_unit = price["price_per_unit"]
+                estimation.sell_currency = price.get("currency", estimation.sell_currency)
+        except Exception:
+            logger.warning("Failed to refresh sell price", exc_info=True)
 
         await self.db.flush()
         await self._recalculate(estimation)

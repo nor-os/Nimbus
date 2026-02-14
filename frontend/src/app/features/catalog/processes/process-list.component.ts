@@ -1,9 +1,9 @@
 /**
  * Overview: Process list — hierarchical expandable view of service processes with
- *     inline activity templates showing step counts, required/optional badges.
+ *     inline activities showing step counts, required/optional badges.
  * Architecture: Catalog feature component (Section 8)
  * Dependencies: @angular/core, @angular/common, @angular/forms, @angular/router, app/core/services/delivery.service
- * Concepts: Service processes group activity templates into delivery workflows.
+ * Concepts: Service processes group activities into delivery workflows.
  */
 import {
   Component,
@@ -39,7 +39,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
               class="btn btn-secondary"
               (click)="createActivity()"
             >
-              New Activity Template
+              New Activity
             </button>
             <button
               *nimbusHasPermission="'catalog:process:manage'"
@@ -134,7 +134,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
                   <div class="activity-row">
                     <span class="activity-order">{{ link.sortOrder }}</span>
                     <span class="activity-name" (click)="editActivity(link.activityTemplateId)">
-                      {{ templateForId(link.activityTemplateId)?.name || 'Unknown template' }}
+                      {{ templateForId(link.activityTemplateId)?.name || 'Unknown activity' }}
                     </span>
                     <span class="steps-badge">
                       {{ templateForId(link.activityTemplateId)?.definitions?.length || 0 }} steps
@@ -146,7 +146,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
                 } @empty {
                   <div class="no-activities">No activities linked to this process.</div>
                 }
-                <a class="add-link" (click)="createActivity()">+ Create Activity Template</a>
+                <a class="add-link" (click)="createActivity()">+ Create Activity</a>
               </div>
             }
           </div>

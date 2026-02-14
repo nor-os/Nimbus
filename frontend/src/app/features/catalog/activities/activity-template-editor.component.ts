@@ -59,7 +59,7 @@ interface DefinitionRow {
     <nimbus-layout>
       <div class="editor-page">
         <div class="page-header">
-          <h1>{{ isEditMode() ? 'Edit Activity Template' : 'Create Activity Template' }}</h1>
+          <h1>{{ isEditMode() ? 'Edit Activity' : 'Create Activity' }}</h1>
         </div>
 
         @if (loading()) {

@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.workflow_definition import WorkflowDefinition, WorkflowDefinitionStatus
+from app.models.workflow_definition import WorkflowDefinition, WorkflowDefinitionStatus, WorkflowType
 from app.services.workflow.graph_validator import GraphValidator
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,9 @@ class WorkflowDefinitionService:
         self, tenant_id: str, created_by: str, data: dict[str, Any]
     ) -> WorkflowDefinition:
         """Create a new draft workflow definition at version 0."""
+        wf_type_str = data.get("workflow_type", "AUTOMATION")
+        wf_type = WorkflowType(wf_type_str) if isinstance(wf_type_str, str) else wf_type_str
+
         definition = WorkflowDefinition(
             tenant_id=tenant_id,
             name=data["name"],
@@ -48,6 +51,9 @@ class WorkflowDefinitionService:
             created_by=created_by,
             timeout_seconds=data.get("timeout_seconds", 3600),
             max_concurrent=data.get("max_concurrent", 10),
+            workflow_type=wf_type,
+            source_topology_id=data.get("source_topology_id"),
+            is_system=data.get("is_system", False),
         )
         self.db.add(definition)
         await self.db.flush()
@@ -140,10 +146,11 @@ class WorkflowDefinitionService:
         self,
         tenant_id: str,
         status: str | None = None,
+        workflow_type: str | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> list[WorkflowDefinition]:
-        """List definitions for a tenant, optionally filtered by status."""
+        """List definitions for a tenant, optionally filtered by status and/or workflow_type."""
         query = (
             select(WorkflowDefinition)
             .where(
@@ -160,7 +167,27 @@ class WorkflowDefinitionService:
                 WorkflowDefinition.status == WorkflowDefinitionStatus(status)
             )
 
+        if workflow_type:
+            query = query.where(
+                WorkflowDefinition.workflow_type == WorkflowType(workflow_type)
+            )
+
         result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def list_by_topology(
+        self, tenant_id: str, topology_id: str
+    ) -> list[WorkflowDefinition]:
+        """List deployment workflows linked to a specific topology."""
+        result = await self.db.execute(
+            select(WorkflowDefinition)
+            .where(
+                WorkflowDefinition.tenant_id == tenant_id,
+                WorkflowDefinition.source_topology_id == topology_id,
+                WorkflowDefinition.deleted_at.is_(None),
+            )
+            .order_by(WorkflowDefinition.updated_at.desc())
+        )
         return list(result.scalars().all())
 
     async def clone(

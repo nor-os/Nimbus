@@ -48,9 +48,13 @@ class ConfigurationItem(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     pulumi_urn: Mapped[str | None] = mapped_column(
         String(500), nullable=True
     )
+    backend_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cloud_backends.id"), nullable=True, index=True
+    )
 
     ci_class: Mapped["CIClass"] = relationship(lazy="joined")  # noqa: F821
     compartment: Mapped["Compartment | None"] = relationship(lazy="joined")  # noqa: F821
+    backend: Mapped["CloudBackend | None"] = relationship(lazy="joined")  # noqa: F821
 
     __table_args__ = (
         Index("ix_ci_tenant_class", "tenant_id", "ci_class_id"),

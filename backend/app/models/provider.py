@@ -16,6 +16,8 @@ class Provider(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "providers"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    default_currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="EUR")
 
     users: Mapped[list["User"]] = relationship(back_populates="provider")  # noqa: F821
     tenants: Mapped[list["Tenant"]] = relationship(back_populates="provider")  # noqa: F821
+    exchange_rates: Mapped[list["CurrencyExchangeRate"]] = relationship(back_populates="provider")  # noqa: F821

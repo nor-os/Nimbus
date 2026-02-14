@@ -98,6 +98,8 @@ class CIType:
     tags: JSON
     cloud_resource_id: str | None
     pulumi_urn: str | None
+    backend_id: str | None
+    backend_name: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -118,6 +120,13 @@ class RelationshipTypeType:
     source_class_ids: JSON | None
     target_class_ids: JSON | None
     is_system: bool
+    domain: str
+    source_entity_type: str
+    target_entity_type: str
+    source_semantic_types: JSON | None
+    target_semantic_types: JSON | None
+    source_semantic_categories: JSON | None
+    target_semantic_categories: JSON | None
     created_at: datetime
     updated_at: datetime
 
@@ -216,6 +225,43 @@ class SavedSearchType:
     filters: JSON | None
     sort_config: JSON | None
     is_default: bool
+
+
+# ── Explorer summary types ────────────────────────────────────────────
+
+
+@strawberry.type
+class ExplorerTypeSummary:
+    semantic_type_id: str | None
+    semantic_type_name: str
+    ci_class_id: str
+    ci_class_name: str
+    ci_class_icon: str | None
+    count: int
+
+
+@strawberry.type
+class ExplorerCategorySummary:
+    category_id: str | None
+    category_name: str
+    category_icon: str | None
+    types: list["ExplorerTypeSummary"]
+    total_count: int
+
+
+@strawberry.type
+class ExplorerBackendSummary:
+    backend_id: str
+    backend_name: str
+    provider_name: str
+    ci_count: int
+
+
+@strawberry.type
+class ExplorerSummaryType:
+    total_cis: int
+    categories: list["ExplorerCategorySummary"]
+    backends: list["ExplorerBackendSummary"]
 
 
 # ── Input types ───────────────────────────────────────────────────────
@@ -320,8 +366,35 @@ class CompartmentUpdateInput:
 
 
 @strawberry.input
+class CIAttributeDefinitionInput:
+    name: str
+    display_name: str
+    data_type: str
+    is_required: bool = False
+    default_value: JSON | None = None
+    validation_rules: JSON | None = None
+    sort_order: int = 0
+
+
+@strawberry.input
+class CIAttributeDefinitionUpdateInput:
+    display_name: str | None = None
+    data_type: str | None = None
+    is_required: bool | None = None
+    default_value: JSON | None = strawberry.UNSET
+    validation_rules: JSON | None = strawberry.UNSET
+    sort_order: int | None = None
+
+
+@strawberry.input
 class SavedSearchInput:
     name: str
     query_text: str | None = None
     filters: JSON | None = None
     sort_config: JSON | None = None
+
+
+@strawberry.input
+class RelationshipTypeConstraintInput:
+    source_semantic_categories: list[str] | None = strawberry.UNSET
+    target_semantic_categories: list[str] | None = strawberry.UNSET

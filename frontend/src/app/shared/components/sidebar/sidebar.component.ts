@@ -34,16 +34,45 @@ interface NavItem {
       @if (showProviderSection()) {
         <div class="provider-section">
           <div class="section-label">Provider</div>
-          @for (item of providerItems; track item.label) {
-            <a
-              class="nav-item nav-top-item"
-              [routerLink]="item.route"
-              routerLinkActive="active"
-              [routerLinkActiveOptions]="{ exact: !!item.exact }"
-            >
-              <span class="nav-icon" [innerHTML]="item.icon"></span>
-              <span class="nav-label">{{ item.label }}</span>
-            </a>
+          @for (item of visibleProviderItems(); track item.label) {
+            @if (item.children) {
+              <button
+                class="nav-group-header provider-group-header"
+                [class.active]="isActiveGroup(item.label)"
+                (click)="toggleProviderGroup(item.label)"
+                [attr.aria-expanded]="isExpanded(item.label)"
+              >
+                <span class="nav-icon" [innerHTML]="item.icon"></span>
+                <span class="nav-label">{{ item.label }}</span>
+                <span class="nav-chevron" [class.expanded]="isExpanded(item.label)">&#9206;</span>
+              </button>
+              @if (isExpanded(item.label)) {
+                <div class="nav-children">
+                  @for (child of visibleProviderChildren(item); track child.label) {
+                    @if (child.route && !child.disabled) {
+                      <a
+                        class="nav-item nav-child"
+                        [routerLink]="child.route"
+                        routerLinkActive="active"
+                        [routerLinkActiveOptions]="{ exact: !!child.exact }"
+                      >
+                        <span class="nav-label">{{ child.label }}</span>
+                      </a>
+                    }
+                  }
+                </div>
+              }
+            } @else if (item.route) {
+              <a
+                class="nav-item nav-top-item"
+                [routerLink]="item.route"
+                routerLinkActive="active"
+                [routerLinkActiveOptions]="{ exact: !!item.exact }"
+              >
+                <span class="nav-icon" [innerHTML]="item.icon"></span>
+                <span class="nav-label">{{ item.label }}</span>
+              </a>
+            }
           }
         </div>
       }
@@ -56,6 +85,7 @@ interface NavItem {
               <button
                 class="nav-group-header"
                 [class.locked]="isActiveGroup(group.label)"
+                [class.active]="isActiveGroup(group.label)"
                 (click)="toggleGroup(group.label)"
                 [attr.aria-expanded]="isExpanded(group.label)"
               >
@@ -159,6 +189,37 @@ interface NavItem {
       border-right: none;
     }
 
+    .provider-group-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      width: 100%;
+      padding: 0.4375rem 0.75rem;
+      margin: 0;
+      border: none;
+      background: none;
+      color: #c8ccd0;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.15s, color 0.15s;
+      font-family: inherit;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .provider-group-header:hover {
+      background: rgba(59, 130, 246, 0.12);
+      color: #fff;
+    }
+    .provider-group-header.active {
+      color: #60a5fa;
+    }
+
+    .provider-section .nav-child {
+      padding-left: 2.25rem;
+    }
+
     /* ── Standard navigation ──────────────────────────── */
 
     .nav-group {
@@ -170,7 +231,8 @@ interface NavItem {
       align-items: center;
       gap: 0.75rem;
       width: 100%;
-      padding: 0.625rem 1rem;
+      padding: 0.5rem 1rem;
+      margin: 0;
       border: none;
       background: none;
       color: #c8ccd0;
@@ -180,6 +242,7 @@ interface NavItem {
       text-align: left;
       transition: background 0.15s, color 0.15s;
       font-family: inherit;
+      box-sizing: border-box;
     }
     .nav-group-header:hover:not(.disabled) {
       background: rgba(255, 255, 255, 0.06);
@@ -188,6 +251,9 @@ interface NavItem {
     .nav-group-header.disabled {
       opacity: 0.35;
       cursor: default;
+    }
+    .nav-group-header.active {
+      color: #60a5fa;
     }
     .nav-group-header.locked {
       cursor: default;
@@ -248,8 +314,11 @@ interface NavItem {
       align-items: center;
       justify-content: center;
       width: 1.25rem;
+      height: 1.25rem;
       font-size: 1rem;
+      line-height: 1;
       flex-shrink: 0;
+      overflow: hidden;
     }
 
     .nav-label {
@@ -265,10 +334,13 @@ export class SidebarComponent {
   private permissionCheck = inject(PermissionCheckService);
   private router = inject(Router);
 
-  private expandedGroups = signal<Set<string>>(new Set(['Users & Roles', 'Settings', 'Workflows', 'CMDB', 'Services']));
+  private readonly STORAGE_KEY = 'nimbus_sidebar_expanded';
+  private expandedGroups = signal<Set<string>>(new Set());
   private activeGroup = signal<string | null>(null);
 
   constructor() {
+    this.loadExpandedGroups();
+
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
       takeUntilDestroyed(),
@@ -278,8 +350,50 @@ export class SidebarComponent {
 
   showProviderSection = computed(() => this.tenantContext.canManageClients());
 
+  visibleProviderItems = computed(() => {
+    this.permissionCheck.permissions();
+    return this.providerItems.filter((item) => {
+      if (item.permission && !this.hasPermission(item.permission)) return false;
+      return true;
+    });
+  });
+
   providerItems: NavItem[] = [
     { label: 'Tenants', icon: '&#9636;', route: '/tenants', permission: 'settings:tenant:read' },
+    {
+      label: 'Backends', icon: '&#9729;', permission: 'cloud:backend:read',
+      children: [
+        { label: 'Providers', icon: '', route: '/backends', exact: true, permission: 'cloud:backend:read' },
+        { label: 'Images', icon: '', route: '/backends/images', permission: 'semantic:image:read' },
+      ],
+    },
+    {
+      label: 'Semantic', icon: '&#9670;', permission: 'semantic:type:read',
+      children: [
+        { label: 'Catalog', icon: '', route: '/semantic/catalog', permission: 'semantic:type:read' },
+        { label: 'Providers', icon: '', route: '/semantic/providers', permission: 'semantic:type:read' },
+        { label: 'Relationships', icon: '', route: '/semantic/relationships', permission: 'semantic:type:read' },
+        { label: 'Constraints', icon: '', route: '/semantic/constraints', permission: 'semantic:type:read' },
+      ],
+    },
+    {
+      label: 'Services',
+      icon: '&#9881;',
+      permission: 'cmdb:catalog:read',
+      children: [
+        { label: 'Service Catalog', icon: '', route: '/catalog/catalogs', permission: 'catalog:catalog:read' },
+        { label: 'Groups', icon: '', route: '/catalog/groups', permission: 'cmdb:catalog:read' },
+        { label: 'Services', icon: '', route: '/catalog/services', permission: 'cmdb:catalog:read' },
+        { label: 'Processes', icon: '', route: '/catalog/processes', permission: 'catalog:process:read' },
+        { label: 'Activities', icon: '', route: '/catalog/activities', permission: 'catalog:activity:read' },
+        { label: 'SKUs', icon: '', route: '/catalog/skus', permission: 'catalog:sku:read' },
+        { label: 'Price Lists', icon: '', route: '/catalog/pricing', permission: 'cmdb:catalog:manage' },
+        { label: 'Estimations', icon: '', route: '/catalog/estimations', permission: 'catalog:estimation:read' },
+        { label: 'Roles & Rates', icon: '', route: '/catalog/rate-cards', permission: 'catalog:staff:read' },
+        { label: 'Regions', icon: '', route: '/catalog/regions', permission: 'catalog:region:read' },
+      ],
+    },
+    { label: 'Profitability', icon: '&#9733;', route: '/catalog/profitability', permission: 'catalog:profitability:read' },
   ];
 
   private allNavGroups: NavItem[] = [
@@ -290,41 +404,41 @@ export class SidebarComponent {
       exact: true,
     },
     {
+      label: 'Service',
+      icon: '&#9881;',
+      permission: 'catalog:catalog:read',
+      children: [
+        { label: 'Catalog', icon: '', route: '/service/catalog', permission: 'catalog:catalog:read' },
+        { label: 'Price Lists', icon: '', route: '/service/pricing', permission: 'catalog:catalog:read' },
+      ],
+    },
+    {
       label: 'CMDB',
       icon: '&#9634;',
       permission: 'cmdb:ci:read',
       children: [
         { label: 'Dashboard', icon: '', route: '/cmdb/dashboard', permission: 'cmdb:ci:read' },
+        { label: 'Explorer', icon: '', route: '/cmdb/explorer', permission: 'cmdb:ci:read' },
         { label: 'Configuration Items', icon: '', route: '/cmdb', exact: true, permission: 'cmdb:ci:read' },
         { label: 'Classes', icon: '', route: '/cmdb/classes', permission: 'cmdb:class:read' },
       ],
     },
     {
-      label: 'Services',
-      icon: '&#9881;',
-      permission: 'cmdb:catalog:read',
+      label: 'Architecture',
+      icon: '&#9783;',
+      permission: 'architecture:topology:read',
       children: [
-        { label: 'Catalog', icon: '', route: '/catalog/services', permission: 'cmdb:catalog:read' },
-        { label: 'Pricing', icon: '', route: '/catalog/pricing', permission: 'cmdb:catalog:manage' },
-        { label: 'Processes', icon: '', route: '/catalog/processes', permission: 'catalog:process:read' },
-        { label: 'Estimations', icon: '', route: '/catalog/estimations', permission: 'catalog:estimation:read' },
-        { label: 'Regions', icon: '', route: '/catalog/regions', permission: 'catalog:region:read' },
-        { label: 'Rate Cards', icon: '', route: '/catalog/rate-cards', permission: 'catalog:staff:read' },
-        { label: 'Profitability', icon: '', route: '/catalog/profitability', permission: 'catalog:profitability:read' },
+        { label: 'Topologies', icon: '', route: '/architecture', exact: true, permission: 'architecture:topology:read' },
+        { label: 'Stack Blueprints', icon: '', route: '/architecture/blueprints', permission: 'cmdb:cluster:read' },
       ],
     },
     {
-      label: 'Architecture',
-      icon: '&#9783;',
-      disabled: true,
-      route: '/architecture',
-    },
-    {
-      label: 'Semantic Explorer',
-      icon: '&#9670;',
-      route: '/semantic',
-      exact: true,
-      permission: 'semantic:type:read',
+      label: 'Governance',
+      icon: '&#9878;',
+      permission: 'policy:library:read',
+      children: [
+        { label: 'Policy Library', icon: '', route: '/governance/policies', permission: 'policy:library:read' },
+      ],
     },
     {
       label: 'Users & Roles',
@@ -363,8 +477,9 @@ export class SidebarComponent {
     {
       label: 'Cost',
       icon: '&#9733;',
-      disabled: true,
-      route: '/cost',
+      children: [
+        { label: 'Calculator', icon: '', route: '/cost/calculator', permission: 'catalog:sku:read' },
+      ],
     },
     {
       label: 'Settings',
@@ -376,6 +491,7 @@ export class SidebarComponent {
         { label: 'Impersonation', icon: '', route: '/settings/impersonation', permission: 'impersonation:config:manage' },
         { label: 'Notifications', icon: '', route: '/settings/notifications', permission: 'notification:preference:manage' },
         { label: 'Webhooks', icon: '', route: '/settings/webhooks', permission: 'notification:webhook:manage' },
+        { label: 'Currency & Rates', icon: '', route: '/settings/currency', permission: 'settings:currency:read' },
       ],
     },
   ];
@@ -390,6 +506,13 @@ export class SidebarComponent {
       return true;
     });
   });
+
+  visibleProviderChildren(group: NavItem): NavItem[] {
+    return (group.children ?? []).filter((child) => {
+      if (child.permission && !this.hasPermission(child.permission)) return false;
+      return true;
+    });
+  }
 
   visibleChildren(group: NavItem): NavItem[] {
     const canManage = this.tenantContext.canManageClients();
@@ -406,6 +529,18 @@ export class SidebarComponent {
     return this.permissionCheck.hasPermission(key);
   }
 
+  toggleProviderGroup(label: string): void {
+    const current = this.expandedGroups();
+    const next = new Set(current);
+    if (next.has(label)) {
+      next.delete(label);
+    } else {
+      next.add(label);
+    }
+    this.expandedGroups.set(next);
+    this.saveExpandedGroups();
+  }
+
   toggleGroup(label: string): void {
     if (this.activeGroup() === label) return;
     const current = this.expandedGroups();
@@ -416,6 +551,7 @@ export class SidebarComponent {
       next.add(label);
     }
     this.expandedGroups.set(next);
+    this.saveExpandedGroups();
   }
 
   isExpanded(label: string): boolean {
@@ -426,8 +562,49 @@ export class SidebarComponent {
     return this.activeGroup() === label;
   }
 
+  private loadExpandedGroups(): void {
+    const stored = localStorage.getItem(this.STORAGE_KEY);
+    if (stored) {
+      try {
+        const labels: string[] = JSON.parse(stored);
+        this.expandedGroups.set(new Set(labels));
+        return;
+      } catch { /* fall through to default */ }
+    }
+    // Default: only expand the first collapsible group
+    const firstGroup = this.allNavGroups.find(g => g.children && !g.disabled);
+    if (firstGroup) {
+      this.expandedGroups.set(new Set([firstGroup.label]));
+    }
+  }
+
+  private saveExpandedGroups(): void {
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify([...this.expandedGroups()]));
+  }
+
   private updateActiveGroup(): void {
     const url = this.router.url.split('?')[0].split('#')[0];
+    // Check provider items first (includes collapsible groups)
+    for (const item of this.providerItems) {
+      if (item.children) {
+        for (const child of item.children) {
+          if (child.route && this.isRouteMatch(url, child.route, !!child.exact)) {
+            this.activeGroup.set(item.label);
+            const current = this.expandedGroups();
+            if (!current.has(item.label)) {
+              const next = new Set(current);
+              next.add(item.label);
+              this.expandedGroups.set(next);
+              this.saveExpandedGroups();
+            }
+            return;
+          }
+        }
+      } else if (item.route && this.isRouteMatch(url, item.route, !!item.exact)) {
+        this.activeGroup.set(null);
+        return;
+      }
+    }
     for (const group of this.allNavGroups) {
       if (group.children) {
         for (const child of group.children) {
@@ -438,6 +615,7 @@ export class SidebarComponent {
               const next = new Set(current);
               next.add(group.label);
               this.expandedGroups.set(next);
+              this.saveExpandedGroups();
             }
             return;
           }

@@ -136,9 +136,39 @@ class ClassService:
         return True
 
     async def add_attribute_definition(
-        self, class_id: uuid.UUID, data: dict
+        self, class_id: uuid.UUID, tenant_id: str, data: dict
     ) -> CIAttributeDefinition:
         """Add a custom attribute definition to a CI class."""
+        ci_class = await self.get_class(class_id)
+        if not ci_class:
+            raise ClassServiceError("CI class not found", "CLASS_NOT_FOUND")
+        if ci_class.is_system:
+            raise ClassServiceError(
+                "Cannot add attributes to system CI class", "SYSTEM_RECORD"
+            )
+        if ci_class.tenant_id != uuid.UUID(tenant_id):
+            raise ClassServiceError("Not authorized", "UNAUTHORIZED")
+
+        # Check for soft-deleted attr with same name — un-delete + update
+        existing = await self.db.execute(
+            select(CIAttributeDefinition).where(
+                CIAttributeDefinition.ci_class_id == class_id,
+                CIAttributeDefinition.name == data["name"],
+                CIAttributeDefinition.deleted_at.isnot(None),
+            )
+        )
+        soft_deleted = existing.scalar_one_or_none()
+        if soft_deleted:
+            soft_deleted.deleted_at = None
+            soft_deleted.display_name = data["display_name"]
+            soft_deleted.data_type = data["data_type"]
+            soft_deleted.is_required = data.get("is_required", False)
+            soft_deleted.default_value = data.get("default_value")
+            soft_deleted.validation_rules = data.get("validation_rules")
+            soft_deleted.sort_order = data.get("sort_order", 0)
+            await self.db.flush()
+            return soft_deleted
+
         attr_def = CIAttributeDefinition(
             ci_class_id=class_id,
             name=data["name"],
@@ -152,3 +182,75 @@ class ClassService:
         self.db.add(attr_def)
         await self.db.flush()
         return attr_def
+
+    async def update_attribute_definition(
+        self,
+        attr_id: uuid.UUID,
+        class_id: uuid.UUID,
+        tenant_id: str,
+        data: dict,
+    ) -> CIAttributeDefinition:
+        """Update an attribute definition on a custom CI class."""
+        ci_class = await self.get_class(class_id)
+        if not ci_class:
+            raise ClassServiceError("CI class not found", "CLASS_NOT_FOUND")
+        if ci_class.is_system:
+            raise ClassServiceError(
+                "Cannot modify attributes on system CI class", "SYSTEM_RECORD"
+            )
+        if ci_class.tenant_id != uuid.UUID(tenant_id):
+            raise ClassServiceError("Not authorized", "UNAUTHORIZED")
+
+        result = await self.db.execute(
+            select(CIAttributeDefinition).where(
+                CIAttributeDefinition.id == attr_id,
+                CIAttributeDefinition.ci_class_id == class_id,
+                CIAttributeDefinition.deleted_at.is_(None),
+            )
+        )
+        attr_def = result.scalar_one_or_none()
+        if not attr_def:
+            raise ClassServiceError(
+                "Attribute definition not found", "ATTR_NOT_FOUND"
+            )
+
+        for key, value in data.items():
+            if hasattr(attr_def, key):
+                setattr(attr_def, key, value)
+
+        await self.db.flush()
+        return attr_def
+
+    async def remove_attribute_definition(
+        self,
+        attr_id: uuid.UUID,
+        class_id: uuid.UUID,
+        tenant_id: str,
+    ) -> bool:
+        """Soft-delete an attribute definition from a custom CI class."""
+        ci_class = await self.get_class(class_id)
+        if not ci_class:
+            raise ClassServiceError("CI class not found", "CLASS_NOT_FOUND")
+        if ci_class.is_system:
+            raise ClassServiceError(
+                "Cannot remove attributes from system CI class", "SYSTEM_RECORD"
+            )
+        if ci_class.tenant_id != uuid.UUID(tenant_id):
+            raise ClassServiceError("Not authorized", "UNAUTHORIZED")
+
+        result = await self.db.execute(
+            select(CIAttributeDefinition).where(
+                CIAttributeDefinition.id == attr_id,
+                CIAttributeDefinition.ci_class_id == class_id,
+                CIAttributeDefinition.deleted_at.is_(None),
+            )
+        )
+        attr_def = result.scalar_one_or_none()
+        if not attr_def:
+            raise ClassServiceError(
+                "Attribute definition not found", "ATTR_NOT_FOUND"
+            )
+
+        attr_def.deleted_at = datetime.now(UTC)
+        await self.db.flush()
+        return True

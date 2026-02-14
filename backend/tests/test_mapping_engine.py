@@ -11,15 +11,13 @@ from app.services.semantic.mapping_engine import UNMAPPED_TYPE, MappingEngine
 from app.services.semantic.registry import (
     CATEGORIES,
     PROVIDERS,
-    PROVIDER_RESOURCE_TYPES,
+    PROVIDER_RESOURCE_MAPPINGS,
     RELATIONSHIP_KINDS,
     SEMANTIC_TYPES,
-    TYPE_MAPPINGS,
     get_category,
     get_provider,
-    get_provider_resource_types,
+    get_provider_resource_mappings,
     get_type,
-    get_type_mappings_for_provider,
     get_types_by_category,
 )
 
@@ -65,22 +63,19 @@ class TestRegistry:
         provider_names = {p.name for p in PROVIDERS}
         assert provider_names == {"proxmox", "aws", "azure", "gcp", "oci"}
 
-    def test_provider_resource_types_exist(self):
-        assert len(PROVIDER_RESOURCE_TYPES) > 0
-
-    def test_type_mappings_exist(self):
-        assert len(TYPE_MAPPINGS) > 0
+    def test_provider_resource_mappings_exist(self):
+        assert len(PROVIDER_RESOURCE_MAPPINGS) > 0
 
     def test_all_mappings_reference_valid_types(self):
         type_names = {t.name for t in SEMANTIC_TYPES}
-        for mapping in TYPE_MAPPINGS:
+        for mapping in PROVIDER_RESOURCE_MAPPINGS:
             assert mapping.semantic_type_name in type_names, (
                 f"Mapping {mapping.provider_name}/{mapping.api_type} "
                 f"references unknown type {mapping.semantic_type_name}"
             )
 
     def test_five_providers_covered_in_mappings(self):
-        providers = {m.provider_name for m in TYPE_MAPPINGS}
+        providers = {m.provider_name for m in PROVIDER_RESOURCE_MAPPINGS}
         assert providers == {"proxmox", "aws", "azure", "gcp", "oci"}
 
     def test_lookup_helpers(self):
@@ -93,10 +88,7 @@ class TestRegistry:
     def test_provider_lookup_helpers(self):
         assert get_provider("aws") is not None
         assert get_provider("nonexistent") is None
-        prts = get_provider_resource_types("aws")
-        assert len(prts) > 0
-        assert all(prt.provider_name == "aws" for prt in prts)
-        mappings = get_type_mappings_for_provider("aws")
+        mappings = get_provider_resource_mappings("aws")
         assert len(mappings) > 0
         assert all(m.provider_name == "aws" for m in mappings)
 
@@ -228,20 +220,11 @@ class TestMappingEngineLookups:
     def setup_method(self):
         self.engine = MappingEngine()
 
-    def test_get_mappings_for_provider(self):
-        aws_mappings = self.engine.get_mappings_for_provider("aws")
+    def test_get_provider_resource_mappings(self):
+        aws_mappings = self.engine.get_provider_resource_mappings("aws")
         assert len(aws_mappings) > 0
         assert all(m.provider_name == "aws" for m in aws_mappings)
 
     def test_get_mappings_for_nonexistent_provider(self):
-        mappings = self.engine.get_mappings_for_provider("linode")
+        mappings = self.engine.get_provider_resource_mappings("linode")
         assert len(mappings) == 0
-
-    def test_get_provider_resource_types(self):
-        aws_prts = self.engine.get_provider_resource_types("aws")
-        assert len(aws_prts) > 0
-        assert all(prt.provider_name == "aws" for prt in aws_prts)
-
-    def test_get_provider_resource_types_nonexistent(self):
-        prts = self.engine.get_provider_resource_types("linode")
-        assert len(prts) == 0

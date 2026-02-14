@@ -21,6 +21,8 @@ from app.schemas.audit import (
     AuditLogListResponse,
     AuditLogResponse,
     AuditSearchParams,
+    CategoryRetentionOverrideResponse,
+    CategoryRetentionOverrideUpsert,
     ExportRequest,
     ExportResponse,
     ExportStatusResponse,
@@ -358,12 +360,24 @@ async def get_retention_policy(
     current_user: User = Depends(require_permission("audit:retention:read")),
     db: AsyncSession = Depends(get_db),
 ) -> RetentionPolicyResponse:
-    """Get the retention policy for the current tenant."""
+    """Get the retention policy for the current tenant, including per-category overrides."""
     from app.services.audit.retention import RetentionService
 
     service = RetentionService(db)
     policy = await service.get_or_create_policy(tenant_id)
-    return RetentionPolicyResponse.model_validate(policy)
+    overrides = await service.list_category_overrides(tenant_id)
+    return RetentionPolicyResponse(
+        id=policy.id,
+        tenant_id=policy.tenant_id,
+        hot_days=policy.hot_days,
+        cold_days=policy.cold_days,
+        archive_enabled=policy.archive_enabled,
+        category_overrides=[
+            CategoryRetentionOverrideResponse.model_validate(ov) for ov in overrides
+        ],
+        created_at=policy.created_at,
+        updated_at=policy.updated_at,
+    )
 
 
 @router.put("/retention", response_model=RetentionPolicyResponse)
@@ -384,7 +398,100 @@ async def update_retention_policy(
         cold_days=body.cold_days,
         archive_enabled=body.archive_enabled,
     )
-    return RetentionPolicyResponse.model_validate(policy)
+    overrides = await service.list_category_overrides(tenant_id)
+    return RetentionPolicyResponse(
+        id=policy.id,
+        tenant_id=policy.tenant_id,
+        hot_days=policy.hot_days,
+        cold_days=policy.cold_days,
+        archive_enabled=policy.archive_enabled,
+        category_overrides=[
+            CategoryRetentionOverrideResponse.model_validate(ov) for ov in overrides
+        ],
+        created_at=policy.created_at,
+        updated_at=policy.updated_at,
+    )
+
+
+# ── Category Retention Overrides ───────────────────────
+
+
+@router.put(
+    "/retention/categories/{event_category}",
+    response_model=CategoryRetentionOverrideResponse,
+)
+async def upsert_category_retention_override(
+    event_category: str,
+    body: CategoryRetentionOverrideUpsert,
+    request: Request,
+    tenant_id: str = Depends(get_current_tenant_id),
+    current_user: User = Depends(require_permission("audit:retention:update")),
+    db: AsyncSession = Depends(get_db),
+) -> CategoryRetentionOverrideResponse:
+    """Create or update a per-category retention override."""
+    from app.services.audit.retention import RetentionService
+
+    service = RetentionService(db)
+    try:
+        override = await service.upsert_category_override(
+            tenant_id,
+            event_category=event_category,
+            hot_days=body.hot_days,
+            cold_days=body.cold_days,
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "INVALID_CATEGORY",
+                    "message": f"Invalid event category: {event_category}",
+                    "trace_id": getattr(request.state, "trace_id", None),
+                }
+            },
+        )
+    return CategoryRetentionOverrideResponse.model_validate(override)
+
+
+@router.delete(
+    "/retention/categories/{event_category}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_category_retention_override(
+    event_category: str,
+    request: Request,
+    tenant_id: str = Depends(get_current_tenant_id),
+    current_user: User = Depends(require_permission("audit:retention:update")),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a per-category retention override (reverts to global default)."""
+    from app.services.audit.retention import RetentionService
+
+    service = RetentionService(db)
+    try:
+        deleted = await service.delete_category_override(tenant_id, event_category)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "INVALID_CATEGORY",
+                    "message": f"Invalid event category: {event_category}",
+                    "trace_id": getattr(request.state, "trace_id", None),
+                }
+            },
+        )
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "OVERRIDE_NOT_FOUND",
+                    "message": "No override found for this category",
+                    "trace_id": getattr(request.state, "trace_id", None),
+                }
+            },
+        )
 
 
 # ── Redaction Rules ─────────────────────────────────────

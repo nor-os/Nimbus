@@ -1,9 +1,9 @@
 /**
- * Overview: Process editor — edit name/description, manage linked activity templates (add, remove,
+ * Overview: Process editor — edit name/description, manage linked activities (add, remove,
  *     reorder), and view assigned service offerings.
  * Architecture: Catalog feature component (Section 8)
  * Dependencies: @angular/core, @angular/common, @angular/forms, @angular/router, app/core/services/delivery.service
- * Concepts: Service processes group activity templates into ordered delivery workflows.
+ * Concepts: Service processes group activities into ordered delivery workflows.
  */
 import {
   Component,
@@ -107,7 +107,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
 
             @if (showAddActivity()) {
               <div class="add-form">
-                <nimbus-searchable-select class="add-field" [(ngModel)]="addActivityTemplateId" [options]="activityTemplateOptions()" placeholder="Select activity template..." />
+                <nimbus-searchable-select class="add-field" [(ngModel)]="addActivityTemplateId" [options]="activityTemplateOptions()" placeholder="Select activity..." />
                 <input
                   type="number"
                   [(ngModel)]="addSortOrder"
@@ -133,7 +133,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
                 <thead>
                   <tr>
                     <th>Order</th>
-                    <th>Activity Template</th>
+                    <th>Activity</th>
                     <th>Required?</th>
                     <th>Actions</th>
                   </tr>
@@ -166,7 +166,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
                 </tbody>
               </table>
             } @else {
-              <div class="no-items">No activity templates linked to this process.</div>
+              <div class="no-items">No activities linked to this process.</div>
             }
           </div>
 

@@ -14,6 +14,7 @@ from strawberry.types import Info
 from app.api.graphql.auth import check_graphql_permission
 from app.api.graphql.queries.workflow import _definition_to_type, _execution_to_type
 from app.api.graphql.types.workflow import (
+    GenerateDeploymentWorkflowInput,
     WorkflowDefinitionCreateInput,
     WorkflowDefinitionType,
     WorkflowDefinitionUpdateInput,
@@ -51,9 +52,12 @@ class WorkflowMutation:
                 "timeout_seconds": input.timeout_seconds,
                 "max_concurrent": input.max_concurrent,
             }
+            if input.workflow_type:
+                data["workflow_type"] = input.workflow_type
             d = await svc.create(str(tenant_id), str(user_id), data)
+            result = _definition_to_type(d)
             await db.commit()
-            return _definition_to_type(d)
+            return result
 
     @strawberry.mutation
     async def update_workflow_definition(
@@ -86,8 +90,9 @@ class WorkflowMutation:
                 data["max_concurrent"] = input.max_concurrent
 
             d = await svc.update(str(tenant_id), str(definition_id), data)
+            result = _definition_to_type(d)
             await db.commit()
-            return _definition_to_type(d)
+            return result
 
     @strawberry.mutation
     async def publish_workflow_definition(
@@ -107,8 +112,9 @@ class WorkflowMutation:
         async with async_session_factory() as db:
             svc = WorkflowDefinitionService(db)
             d = await svc.publish(str(tenant_id), str(definition_id))
+            result = _definition_to_type(d)
             await db.commit()
-            return _definition_to_type(d)
+            return result
 
     @strawberry.mutation
     async def archive_workflow_definition(
@@ -128,8 +134,9 @@ class WorkflowMutation:
         async with async_session_factory() as db:
             svc = WorkflowDefinitionService(db)
             d = await svc.archive(str(tenant_id), str(definition_id))
+            result = _definition_to_type(d)
             await db.commit()
-            return _definition_to_type(d)
+            return result
 
     @strawberry.mutation
     async def clone_workflow_definition(
@@ -149,8 +156,9 @@ class WorkflowMutation:
         async with async_session_factory() as db:
             svc = WorkflowDefinitionService(db)
             d = await svc.clone(str(tenant_id), str(definition_id), str(user_id))
+            result = _definition_to_type(d)
             await db.commit()
-            return _definition_to_type(d)
+            return result
 
     @strawberry.mutation
     async def delete_workflow_definition(
@@ -198,8 +206,9 @@ class WorkflowMutation:
                 is_test=input.is_test,
                 mock_configs=input.mock_configs,
             )
+            result = _execution_to_type(e)
             await db.commit()
-            return _execution_to_type(e)
+            return result
 
     @strawberry.mutation
     async def cancel_workflow_execution(
@@ -219,8 +228,9 @@ class WorkflowMutation:
         async with async_session_factory() as db:
             svc = WorkflowExecutionService(db)
             e = await svc.cancel(str(tenant_id), str(execution_id))
+            result = _execution_to_type(e)
             await db.commit()
-            return _execution_to_type(e)
+            return result
 
     @strawberry.mutation
     async def retry_workflow_execution(
@@ -240,5 +250,66 @@ class WorkflowMutation:
         async with async_session_factory() as db:
             svc = WorkflowExecutionService(db)
             e = await svc.retry(str(tenant_id), str(execution_id), str(user_id))
+            result = _execution_to_type(e)
             await db.commit()
-            return _execution_to_type(e)
+            return result
+
+    @strawberry.mutation
+    async def generate_deployment_workflow(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        input: GenerateDeploymentWorkflowInput,
+    ) -> WorkflowDefinitionType:
+        """Generate a deployment workflow from a published topology."""
+        user_id = await check_graphql_permission(
+            info, "workflow:deployment:generate", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.workflow.deployment_generator import (
+            DeploymentWorkflowGenerator,
+            GeneratorOptions,
+        )
+
+        async with async_session_factory() as db:
+            generator = DeploymentWorkflowGenerator(db)
+            options = GeneratorOptions(
+                add_approval_gates=input.add_approval_gates,
+                add_notifications=input.add_notifications,
+            )
+            d = await generator.generate_from_topology(
+                tenant_id=str(tenant_id),
+                topology_id=str(input.topology_id),
+                created_by=str(user_id),
+                options=options,
+            )
+            result = _definition_to_type(d)
+            await db.commit()
+            return result
+
+    @strawberry.mutation
+    async def seed_system_workflows(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+    ) -> list[WorkflowDefinitionType]:
+        """Seed system workflow templates for a tenant (idempotent)."""
+        user_id = await check_graphql_permission(
+            info, "workflow:system:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.workflow.system_workflow_seeder import SystemWorkflowSeeder
+
+        async with async_session_factory() as db:
+            seeder = SystemWorkflowSeeder(db)
+            created = await seeder.seed_for_tenant(str(tenant_id), str(user_id))
+            await db.flush()
+            # Refresh objects to load server-generated columns (created_at, updated_at)
+            # before converting — accessing them lazily fails in async context
+            for d in created:
+                await db.refresh(d)
+            result = [_definition_to_type(d) for d in created]
+            await db.commit()
+            return result

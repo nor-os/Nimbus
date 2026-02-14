@@ -14,11 +14,13 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { CmdbService } from '@core/services/cmdb.service';
 import { CIClass, CIClassDetail } from '@shared/models/cmdb.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { HasPermissionDirective } from '@shared/directives/has-permission.directive';
 import { ToastService } from '@shared/services/toast.service';
+import { PropertySchemaEditorComponent, PropertyDefRow } from '@shared/components/property-schema-editor/property-schema-editor.component';
 
 /** Internal tree node for hierarchy rendering. */
 interface ClassTreeNode {
@@ -30,7 +32,7 @@ interface ClassTreeNode {
 @Component({
   selector: 'nimbus-class-browser',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, LayoutComponent, HasPermissionDirective],
+  imports: [CommonModule, ReactiveFormsModule, LayoutComponent, HasPermissionDirective, PropertySchemaEditorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nimbus-layout>
@@ -105,14 +107,12 @@ interface ClassTreeNode {
                 </div>
               </div>
               <div class="form-group">
-                <label for="classSchemaDef">Schema (JSON)</label>
-                <textarea
-                  id="classSchemaDef"
-                  formControlName="schemaDef"
-                  class="form-input form-textarea mono"
-                  rows="6"
-                  placeholder='{ "properties": { "cpu_cores": { "type": "integer" } } }'
-                ></textarea>
+                <label>Schema</label>
+                <nimbus-property-schema-editor
+                  [value]="schemaEditorRows"
+                  (valueChange)="onSchemaEditorChange($event)"
+                  [showValidation]="true"
+                />
                 @if (schemaError()) {
                   <span class="error">{{ schemaError() }}</span>
                 }
@@ -172,8 +172,44 @@ interface ClassTreeNode {
                 @if (!node.cls.isActive) {
                   <span class="badge badge-inactive">Inactive</span>
                 }
+                @if (!node.cls.isSystem) {
+                  <span class="node-spacer"></span>
+                  <button
+                    class="btn-icon btn-icon-delete"
+                    title="Delete class"
+                    (click)="confirmDeleteClass($event, node.cls)"
+                    *nimbusHasPermission="'cmdb:class:manage'"
+                  >&#10005;</button>
+                }
               </div>
             }
+          </div>
+        }
+
+        <!-- Delete class confirmation overlay -->
+        @if (classToDelete()) {
+          <div class="confirm-overlay" (click)="classToDelete.set(null)">
+            <div class="confirm-dialog" (click)="$event.stopPropagation()">
+              <h3>Delete Class</h3>
+              <p>
+                Are you sure you want to delete the class
+                <strong>{{ classToDelete()!.displayName }}</strong>?
+                This will soft-delete it and all its attribute definitions.
+              </p>
+              <div class="confirm-actions">
+                <button
+                  class="btn btn-delete"
+                  [disabled]="deleting()"
+                  (click)="deleteClass()"
+                >
+                  {{ deleting() ? 'Deleting...' : 'Delete' }}
+                </button>
+                <button
+                  class="btn btn-secondary"
+                  (click)="classToDelete.set(null)"
+                >Cancel</button>
+              </div>
+            </div>
           </div>
         }
 
@@ -247,7 +283,34 @@ interface ClassTreeNode {
             @if (detail.schemaDef) {
               <h3>Schema Definition</h3>
               <div class="schema-viewer">
-                <pre class="schema-json">{{ detail.schemaDef | json }}</pre>
+                @if (schemaDefEntries(detail.schemaDef); as entries) {
+                  @if (entries.length > 0) {
+                    <table class="table">
+                      <thead>
+                        <tr>
+                          <th>Property</th>
+                          <th>Type</th>
+                          <th>Required</th>
+                          <th>Default</th>
+                          <th>Unit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (entry of entries; track entry.name) {
+                          <tr>
+                            <td class="mono">{{ entry.name }}</td>
+                            <td><span class="badge badge-type">{{ entry.type }}</span></td>
+                            <td>{{ entry.required ? 'Yes' : 'No' }}</td>
+                            <td class="mono">{{ entry.defaultVal ?? '\u2014' }}</td>
+                            <td>{{ entry.unit ?? '\u2014' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  } @else {
+                    <pre class="schema-json">{{ detail.schemaDef | json }}</pre>
+                  }
+                }
               </div>
             }
           </div>
@@ -348,6 +411,37 @@ interface ClassTreeNode {
     .badge-system { background: #dbeafe; color: #1d4ed8; }
     .badge-inactive { background: #fef2f2; color: #dc2626; }
     .badge-type { background: #f1f5f9; color: #64748b; }
+    .node-spacer { flex: 1; }
+    .btn-icon {
+      background: none; border: none; cursor: pointer; padding: 0.125rem 0.375rem;
+      border-radius: 4px; font-size: 0.75rem; line-height: 1; transition: background 0.15s;
+    }
+    .btn-icon-delete { color: #dc2626; }
+    .btn-icon-delete:hover { background: #fef2f2; }
+    .btn-delete {
+      font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+      border-radius: 6px; cursor: pointer; padding: 0.5rem 1rem;
+      background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
+    }
+    .btn-delete:hover { background: #fee2e2; }
+    .btn-delete:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Confirm dialog overlay ──────────────────────────────────── */
+    .confirm-overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3);
+      display: flex; justify-content: center; align-items: center; z-index: 1000;
+    }
+    .confirm-dialog {
+      background: #fff; border-radius: 8px; padding: 1.5rem;
+      max-width: 400px; width: 90%; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+    }
+    .confirm-dialog h3 {
+      font-size: 1rem; font-weight: 600; color: #1e293b; margin: 0 0 0.75rem;
+    }
+    .confirm-dialog p {
+      font-size: 0.8125rem; color: #64748b; margin: 0 0 1.25rem; line-height: 1.5;
+    }
+    .confirm-actions { display: flex; gap: 0.75rem; }
 
     /* ── Detail panel ────────────────────────────────────────────── */
     .detail-panel {
@@ -407,6 +501,7 @@ interface ClassTreeNode {
 export class ClassBrowserComponent implements OnInit {
   private cmdbService = inject(CmdbService);
   private fb = inject(FormBuilder);
+  private router = inject(Router);
   private toastService = inject(ToastService);
 
   allClasses = signal<CIClass[]>([]);
@@ -417,6 +512,8 @@ export class ClassBrowserComponent implements OnInit {
   creating = signal(false);
   createError = signal('');
   schemaError = signal('');
+  classToDelete = signal<CIClass | null>(null);
+  deleting = signal(false);
 
   /** Build hierarchical tree from flat class list. */
   classTree = computed<ClassTreeNode[]>(() => {
@@ -464,12 +561,13 @@ export class ClassBrowserComponent implements OnInit {
     return result;
   });
 
+  schemaEditorRows: PropertyDefRow[] = [];
+
   createForm = this.fb.group({
     name: ['', [Validators.required, Validators.pattern(/^[a-z][a-z0-9_]*$/)]],
     displayName: ['', [Validators.required]],
     parentClassId: [''],
     icon: [''],
-    schemaDef: [''],
   });
 
   ngOnInit(): void {
@@ -477,8 +575,14 @@ export class ClassBrowserComponent implements OnInit {
   }
 
   selectClass(cls: CIClass): void {
+    // Custom classes → navigate to class editor
+    if (!cls.isSystem) {
+      this.router.navigate(['/cmdb/classes', cls.id]);
+      return;
+    }
+
+    // System classes → inline detail panel
     if (this.selectedClassId() === cls.id) {
-      // Deselect on second click
       this.selectedClassId.set(null);
       this.selectedDetail.set(null);
       return;
@@ -497,24 +601,53 @@ export class ClassBrowserComponent implements OnInit {
     return found ? found.displayName : parentId;
   }
 
+  onSchemaEditorChange(rows: PropertyDefRow[]): void {
+    this.schemaEditorRows = rows;
+  }
+
+  /** Convert a schema definition to a flat table of entries for display. */
+  schemaDefEntries(schemaDef: Record<string, unknown>): Array<{ name: string; type: string; required: boolean; defaultVal: string | null; unit: string | null }> {
+    if (!schemaDef) return [];
+    // Handle dict format: { "cpu": { "type": "integer" }, ... }
+    if (typeof schemaDef === 'object' && !Array.isArray(schemaDef)) {
+      // Check if it has a "properties" key (JSON Schema-style)
+      const props = (schemaDef['properties'] ?? schemaDef) as Record<string, unknown>;
+      return Object.entries(props).map(([key, val]) => {
+        const v = (val && typeof val === 'object' ? val : {}) as Record<string, unknown>;
+        return {
+          name: key,
+          type: String(v['type'] || v['data_type'] || 'string'),
+          required: Boolean(v['required']),
+          defaultVal: v['default'] != null ? String(v['default']) : (v['default_value'] != null ? String(v['default_value']) : null),
+          unit: v['unit'] ? String(v['unit']) : null,
+        };
+      });
+    }
+    return [];
+  }
+
   onCreateSubmit(): void {
     if (this.createForm.invalid) return;
 
-    // Validate schema JSON if provided
-    const schemaRaw = this.createForm.get('schemaDef')?.value?.trim();
+    // Build schema from visual editor rows
     let schemaDef: Record<string, unknown> | null = null;
-    if (schemaRaw) {
-      try {
-        schemaDef = JSON.parse(schemaRaw);
-        this.schemaError.set('');
-      } catch {
-        this.schemaError.set('Invalid JSON. Please enter valid JSON or leave empty.');
-        return;
+    if (this.schemaEditorRows.length > 0) {
+      const properties: Record<string, unknown> = {};
+      for (const row of this.schemaEditorRows) {
+        if (!row.name) continue;
+        const entry: Record<string, unknown> = { type: row.data_type };
+        if (row.required) entry['required'] = true;
+        if (row.default_value) entry['default'] = row.default_value;
+        if (row.unit) entry['unit'] = row.unit;
+        if (row.description) entry['description'] = row.description;
+        properties[row.name] = entry;
       }
+      schemaDef = { properties };
     }
 
     this.creating.set(true);
     this.createError.set('');
+    this.schemaError.set('');
 
     const values = this.createForm.value;
 
@@ -537,6 +670,35 @@ export class ClassBrowserComponent implements OnInit {
         const msg = err.message || 'Failed to create class';
         this.createError.set(msg);
         this.toastService.error(msg);
+      },
+    });
+  }
+
+  confirmDeleteClass(event: Event, cls: CIClass): void {
+    event.stopPropagation();
+    this.classToDelete.set(cls);
+  }
+
+  deleteClass(): void {
+    const cls = this.classToDelete();
+    if (!cls) return;
+
+    this.deleting.set(true);
+    this.cmdbService.deleteClass(cls.id).subscribe({
+      next: () => {
+        this.deleting.set(false);
+        this.classToDelete.set(null);
+        this.toastService.success(`Class "${cls.displayName}" deleted`);
+        // Clear selection if it was this class
+        if (this.selectedClassId() === cls.id) {
+          this.selectedClassId.set(null);
+          this.selectedDetail.set(null);
+        }
+        this.loadClasses();
+      },
+      error: (err) => {
+        this.deleting.set(false);
+        this.toastService.error(err.message || 'Failed to delete class');
       },
     });
   }

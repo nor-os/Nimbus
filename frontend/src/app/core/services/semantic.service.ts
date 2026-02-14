@@ -1,6 +1,6 @@
 /**
  * Overview: Semantic layer service — GraphQL queries and mutations for managing the type catalog,
- *     relationship kinds, providers, provider resource types, and type mappings.
+ *     relationship kinds, and providers.
  * Architecture: Core service layer for semantic layer data (Section 5)
  * Dependencies: @angular/core, rxjs, app/core/services/api.service
  * Concepts: Full CRUD operations. System records (isSystem=true) protected from deletion/rename.
@@ -10,6 +10,16 @@ import { Observable, map } from 'rxjs';
 import { ApiService } from './api.service';
 import { TenantContextService } from './tenant-context.service';
 import { environment } from '@env/environment';
+import { SemanticActivityType } from '@shared/models/cmdb.model';
+import {
+  OsImage,
+  OsImageInput,
+  OsImageList,
+  OsImageProviderMapping,
+  OsImageProviderMappingInput,
+  OsImageProviderMappingUpdateInput,
+  OsImageUpdateInput,
+} from '@shared/models/os-image.model';
 import {
   SemanticCategory,
   SemanticCategoryInput,
@@ -17,9 +27,6 @@ import {
   SemanticCategoryWithTypes,
   SemanticProvider,
   SemanticProviderInput,
-  SemanticProviderResourceType,
-  SemanticProviderResourceTypeInput,
-  SemanticProviderResourceTypeUpdateInput,
   SemanticProviderUpdateInput,
   SemanticRelationshipKind,
   SemanticRelationshipKindInput,
@@ -28,17 +35,7 @@ import {
   SemanticResourceTypeInput,
   SemanticResourceTypeList,
   SemanticResourceTypeUpdateInput,
-  SemanticTypeMapping,
-  SemanticTypeMappingInput,
-  SemanticTypeMappingUpdateInput,
 } from '@shared/models/semantic.model';
-
-const TYPE_MAPPING_FIELDS = `
-  id providerResourceTypeId semanticTypeId
-  providerName providerApiType providerDisplayName
-  semanticTypeName semanticTypeDisplayName
-  parameterMapping notes isSystem createdAt updatedAt
-`;
 
 const CATEGORY_FIELDS = `
   id name displayName description icon sortOrder isSystem createdAt updatedAt
@@ -48,12 +45,10 @@ const TYPE_FIELDS = `
   id name displayName description icon isAbstract parentTypeName isSystem
   propertiesSchema allowedRelationshipKinds sortOrder
   category { ${CATEGORY_FIELDS} }
-  mappings { ${TYPE_MAPPING_FIELDS} }
   children {
     id name displayName description icon isAbstract parentTypeName isSystem
     propertiesSchema allowedRelationshipKinds sortOrder
     category { ${CATEGORY_FIELDS} }
-    mappings { ${TYPE_MAPPING_FIELDS} }
     children { id name displayName }
     createdAt updatedAt
   }
@@ -64,14 +59,32 @@ const RELATIONSHIP_KIND_FIELDS = `
   id name displayName description inverseName isSystem createdAt updatedAt
 `;
 
+const ACTIVITY_TYPE_FIELDS = `
+  id name displayName category description icon
+  applicableSemanticCategories applicableSemanticTypes
+  defaultRelationshipKindId defaultRelationshipKindName
+  propertiesSchema isSystem sortOrder createdAt updatedAt
+`;
+
 const PROVIDER_FIELDS = `
   id name displayName description icon providerType websiteUrl documentationUrl
   isSystem resourceTypeCount createdAt updatedAt
 `;
 
-const PRT_FIELDS = `
-  id providerId providerName apiType displayName description documentationUrl
-  parameterSchema status isSystem semanticTypeName semanticTypeId createdAt updatedAt
+const OS_IMAGE_MAPPING_FIELDS = `
+  id osImageId providerId providerName providerDisplayName
+  imageReference notes isSystem createdAt updatedAt
+`;
+
+const OS_IMAGE_TENANT_ASSIGNMENT_FIELDS = `
+  id osImageId tenantId tenantName createdAt
+`;
+
+const OS_IMAGE_FIELDS = `
+  id name displayName osFamily version architecture description icon
+  sortOrder isSystem providerMappings { ${OS_IMAGE_MAPPING_FIELDS} }
+  tenantAssignments { ${OS_IMAGE_TENANT_ASSIGNMENT_FIELDS} }
+  createdAt updatedAt
 `;
 
 @Injectable({ providedIn: 'root' })
@@ -188,50 +201,6 @@ export class SemanticService {
     );
   }
 
-  // -- Provider resource type queries -------------------------------------
-
-  listProviderResourceTypes(providerId?: string, status?: string): Observable<SemanticProviderResourceType[]> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ semanticProviderResourceTypes: SemanticProviderResourceType[] }>(`
-      query SemanticProviderResourceTypes($tenantId: UUID!, $providerId: UUID, $status: String) {
-        semanticProviderResourceTypes(tenantId: $tenantId, providerId: $providerId, status: $status) {
-          ${PRT_FIELDS}
-        }
-      }
-    `, { tenantId, providerId, status }).pipe(
-      map((data) => data.semanticProviderResourceTypes),
-    );
-  }
-
-  // -- Type mapping queries -----------------------------------------------
-
-  listTypeMappings(filters?: {
-    providerResourceTypeId?: string;
-    semanticTypeId?: string;
-    providerId?: string;
-  }): Observable<SemanticTypeMapping[]> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ semanticTypeMappings: SemanticTypeMapping[] }>(`
-      query SemanticTypeMappings(
-        $tenantId: UUID!
-        $providerResourceTypeId: UUID
-        $semanticTypeId: UUID
-        $providerId: UUID
-      ) {
-        semanticTypeMappings(
-          tenantId: $tenantId
-          providerResourceTypeId: $providerResourceTypeId
-          semanticTypeId: $semanticTypeId
-          providerId: $providerId
-        ) {
-          ${TYPE_MAPPING_FIELDS}
-        }
-      }
-    `, { tenantId, ...filters }).pipe(
-      map((data) => data.semanticTypeMappings),
-    );
-  }
-
   // -- Category mutations -------------------------------------------------
 
   createCategory(input: SemanticCategoryInput): Observable<SemanticCategory> {
@@ -331,72 +300,6 @@ export class SemanticService {
     `, { tenantId, id }).pipe(map((d) => d.deleteSemanticProvider));
   }
 
-  // -- Provider resource type mutations -----------------------------------
-
-  createProviderResourceType(input: SemanticProviderResourceTypeInput): Observable<SemanticProviderResourceType> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ createProviderResourceType: SemanticProviderResourceType }>(`
-      mutation CreateProviderResourceType($tenantId: UUID!, $input: SemanticProviderResourceTypeInput!) {
-        createProviderResourceType(tenantId: $tenantId, input: $input) {
-          ${PRT_FIELDS}
-        }
-      }
-    `, { tenantId, input }).pipe(map((d) => d.createProviderResourceType));
-  }
-
-  updateProviderResourceType(id: string, input: SemanticProviderResourceTypeUpdateInput): Observable<SemanticProviderResourceType | null> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ updateProviderResourceType: SemanticProviderResourceType | null }>(`
-      mutation UpdateProviderResourceType($tenantId: UUID!, $id: UUID!, $input: SemanticProviderResourceTypeUpdateInput!) {
-        updateProviderResourceType(tenantId: $tenantId, id: $id, input: $input) {
-          ${PRT_FIELDS}
-        }
-      }
-    `, { tenantId, id, input }).pipe(map((d) => d.updateProviderResourceType));
-  }
-
-  deleteProviderResourceType(id: string): Observable<boolean> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ deleteProviderResourceType: boolean }>(`
-      mutation DeleteProviderResourceType($tenantId: UUID!, $id: UUID!) {
-        deleteProviderResourceType(tenantId: $tenantId, id: $id)
-      }
-    `, { tenantId, id }).pipe(map((d) => d.deleteProviderResourceType));
-  }
-
-  // -- Type mapping mutations ---------------------------------------------
-
-  createTypeMapping(input: SemanticTypeMappingInput): Observable<SemanticTypeMapping> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ createTypeMapping: SemanticTypeMapping }>(`
-      mutation CreateTypeMapping($tenantId: UUID!, $input: SemanticTypeMappingInput!) {
-        createTypeMapping(tenantId: $tenantId, input: $input) {
-          ${TYPE_MAPPING_FIELDS}
-        }
-      }
-    `, { tenantId, input }).pipe(map((d) => d.createTypeMapping));
-  }
-
-  updateTypeMapping(id: string, input: SemanticTypeMappingUpdateInput): Observable<SemanticTypeMapping | null> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ updateTypeMapping: SemanticTypeMapping | null }>(`
-      mutation UpdateTypeMapping($tenantId: UUID!, $id: UUID!, $input: SemanticTypeMappingUpdateInput!) {
-        updateTypeMapping(tenantId: $tenantId, id: $id, input: $input) {
-          ${TYPE_MAPPING_FIELDS}
-        }
-      }
-    `, { tenantId, id, input }).pipe(map((d) => d.updateTypeMapping));
-  }
-
-  deleteTypeMapping(id: string): Observable<boolean> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ deleteTypeMapping: boolean }>(`
-      mutation DeleteTypeMapping($tenantId: UUID!, $id: UUID!) {
-        deleteTypeMapping(tenantId: $tenantId, id: $id)
-      }
-    `, { tenantId, id }).pipe(map((d) => d.deleteTypeMapping));
-  }
-
   // -- Relationship kind mutations ----------------------------------------
 
   createRelationshipKind(input: SemanticRelationshipKindInput): Observable<SemanticRelationshipKind> {
@@ -428,6 +331,197 @@ export class SemanticService {
         deleteRelationshipKind(tenantId: $tenantId, id: $id)
       }
     `, { tenantId, id }).pipe(map((d) => d.deleteRelationshipKind));
+  }
+
+  // -- Activity type queries ------------------------------------------------
+
+  listActivityTypes(category?: string): Observable<SemanticActivityType[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    const vars: Record<string, unknown> = { tenantId };
+    let categoryParam = '';
+    let categoryArg = '';
+    if (category) {
+      vars['category'] = category;
+      categoryParam = ', $category: String';
+      categoryArg = ', category: $category';
+    }
+    return this.gql<{ semanticActivityTypes: SemanticActivityType[] }>(`
+      query SemanticActivityTypes($tenantId: UUID!${categoryParam}) {
+        semanticActivityTypes(tenantId: $tenantId${categoryArg}) {
+          ${ACTIVITY_TYPE_FIELDS}
+        }
+      }
+    `, vars).pipe(map((d) => d.semanticActivityTypes));
+  }
+
+  getActivityType(id: string): Observable<SemanticActivityType | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ semanticActivityType: SemanticActivityType | null }>(`
+      query SemanticActivityType($tenantId: UUID!, $id: UUID!) {
+        semanticActivityType(tenantId: $tenantId, id: $id) {
+          ${ACTIVITY_TYPE_FIELDS}
+        }
+      }
+    `, { tenantId, id }).pipe(map((d) => d.semanticActivityType));
+  }
+
+  createActivityType(input: Record<string, unknown>): Observable<SemanticActivityType> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ createSemanticActivityType: SemanticActivityType }>(`
+      mutation CreateSemanticActivityType($tenantId: UUID!, $input: SemanticActivityTypeInput!) {
+        createSemanticActivityType(tenantId: $tenantId, input: $input) {
+          ${ACTIVITY_TYPE_FIELDS}
+        }
+      }
+    `, { tenantId, input }).pipe(map((d) => d.createSemanticActivityType));
+  }
+
+  updateActivityType(id: string, input: Record<string, unknown>): Observable<SemanticActivityType | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ updateSemanticActivityType: SemanticActivityType | null }>(`
+      mutation UpdateSemanticActivityType($tenantId: UUID!, $id: UUID!, $input: SemanticActivityTypeUpdateInput!) {
+        updateSemanticActivityType(tenantId: $tenantId, id: $id, input: $input) {
+          ${ACTIVITY_TYPE_FIELDS}
+        }
+      }
+    `, { tenantId, id, input }).pipe(map((d) => d.updateSemanticActivityType));
+  }
+
+  deleteActivityType(id: string): Observable<boolean> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ deleteSemanticActivityType: boolean }>(`
+      mutation DeleteSemanticActivityType($tenantId: UUID!, $id: UUID!) {
+        deleteSemanticActivityType(tenantId: $tenantId, id: $id)
+      }
+    `, { tenantId, id }).pipe(map((d) => d.deleteSemanticActivityType));
+  }
+
+  // -- OS Image queries ---------------------------------------------------
+
+  listOsImages(filters?: {
+    osFamily?: string;
+    architecture?: string;
+    search?: string;
+    offset?: number;
+    limit?: number;
+  }): Observable<OsImageList> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ osImages: OsImageList }>(`
+      query OsImages(
+        $tenantId: UUID!
+        $osFamily: String
+        $architecture: String
+        $search: String
+        $offset: Int
+        $limit: Int
+      ) {
+        osImages(
+          tenantId: $tenantId
+          osFamily: $osFamily
+          architecture: $architecture
+          search: $search
+          offset: $offset
+          limit: $limit
+        ) {
+          items { ${OS_IMAGE_FIELDS} }
+          total
+        }
+      }
+    `, { tenantId, ...filters }).pipe(
+      map((data) => data.osImages),
+    );
+  }
+
+  getOsImage(id: string): Observable<OsImage | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ osImage: OsImage | null }>(`
+      query OsImage($tenantId: UUID!, $id: UUID!) {
+        osImage(tenantId: $tenantId, id: $id) {
+          ${OS_IMAGE_FIELDS}
+        }
+      }
+    `, { tenantId, id }).pipe(
+      map((data) => data.osImage),
+    );
+  }
+
+  // -- OS Image mutations -------------------------------------------------
+
+  createOsImage(input: OsImageInput): Observable<OsImage> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ createOsImage: OsImage }>(`
+      mutation CreateOsImage($tenantId: UUID!, $input: OsImageInput!) {
+        createOsImage(tenantId: $tenantId, input: $input) {
+          ${OS_IMAGE_FIELDS}
+        }
+      }
+    `, { tenantId, input }).pipe(map((d) => d.createOsImage));
+  }
+
+  updateOsImage(id: string, input: OsImageUpdateInput): Observable<OsImage | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ updateOsImage: OsImage | null }>(`
+      mutation UpdateOsImage($tenantId: UUID!, $id: UUID!, $input: OsImageUpdateInput!) {
+        updateOsImage(tenantId: $tenantId, id: $id, input: $input) {
+          ${OS_IMAGE_FIELDS}
+        }
+      }
+    `, { tenantId, id, input }).pipe(map((d) => d.updateOsImage));
+  }
+
+  deleteOsImage(id: string): Observable<boolean> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ deleteOsImage: boolean }>(`
+      mutation DeleteOsImage($tenantId: UUID!, $id: UUID!) {
+        deleteOsImage(tenantId: $tenantId, id: $id)
+      }
+    `, { tenantId, id }).pipe(map((d) => d.deleteOsImage));
+  }
+
+  // -- OS Image Provider Mapping mutations --------------------------------
+
+  createOsImageProviderMapping(input: OsImageProviderMappingInput): Observable<OsImageProviderMapping> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ createOsImageProviderMapping: OsImageProviderMapping }>(`
+      mutation CreateOsImageProviderMapping($tenantId: UUID!, $input: OsImageProviderMappingInput!) {
+        createOsImageProviderMapping(tenantId: $tenantId, input: $input) {
+          ${OS_IMAGE_MAPPING_FIELDS}
+        }
+      }
+    `, { tenantId, input }).pipe(map((d) => d.createOsImageProviderMapping));
+  }
+
+  updateOsImageProviderMapping(id: string, input: OsImageProviderMappingUpdateInput): Observable<OsImageProviderMapping | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ updateOsImageProviderMapping: OsImageProviderMapping | null }>(`
+      mutation UpdateOsImageProviderMapping($tenantId: UUID!, $id: UUID!, $input: OsImageProviderMappingUpdateInput!) {
+        updateOsImageProviderMapping(tenantId: $tenantId, id: $id, input: $input) {
+          ${OS_IMAGE_MAPPING_FIELDS}
+        }
+      }
+    `, { tenantId, id, input }).pipe(map((d) => d.updateOsImageProviderMapping));
+  }
+
+  deleteOsImageProviderMapping(id: string): Observable<boolean> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ deleteOsImageProviderMapping: boolean }>(`
+      mutation DeleteOsImageProviderMapping($tenantId: UUID!, $id: UUID!) {
+        deleteOsImageProviderMapping(tenantId: $tenantId, id: $id)
+      }
+    `, { tenantId, id }).pipe(map((d) => d.deleteOsImageProviderMapping));
+  }
+
+  // -- OS Image Tenant Assignment mutations --------------------------------
+
+  setOsImageTenants(osImageId: string, tenantIds: string[]): Observable<OsImage> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ setOsImageTenants: OsImage }>(`
+      mutation SetOsImageTenants($tenantId: UUID!, $input: SetImageTenantsInput!) {
+        setOsImageTenants(tenantId: $tenantId, input: $input) {
+          ${OS_IMAGE_FIELDS}
+        }
+      }
+    `, { tenantId, input: { osImageId, tenantIds } }).pipe(map((d) => d.setOsImageTenants));
   }
 
   // -- GraphQL helper -----------------------------------------------------

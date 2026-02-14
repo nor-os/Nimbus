@@ -99,12 +99,24 @@ class AuditLogListType:
 
 
 @strawberry.type
+class CategoryRetentionOverrideType:
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    event_category: EventCategoryGQL
+    hot_days: int
+    cold_days: int
+    created_at: datetime
+    updated_at: datetime
+
+
+@strawberry.type
 class RetentionPolicyType:
     id: uuid.UUID
     tenant_id: uuid.UUID
     hot_days: int
     cold_days: int
     archive_enabled: bool
+    category_overrides: list[CategoryRetentionOverrideType]
     created_at: datetime
     updated_at: datetime
 
@@ -196,6 +208,13 @@ class RetentionPolicyInput:
     hot_days: int | None = None
     cold_days: int | None = None
     archive_enabled: bool | None = None
+
+
+@strawberry.input
+class CategoryRetentionOverrideInput:
+    event_category: EventCategoryGQL
+    hot_days: int
+    cold_days: int
 
 
 @strawberry.input

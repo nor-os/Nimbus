@@ -9,7 +9,7 @@ Concepts: Templates are blueprints cloneable to real price lists. Cloning create
 from __future__ import annotations
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -136,8 +136,6 @@ class PriceListTemplateService:
         self,
         template_id: str,
         tenant_id: str,
-        effective_from: date,
-        effective_to: date | None = None,
     ) -> PriceList:
         template = await self.get_template(template_id)
         if not template:
@@ -147,8 +145,6 @@ class PriceListTemplateService:
             tenant_id=tenant_id,
             name=f"{template.name} (cloned)",
             is_default=False,
-            effective_from=effective_from,
-            effective_to=effective_to,
         )
         self.db.add(price_list)
         await self.db.flush()

@@ -11,10 +11,8 @@ import uuid
 from app.models.semantic_type import (
     SemanticCategory,
     SemanticProvider,
-    SemanticProviderResourceType,
     SemanticRelationshipKind,
     SemanticResourceType,
-    SemanticTypeMapping,
 )
 from app.services.semantic.service import (
     DuplicateNameError,
@@ -26,7 +24,7 @@ from app.services.semantic.service import (
 
 
 # ---------------------------------------------------------------------------
-# 1. Model-level: is_system column on all 6 models
+# 1. Model-level: is_system column on all 4 models
 # ---------------------------------------------------------------------------
 
 
@@ -85,32 +83,6 @@ class TestIsSystemColumn:
         col = SemanticProvider.__table__.c.is_system
         assert col.nullable is False
 
-    def test_provider_resource_type_has_is_system(self):
-        columns = {col.name for col in SemanticProviderResourceType.__table__.columns}
-        assert "is_system" in columns
-
-    def test_provider_resource_type_is_system_default_false(self):
-        col = SemanticProviderResourceType.__table__.c.is_system
-        assert col.server_default is not None
-        assert str(col.server_default.arg) == "false"
-
-    def test_provider_resource_type_is_system_not_nullable(self):
-        col = SemanticProviderResourceType.__table__.c.is_system
-        assert col.nullable is False
-
-    def test_type_mapping_has_is_system(self):
-        columns = {col.name for col in SemanticTypeMapping.__table__.columns}
-        assert "is_system" in columns
-
-    def test_type_mapping_is_system_default_false(self):
-        col = SemanticTypeMapping.__table__.c.is_system
-        assert col.server_default is not None
-        assert str(col.server_default.arg) == "false"
-
-    def test_type_mapping_is_system_not_nullable(self):
-        col = SemanticTypeMapping.__table__.c.is_system
-        assert col.nullable is False
-
 
 class TestIsSystemOnInstantiation:
     """Verify is_system can be set on model instances."""
@@ -163,24 +135,6 @@ class TestIsSystemOnInstantiation:
             is_system=True,
         )
         assert provider.is_system is True
-
-    def test_provider_resource_type_is_system(self):
-        prt = SemanticProviderResourceType(
-            provider_id=uuid.uuid4(),
-            api_type="ec2:instance",
-            display_name="EC2 Instance",
-            status="available",
-            is_system=True,
-        )
-        assert prt.is_system is True
-
-    def test_type_mapping_is_system(self):
-        mapping = SemanticTypeMapping(
-            provider_resource_type_id=uuid.uuid4(),
-            semantic_type_id=uuid.uuid4(),
-            is_system=True,
-        )
-        assert mapping.is_system is True
 
 
 # ---------------------------------------------------------------------------
@@ -381,65 +335,6 @@ class TestServiceMethodSignatures:
         assert hasattr(SemanticService, "delete_provider")
         assert inspect.iscoroutinefunction(SemanticService.delete_provider)
 
-    # -- Provider Resource Type methods -------------------------------------
-
-    def test_create_provider_resource_type_exists(self):
-        assert hasattr(SemanticService, "create_provider_resource_type")
-        assert inspect.iscoroutinefunction(SemanticService.create_provider_resource_type)
-
-    def test_create_provider_resource_type_params(self):
-        sig = inspect.signature(SemanticService.create_provider_resource_type)
-        params = list(sig.parameters.keys())
-        assert "self" in params
-        assert "provider_id" in params
-        assert "api_type" in params
-        assert "display_name" in params
-
-    def test_update_provider_resource_type_exists(self):
-        assert hasattr(SemanticService, "update_provider_resource_type")
-        assert inspect.iscoroutinefunction(SemanticService.update_provider_resource_type)
-
-    def test_update_provider_resource_type_accepts_kwargs(self):
-        sig = inspect.signature(SemanticService.update_provider_resource_type)
-        has_kwargs = any(
-            p.kind == inspect.Parameter.VAR_KEYWORD
-            for p in sig.parameters.values()
-        )
-        assert has_kwargs, "update_provider_resource_type should accept **kwargs"
-
-    def test_delete_provider_resource_type_exists(self):
-        assert hasattr(SemanticService, "delete_provider_resource_type")
-        assert inspect.iscoroutinefunction(SemanticService.delete_provider_resource_type)
-
-    # -- Type Mapping methods -----------------------------------------------
-
-    def test_create_type_mapping_exists(self):
-        assert hasattr(SemanticService, "create_type_mapping")
-        assert inspect.iscoroutinefunction(SemanticService.create_type_mapping)
-
-    def test_create_type_mapping_params(self):
-        sig = inspect.signature(SemanticService.create_type_mapping)
-        params = list(sig.parameters.keys())
-        assert "self" in params
-        assert "provider_resource_type_id" in params
-        assert "semantic_type_id" in params
-
-    def test_update_type_mapping_exists(self):
-        assert hasattr(SemanticService, "update_type_mapping")
-        assert inspect.iscoroutinefunction(SemanticService.update_type_mapping)
-
-    def test_update_type_mapping_accepts_kwargs(self):
-        sig = inspect.signature(SemanticService.update_type_mapping)
-        has_kwargs = any(
-            p.kind == inspect.Parameter.VAR_KEYWORD
-            for p in sig.parameters.values()
-        )
-        assert has_kwargs, "update_type_mapping should accept **kwargs"
-
-    def test_delete_type_mapping_exists(self):
-        assert hasattr(SemanticService, "delete_type_mapping")
-        assert inspect.iscoroutinefunction(SemanticService.delete_type_mapping)
-
     # -- Relationship kind methods ------------------------------------------
 
     def test_create_relationship_kind_exists(self):
@@ -504,12 +399,6 @@ class TestServiceMethodCount:
         "create_provider",
         "update_provider",
         "delete_provider",
-        "create_provider_resource_type",
-        "update_provider_resource_type",
-        "delete_provider_resource_type",
-        "create_type_mapping",
-        "update_type_mapping",
-        "delete_type_mapping",
     }
 
     def test_all_write_methods_present(self):

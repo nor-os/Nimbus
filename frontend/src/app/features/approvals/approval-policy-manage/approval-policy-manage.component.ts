@@ -257,11 +257,11 @@ import {
     </nimbus-layout>
   `,
   styles: [`
-    .page { padding: 24px; max-width: 960px; }
+    .page { padding: 0; max-width: 960px; }
     .page-header {
-      display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;
     }
-    .page-title { font-size: 22px; font-weight: 600; margin: 0; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
     .loading { padding: 40px; text-align: center; color: #667; }
     .empty-state { padding: 60px; text-align: center; color: #667; }
     .empty-hint { font-size: 13px; color: #9ca3af; margin-top: 4px; }

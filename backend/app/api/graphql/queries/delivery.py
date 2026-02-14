@@ -250,6 +250,7 @@ def _estimation_to_gql(e) -> ServiceEstimationType:
         service_offering_id=e.service_offering_id,
         delivery_region_id=e.delivery_region_id,
         coverage_model=e.coverage_model,
+        price_list_id=getattr(e, "price_list_id", None),
         status=e.status,
         quantity=e.quantity,
         sell_price_per_unit=e.sell_price_per_unit,

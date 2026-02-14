@@ -15,6 +15,8 @@ from app.api.graphql.types.audit import (
     AuditLogListType,
     AuditLogType,
     AuditSearchInput,
+    CategoryRetentionOverrideType,
+    EventCategoryGQL,
     RedactionRuleType,
     RetentionPolicyType,
     SavedQueryType,
@@ -122,7 +124,7 @@ class AuditQuery:
     async def retention_policy(
         self, info: Info, tenant_id: uuid.UUID
     ) -> RetentionPolicyType:
-        """Get the retention policy for a tenant."""
+        """Get the retention policy for a tenant, including per-category overrides."""
         await check_graphql_permission(info, "audit:retention:read", str(tenant_id))
         from app.db.session import async_session_factory
         from app.services.audit.retention import RetentionService
@@ -130,6 +132,7 @@ class AuditQuery:
         async with async_session_factory() as db:
             service = RetentionService(db)
             policy = await service.get_or_create_policy(str(tenant_id))
+            overrides = await service.list_category_overrides(str(tenant_id))
             await db.commit()
             return RetentionPolicyType(
                 id=policy.id,
@@ -137,6 +140,18 @@ class AuditQuery:
                 hot_days=policy.hot_days,
                 cold_days=policy.cold_days,
                 archive_enabled=policy.archive_enabled,
+                category_overrides=[
+                    CategoryRetentionOverrideType(
+                        id=ov.id,
+                        tenant_id=ov.tenant_id,
+                        event_category=EventCategoryGQL(ov.event_category.value),
+                        hot_days=ov.hot_days,
+                        cold_days=ov.cold_days,
+                        created_at=ov.created_at,
+                        updated_at=ov.updated_at,
+                    )
+                    for ov in overrides
+                ],
                 created_at=policy.created_at,
                 updated_at=policy.updated_at,
             )

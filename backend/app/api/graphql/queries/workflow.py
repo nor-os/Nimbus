@@ -22,6 +22,7 @@ from app.api.graphql.types.workflow import (
     WorkflowExecutionType,
     WorkflowNodeExecutionStatusGQL,
     WorkflowNodeExecutionType,
+    WorkflowTypeGQL,
 )
 
 
@@ -37,6 +38,9 @@ def _definition_to_type(d) -> WorkflowDefinitionType:
         created_by=d.created_by,
         timeout_seconds=d.timeout_seconds,
         max_concurrent=d.max_concurrent,
+        workflow_type=WorkflowTypeGQL(d.workflow_type.value),
+        source_topology_id=d.source_topology_id,
+        is_system=d.is_system,
         created_at=d.created_at,
         updated_at=d.updated_at,
     )
@@ -88,6 +92,7 @@ class WorkflowQuery:
         info: Info,
         tenant_id: uuid.UUID,
         status: str | None = None,
+        workflow_type: str | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> list[WorkflowDefinitionType]:
@@ -99,7 +104,25 @@ class WorkflowQuery:
 
         async with async_session_factory() as db:
             svc = WorkflowDefinitionService(db)
-            definitions = await svc.list(str(tenant_id), status, offset, limit)
+            definitions = await svc.list(str(tenant_id), status, workflow_type, offset, limit)
+            return [_definition_to_type(d) for d in definitions]
+
+    @strawberry.field
+    async def deployment_workflows_for_topology(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        topology_id: uuid.UUID,
+    ) -> list[WorkflowDefinitionType]:
+        """List deployment workflows linked to a specific topology."""
+        await check_graphql_permission(info, "workflow:definition:read", str(tenant_id))
+
+        from app.db.session import async_session_factory
+        from app.services.workflow.definition_service import WorkflowDefinitionService
+
+        async with async_session_factory() as db:
+            svc = WorkflowDefinitionService(db)
+            definitions = await svc.list_by_topology(str(tenant_id), str(topology_id))
             return [_definition_to_type(d) for d in definitions]
 
     @strawberry.field

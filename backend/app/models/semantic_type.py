@@ -1,16 +1,15 @@
 """
-Overview: Semantic layer models — categories, resource types, relationship kinds, providers,
-    provider resource types, and type mappings for the cloud abstraction layer.
+Overview: Semantic layer models — categories, resource types, relationship kinds, and providers
+    for the cloud abstraction layer.
 Architecture: System-level models (not tenant-scoped) that define the semantic catalog (Section 5)
 Dependencies: sqlalchemy, app.db.base, app.models.base
 Concepts: Semantic types normalize provider-specific resources into a unified model. Categories
-    group types. Relationship kinds define how types connect. Providers are first-class entities
-    with resource types that map to semantic types via normalized FK relationships.
+    group types. Relationship kinds define how types connect. Providers are first-class entities.
 """
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -75,11 +74,6 @@ class SemanticResourceType(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         lazy="selectin",
         foreign_keys=[parent_type_id],
     )
-    type_mappings: Mapped[list["SemanticTypeMapping"]] = relationship(
-        back_populates="semantic_type_rel",
-        lazy="selectin",
-    )
-
     __table_args__ = (
         Index("ix_semantic_resource_types_category", "category_id"),
     )
@@ -110,83 +104,3 @@ class SemanticProvider(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     documentation_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-
-    resource_types: Mapped[list["SemanticProviderResourceType"]] = relationship(
-        back_populates="provider_rel",
-        lazy="selectin",
-    )
-
-
-class SemanticProviderResourceType(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
-    """A resource type offered by a specific provider (e.g. AWS ec2:instance)."""
-
-    __tablename__ = "semantic_provider_resource_types"
-
-    provider_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("semantic_providers.id"),
-        nullable=False,
-    )
-    api_type: Mapped[str] = mapped_column(String(200), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    documentation_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    parameter_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="available")
-    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-
-    provider_rel: Mapped["SemanticProvider"] = relationship(
-        back_populates="resource_types",
-        lazy="joined",
-    )
-    type_mappings: Mapped[list["SemanticTypeMapping"]] = relationship(
-        back_populates="provider_resource_type_rel",
-        lazy="selectin",
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "provider_id", "api_type",
-            name="uq_provider_resource_type_provider_api",
-        ),
-        Index("ix_semantic_prt_provider", "provider_id"),
-        Index("ix_semantic_prt_status", "status"),
-    )
-
-
-class SemanticTypeMapping(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
-    """Maps a provider resource type to a semantic type with parameter translation."""
-
-    __tablename__ = "semantic_type_mappings"
-
-    provider_resource_type_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("semantic_provider_resource_types.id"),
-        nullable=False,
-    )
-    semantic_type_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("semantic_resource_types.id"),
-        nullable=False,
-    )
-    parameter_mapping: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-
-    provider_resource_type_rel: Mapped["SemanticProviderResourceType"] = relationship(
-        back_populates="type_mappings",
-        lazy="joined",
-    )
-    semantic_type_rel: Mapped["SemanticResourceType"] = relationship(
-        back_populates="type_mappings",
-        lazy="joined",
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "provider_resource_type_id", "semantic_type_id",
-            name="uq_type_mapping_prt_semantic",
-        ),
-        Index("ix_semantic_type_mappings_prt", "provider_resource_type_id"),
-        Index("ix_semantic_type_mappings_semantic", "semantic_type_id"),
-    )

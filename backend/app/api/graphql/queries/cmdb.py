@@ -24,6 +24,7 @@ from app.api.graphql.types.cmdb import (
     CIType,
     CIVersionListType,
     CompartmentNodeType,
+    ExplorerSummaryType,
     GraphNodeType,
     LifecycleStateGQL,
     RelationshipTypeType,
@@ -33,6 +34,7 @@ from app.api.graphql.types.cmdb import (
 
 
 def _ci_to_gql(ci) -> CIType:
+    backend = getattr(ci, "backend", None)
     return CIType(
         id=ci.id,
         tenant_id=ci.tenant_id,
@@ -46,6 +48,8 @@ def _ci_to_gql(ci) -> CIType:
         tags=ci.tags,
         cloud_resource_id=ci.cloud_resource_id,
         pulumi_urn=ci.pulumi_urn,
+        backend_id=str(ci.backend_id) if ci.backend_id else None,
+        backend_name=backend.name if backend else None,
         created_at=ci.created_at,
         updated_at=ci.updated_at,
     )
@@ -193,6 +197,7 @@ class CMDBQuery:
         tenant_id: uuid.UUID,
         ci_class_id: uuid.UUID | None = None,
         compartment_id: uuid.UUID | None = None,
+        backend_id: uuid.UUID | None = None,
         lifecycle_state: str | None = None,
         search: str | None = None,
         offset: int = 0,
@@ -212,6 +217,7 @@ class CMDBQuery:
                 compartment_id=(
                     str(compartment_id) if compartment_id else None
                 ),
+                backend_id=str(backend_id) if backend_id else None,
                 lifecycle_state=lifecycle_state,
                 search=search,
                 offset=offset,
@@ -320,9 +326,12 @@ class CMDBQuery:
 
     @strawberry.field
     async def relationship_types(
-        self, info: Info, tenant_id: uuid.UUID
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        domain: str | None = None,
     ) -> list[RelationshipTypeType]:
-        """List relationship types."""
+        """List relationship types, optionally filtered by domain."""
         await check_graphql_permission(
             info, "cmdb:relationship:read", str(tenant_id)
         )
@@ -333,6 +342,8 @@ class CMDBQuery:
         async with async_session_factory() as db:
             service = CIService(db)
             types = await service.list_relationship_types()
+            if domain:
+                types = [t for t in types if t.domain == domain]
             return [
                 RelationshipTypeType(
                     id=t.id,
@@ -343,6 +354,13 @@ class CMDBQuery:
                     source_class_ids=t.source_class_ids,
                     target_class_ids=t.target_class_ids,
                     is_system=t.is_system,
+                    domain=t.domain,
+                    source_entity_type=t.source_entity_type,
+                    target_entity_type=t.target_entity_type,
+                    source_semantic_types=t.source_semantic_types,
+                    target_semantic_types=t.target_semantic_types,
+                    source_semantic_categories=t.source_semantic_categories,
+                    target_semantic_categories=t.target_semantic_categories,
                     created_at=t.created_at,
                     updated_at=t.updated_at,
                 )
@@ -564,3 +582,29 @@ class CMDBQuery:
                 )
                 for s in items
             ]
+
+    # ── Explorer ──────────────────────────────────────────────────────
+
+    @strawberry.field
+    async def explorer_summary(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        compartment_id: uuid.UUID | None = None,
+        backend_id: uuid.UUID | None = None,
+    ) -> ExplorerSummaryType:
+        """Get aggregated CI counts grouped by semantic category, type, and backend."""
+        await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.ci_service import CIService
+
+        async with async_session_factory() as db:
+            service = CIService(db)
+            return await service.get_explorer_summary(
+                tenant_id=str(tenant_id),
+                compartment_id=(
+                    str(compartment_id) if compartment_id else None
+                ),
+                backend_id=str(backend_id) if backend_id else None,
+            )

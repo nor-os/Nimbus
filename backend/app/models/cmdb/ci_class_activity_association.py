@@ -37,9 +37,15 @@ class CIClassActivityAssociation(Base, IDMixin, TimestampMixin, SoftDeleteMixin)
     relationship_type: Mapped[str | None] = mapped_column(
         String(200), nullable=True
     )
+    relationship_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("relationship_types.id"),
+        nullable=True,
+    )
 
-    ci_class: Mapped["CIClass"] = relationship(lazy="joined")  # noqa: F821
-    activity_template: Mapped["ActivityTemplate"] = relationship(lazy="joined")  # noqa: F821
+    ci_class: Mapped["CIClass"] = relationship(lazy="joined", foreign_keys=[ci_class_id])  # noqa: F821
+    activity_template: Mapped["ActivityTemplate"] = relationship(lazy="joined", foreign_keys=[activity_template_id])  # noqa: F821
+    relationship_type_ref = relationship("RelationshipType", lazy="joined", foreign_keys=[relationship_type_id])  # noqa: F821
 
     __table_args__ = (
         UniqueConstraint(

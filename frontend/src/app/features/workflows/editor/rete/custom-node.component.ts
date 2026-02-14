@@ -1,84 +1,215 @@
 /**
- * Overview: Custom Rete.js node rendering component with icon, label, ports, and status indicator.
+ * Overview: Custom Rete.js node rendering component with category-colored accent, icon, and port layout.
  * Architecture: Visual node component for workflow canvas (Section 3.2)
- * Dependencies: @angular/core
- * Concepts: Node rendering, port visualization, status indicators
+ * Dependencies: @angular/core, @angular/common, rete-angular-plugin/17
+ * Concepts: Node rendering, category differentiation, Rete.js component contract
  */
-import { Component, Input, ChangeDetectionStrategy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, Input, ChangeDetectionStrategy, ChangeDetectorRef, HostBinding, OnChanges } from '@angular/core';
+import { CommonModule, KeyValue } from '@angular/common';
+import { ReteModule } from 'rete-angular-plugin/17';
+import { ClassicPreset } from 'rete';
+
+const CATEGORY_COLORS: Record<string, string> = {
+  'Flow Control': '#3b82f6',
+  'Action': '#f59e0b',
+  'Integration': '#8b5cf6',
+  'Data': '#10b981',
+  'Utility': '#6b7280',
+  'Deployment': '#f43f5e',
+};
 
 @Component({
   selector: 'nimbus-custom-node',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ReteModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="workflow-node" [class]="'node-' + nodeType" [class.selected]="selected">
+    <div class="node-card" [style.border-left-color]="accentColor">
       <div class="node-header">
-        <span class="node-icon" [innerHTML]="icon"></span>
-        <span class="node-label">{{ label }}</span>
-        <span class="node-status" *ngIf="status" [class]="'status-' + status"></span>
+        <span class="node-icon">{{ nodeIcon }}</span>
+        <span class="node-label">{{ data.label }}</span>
+        <span class="category-badge" [style.background]="badgeBg" [style.color]="accentColor">{{ nodeCategory }}</span>
       </div>
-      <div class="node-ports">
-        <div class="input-ports">
-          <div class="port input-port" *ngFor="let port of inputPorts">
-            <span class="port-dot"></span>
-            <span class="port-label">{{ port }}</span>
+
+      <div class="node-body">
+        <!-- Outputs -->
+        <div class="outputs" *ngIf="data.outputs">
+          <div class="port output-port" *ngFor="let output of data.outputs | keyvalue : sortByIndex">
+            <span class="port-label">{{ output.value?.label }}</span>
+            <div class="port-socket"
+              refComponent
+              [data]="{ type: 'socket', side: 'output', key: output.key, nodeId: data.id, payload: output.value?.socket, seed: seed }"
+              [emit]="emit"
+            ></div>
           </div>
         </div>
-        <div class="output-ports">
-          <div class="port output-port" *ngFor="let port of outputPorts">
-            <span class="port-label">{{ port }}</span>
-            <span class="port-dot"></span>
+
+        <!-- Inputs -->
+        <div class="inputs" *ngIf="data.inputs">
+          <div class="port input-port" *ngFor="let input of data.inputs | keyvalue : sortByIndex">
+            <div class="port-socket"
+              refComponent
+              [data]="{ type: 'socket', side: 'input', key: input.key, nodeId: data.id, payload: input.value?.socket, seed: seed }"
+              [emit]="emit"
+            ></div>
+            <span class="port-label">{{ input.value?.label }}</span>
+            <!-- Controls inside inputs -->
+            <ng-container *ngIf="input.value?.control && !input.value?.showControl">
+              <div class="input-control"
+                refComponent
+                [data]="{ type: 'control', payload: input.value?.control }"
+                [emit]="emit"
+              ></div>
+            </ng-container>
           </div>
+        </div>
+
+        <!-- Standalone controls -->
+        <div class="controls" *ngIf="data.controls">
+          <div *ngFor="let control of data.controls | keyvalue"
+            refComponent
+            [data]="{ type: 'control', payload: control.value }"
+            [emit]="emit"
+          ></div>
         </div>
       </div>
     </div>
   `,
   styles: [`
-    .workflow-node {
-      background: #1e293b;
-      border: 1px solid #334155;
+    :host {
+      display: block;
+    }
+    .node-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #6b7280;
       border-radius: 8px;
-      min-width: 160px;
+      min-width: 180px;
       font-size: 0.8125rem;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      transition: border-color 0.15s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      overflow: hidden;
     }
-    .workflow-node.selected { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
+    :host(.selected) .node-card {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59,130,246,0.25), 0 1px 3px rgba(0,0,0,0.08);
+    }
     .node-header {
-      display: flex; align-items: center; gap: 6px;
-      padding: 8px 12px; border-bottom: 1px solid #334155;
-      background: rgba(255,255,255,0.03); border-radius: 8px 8px 0 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      background: #f8fafc;
     }
-    .node-icon { font-size: 1rem; }
-    .node-label { font-weight: 500; color: #e2e8f0; flex: 1; }
-    .node-status {
-      width: 8px; height: 8px; border-radius: 50%;
+    .node-icon {
+      font-size: 1rem;
+      line-height: 1;
     }
-    .status-RUNNING { background: #3b82f6; animation: pulse 1.5s infinite; }
-    .status-COMPLETED { background: #22c55e; }
-    .status-FAILED { background: #ef4444; }
-    .status-PENDING { background: #6b7280; }
-    .status-SKIPPED { background: #eab308; }
-    .node-ports { padding: 8px 0; display: flex; justify-content: space-between; }
-    .input-ports, .output-ports { display: flex; flex-direction: column; gap: 4px; }
-    .output-ports { align-items: flex-end; }
-    .port { display: flex; align-items: center; gap: 4px; padding: 2px 8px; }
-    .port-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: #475569; border: 2px solid #64748b;
+    .node-label {
+      font-weight: 600;
+      color: #1e293b;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .port-label { color: #94a3b8; font-size: 0.6875rem; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .category-badge {
+      font-size: 0.625rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 9999px;
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.025em;
+    }
+    .node-body {
+      padding: 8px 0;
+    }
+    .inputs, .outputs {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .port {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 12px;
+    }
+    .input-port {
+      justify-content: flex-start;
+    }
+    .output-port {
+      justify-content: flex-end;
+    }
+    .port-label {
+      color: #64748b;
+      font-size: 0.6875rem;
+    }
+    .port-socket {
+      display: flex;
+      align-items: center;
+    }
+    .controls {
+      padding: 4px 12px;
+    }
+    .input-control {
+      margin-left: 4px;
+    }
   `],
 })
-export class CustomNodeComponent {
-  @Input() label = '';
-  @Input() icon = '';
-  @Input() nodeType = '';
-  @Input() selected = false;
-  @Input() status = '';
-  @Input() inputPorts: string[] = [];
-  @Input() outputPorts: string[] = [];
+export class CustomNodeComponent implements OnChanges {
+  @Input() data!: any;
+  @Input() emit!: (data: any) => void;
+  @Input() rendered!: () => void;
+
+  seed = 0;
+
+  @HostBinding('class.selected')
+  get selected(): boolean {
+    return this.data?.selected ?? false;
+  }
+
+  @HostBinding('style.width.px')
+  get width(): number | undefined {
+    return this.data?.width;
+  }
+
+  @HostBinding('style.height.px')
+  get height(): number | undefined {
+    return this.data?.height;
+  }
+
+  get nodeCategory(): string {
+    return this.data?._category || 'Utility';
+  }
+
+  get nodeIcon(): string {
+    return this.data?._icon || '';
+  }
+
+  get accentColor(): string {
+    return CATEGORY_COLORS[this.nodeCategory] || CATEGORY_COLORS['Utility'];
+  }
+
+  get badgeBg(): string {
+    return this.accentColor + '18';
+  }
+
+  constructor(private cdr: ChangeDetectorRef) {
+    this.cdr.detach();
+  }
+
+  ngOnChanges(): void {
+    this.seed++;
+    this.cdr.detectChanges();
+    requestAnimationFrame(() => this.rendered());
+  }
+
+  sortByIndex(a: KeyValue<string, any>, b: KeyValue<string, any>): number {
+    const ai = a.value?.index ?? 0;
+    const bi = b.value?.index ?? 0;
+    return ai - bi;
+  }
 }

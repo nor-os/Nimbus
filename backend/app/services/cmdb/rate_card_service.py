@@ -118,6 +118,10 @@ class RateCardService:
             org_unit_id=data.get("org_unit_id"),
             name=data["name"],
             display_name=data["display_name"],
+            profile_id=data.get("profile_id"),
+            cost_center=data.get("cost_center"),
+            default_hourly_cost=data.get("default_hourly_cost"),
+            default_currency=data.get("default_currency"),
             is_system=data.get("is_system", False),
             sort_order=data.get("sort_order", 0),
         )

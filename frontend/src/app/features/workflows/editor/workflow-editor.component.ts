@@ -7,8 +7,9 @@
 import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { switchMap, of, tap } from 'rxjs';
 import { WorkflowService } from '@core/services/workflow.service';
-import { WorkflowDefinition, NodeTypeInfo, ValidationResult } from '@shared/models/workflow.model';
+import { WorkflowDefinition, NodeTypeInfo, ValidationResult, WorkflowType } from '@shared/models/workflow.model';
 import { WorkflowCanvasComponent } from './workflow-canvas.component';
 import { NodePaletteComponent } from './node-palette/node-palette.component';
 import { PropertiesPanelComponent } from './properties-panel/properties-panel.component';
@@ -27,6 +28,21 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
   template: `
     <nimbus-layout>
     <div class="editor-layout">
+      <!-- Type indicator banner -->
+      @if (definition()?.workflowType === 'SYSTEM') {
+        <div class="type-banner system-banner">
+          &#128274; System Workflow — editable template for system operations
+        </div>
+      }
+      @if (definition()?.workflowType === 'DEPLOYMENT') {
+        <div class="type-banner deployment-banner">
+          &#128640; Deployment Workflow
+          @if (definition()?.sourceTopologyId) {
+            — <a [routerLink]="['/architecture', definition()!.sourceTopologyId]" class="banner-link">View Source Topology</a>
+          }
+        </div>
+      }
+
       <!-- Toolbar -->
       <div class="editor-toolbar">
         <a routerLink="/workflows/definitions" class="back-link">&larr; Back</a>
@@ -47,6 +63,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
         <!-- Node Palette (left) -->
         <nimbus-node-palette
           [nodeTypes]="nodeTypes()"
+          [workflowType]="definition()?.workflowType ?? 'AUTOMATION'"
           (addNode)="onAddNode($event)"
         />
 
@@ -95,6 +112,13 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     .btn:disabled { opacity: 0.5; cursor: default; }
     .btn-success { border-color: #16a34a; color: #16a34a; }
     .btn-success:hover { background: #f0fdf4; }
+    .type-banner {
+      padding: 6px 16px; font-size: 0.75rem; font-weight: 500;
+    }
+    .system-banner { background: #f3e8ff; color: #7c3aed; }
+    .deployment-banner { background: #ecfdf5; color: #059669; }
+    .banner-link { color: inherit; text-decoration: underline; }
+    .banner-link:hover { opacity: 0.8; }
     .editor-body { display: flex; flex: 1; overflow: hidden; }
     .canvas-area { flex: 1; position: relative; }
   `],
@@ -120,24 +144,26 @@ export class WorkflowEditorComponent implements OnInit {
   private timeoutSeconds = 3600;
 
   ngOnInit(): void {
-    this.workflowService.getNodeTypes().subscribe(types => this.nodeTypes.set(types));
-
     const id = this.route.snapshot.paramMap.get('id');
-    if (id) {
-      this.workflowService.getDefinition(id).subscribe(d => {
+
+    // Load nodeTypes FIRST, then the definition — the canvas needs type info
+    // (ports, categories, icons) before it can render the graph correctly.
+    this.workflowService.getNodeTypes().pipe(
+      tap(types => this.nodeTypes.set(types)),
+      switchMap(() => id ? this.workflowService.getDefinition(id) : of(null)),
+    ).subscribe(d => {
+      if (d) {
         this.definition.set(d);
-        if (d) {
-          this.workflowName = d.name;
-          this.workflowDescription = d.description || '';
-          this.timeoutSeconds = d.timeoutSeconds;
-          this.workflowProps.set({
-            name: d.name,
-            description: d.description || '',
-            timeoutSeconds: d.timeoutSeconds,
-          });
-        }
-      });
-    }
+        this.workflowName = d.name;
+        this.workflowDescription = d.description || '';
+        this.timeoutSeconds = d.timeoutSeconds;
+        this.workflowProps.set({
+          name: d.name,
+          description: d.description || '',
+          timeoutSeconds: d.timeoutSeconds,
+        });
+      }
+    });
   }
 
   onAddNode(typeId: string): void {

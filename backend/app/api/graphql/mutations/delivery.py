@@ -7,7 +7,7 @@ Concepts: Delivery mutations enforce permission checks and commit within session
 """
 
 import uuid
-from datetime import date
+
 
 import strawberry
 from strawberry.types import Info
@@ -945,6 +945,7 @@ class DeliveryMutation:
                 "service_offering_id": input.service_offering_id,
                 "delivery_region_id": input.delivery_region_id,
                 "coverage_model": input.coverage_model,
+                "price_list_id": input.price_list_id,
                 "quantity": input.quantity,
                 "sell_price_per_unit": input.sell_price_per_unit,
                 "sell_currency": input.sell_currency,
@@ -982,6 +983,8 @@ class DeliveryMutation:
                 data["delivery_region_id"] = input.delivery_region_id
             if input.coverage_model is not strawberry.UNSET:
                 data["coverage_model"] = input.coverage_model
+            if input.price_list_id is not strawberry.UNSET:
+                data["price_list_id"] = input.price_list_id
 
             e = await service.update_estimation(str(id), str(tenant_id), data)
             await db.commit()
@@ -1181,6 +1184,29 @@ class DeliveryMutation:
             await db.commit()
             return _estimation_to_gql(e)
 
+    @strawberry.mutation
+    async def refresh_estimation_prices(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        estimation_id: uuid.UUID,
+    ) -> ServiceEstimationType:
+        """Re-resolve sell price from the pricing engine for a draft estimation."""
+        await check_graphql_permission(
+            info, "catalog:estimation:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.estimation_service import EstimationService
+
+        async with async_session_factory() as db:
+            service = EstimationService(db)
+            e = await service.refresh_estimation_prices(
+                str(estimation_id), str(tenant_id)
+            )
+            await db.commit()
+            return _estimation_to_gql(e)
+
     # ── Price List Templates ──────────────────────────────────────────
 
     @strawberry.mutation
@@ -1316,8 +1342,6 @@ class DeliveryMutation:
         info: Info,
         tenant_id: uuid.UUID,
         template_id: uuid.UUID,
-        effective_from: date,
-        effective_to: date | None = None,
     ) -> PriceListType:
         """Clone a price list template into a real price list."""
         await check_graphql_permission(
@@ -1331,7 +1355,6 @@ class DeliveryMutation:
             service = PriceListTemplateService(db)
             pl = await service.clone_to_price_list(
                 str(template_id), str(tenant_id),
-                effective_from, effective_to
             )
             await db.commit()
             return _price_list_to_gql(pl)

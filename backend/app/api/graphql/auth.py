@@ -5,6 +5,7 @@ Dependencies: strawberry, app.services.auth.jwt, app.services.permission.engine
 Concepts: GraphQL authentication, permission checking, context extraction
 """
 
+from jose.exceptions import ExpiredSignatureError, JWTError
 from strawberry.types import Info
 
 from app.services.auth.jwt import decode_token
@@ -21,7 +22,12 @@ async def check_graphql_permission(info: Info, permission_key: str, tenant_id: s
         raise PermissionError("Not authenticated")
 
     token = auth_header[7:]
-    payload = decode_token(token)
+    try:
+        payload = decode_token(token)
+    except ExpiredSignatureError:
+        raise PermissionError("Token expired")
+    except JWTError:
+        raise PermissionError("Not authenticated")
     user_id = payload["sub"]
 
     from app.db.session import async_session_factory

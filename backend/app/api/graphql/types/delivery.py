@@ -424,6 +424,7 @@ class ServiceEstimationType:
     total_sell_price: Decimal | None
     margin_amount: Decimal | None
     margin_percent: Decimal | None
+    price_list_id: uuid.UUID | None
     approved_by: uuid.UUID | None
     approved_at: datetime | None
     line_items: list[EstimationLineItemType]
@@ -443,6 +444,7 @@ class ServiceEstimationCreateInput:
     service_offering_id: uuid.UUID
     delivery_region_id: uuid.UUID | None = None
     coverage_model: str | None = None
+    price_list_id: uuid.UUID | None = None
     quantity: Decimal = Decimal("1")
     sell_price_per_unit: Decimal = Decimal("0")
     sell_currency: str = "EUR"
@@ -455,6 +457,7 @@ class ServiceEstimationUpdateInput:
     sell_currency: str | None = None
     delivery_region_id: uuid.UUID | None = strawberry.UNSET
     coverage_model: str | None = strawberry.UNSET
+    price_list_id: uuid.UUID | None = strawberry.UNSET
 
 
 @strawberry.input

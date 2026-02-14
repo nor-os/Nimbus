@@ -31,6 +31,10 @@ class Tenant(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     slug: Mapped[str | None] = mapped_column(String(63), unique=True, nullable=True)
+    invoice_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    primary_region_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("delivery_regions.id"), nullable=True
+    )
 
     # Relationships
     parent: Mapped["Tenant | None"] = relationship(

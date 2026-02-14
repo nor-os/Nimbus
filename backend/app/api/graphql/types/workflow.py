@@ -24,6 +24,13 @@ class WorkflowDefinitionStatusGQL(Enum):
 
 
 @strawberry.enum
+class WorkflowTypeGQL(Enum):
+    AUTOMATION = "AUTOMATION"
+    SYSTEM = "SYSTEM"
+    DEPLOYMENT = "DEPLOYMENT"
+
+
+@strawberry.enum
 class WorkflowExecutionStatusGQL(Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
@@ -57,6 +64,9 @@ class WorkflowDefinitionType:
     created_by: uuid.UUID
     timeout_seconds: int
     max_concurrent: int
+    workflow_type: WorkflowTypeGQL
+    source_topology_id: uuid.UUID | None
+    is_system: bool
     created_at: datetime
     updated_at: datetime
 
@@ -140,6 +150,14 @@ class WorkflowDefinitionCreateInput:
     graph: strawberry.scalars.JSON | None = None
     timeout_seconds: int = 3600
     max_concurrent: int = 10
+    workflow_type: str | None = None
+
+
+@strawberry.input
+class GenerateDeploymentWorkflowInput:
+    topology_id: uuid.UUID
+    add_approval_gates: bool = False
+    add_notifications: bool = False
 
 
 @strawberry.input

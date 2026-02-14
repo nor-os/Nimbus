@@ -6,7 +6,8 @@
  */
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { switchMap, tap } from 'rxjs';
 import { WorkflowService } from '@core/services/workflow.service';
 import { WorkflowDefinition } from '@shared/models/workflow.model';
 import { WorkflowCanvasComponent } from '../editor/workflow-canvas.component';
@@ -114,8 +115,11 @@ export class WorkflowDetailComponent implements OnInit {
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
-      this.workflowService.getDefinition(id).subscribe(d => this.definition.set(d));
-      this.workflowService.getNodeTypes().subscribe(t => this.nodeTypes.set(t));
+      // Load nodeTypes FIRST so the canvas has port/category/icon info before rendering the graph
+      this.workflowService.getNodeTypes().pipe(
+        tap(types => this.nodeTypes.set(types)),
+        switchMap(() => this.workflowService.getDefinition(id)),
+      ).subscribe(d => this.definition.set(d));
     }
   }
 }

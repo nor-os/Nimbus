@@ -7,7 +7,7 @@
 import { Component, EventEmitter, Input, Output, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { NodeTypeInfo } from '@shared/models/workflow.model';
+import { NodeTypeInfo, WorkflowType } from '@shared/models/workflow.model';
 
 @Component({
   selector: 'nimbus-node-palette',
@@ -76,7 +76,10 @@ import { NodeTypeInfo } from '@shared/models/workflow.model';
 })
 export class NodePaletteComponent {
   private _nodeTypes = signal<NodeTypeInfo[]>([]);
+  private _workflowType = signal<WorkflowType>('AUTOMATION');
+
   @Input() set nodeTypes(value: NodeTypeInfo[]) { this._nodeTypes.set(value); }
+  @Input() set workflowType(value: WorkflowType) { this._workflowType.set(value); }
   @Output() addNode = new EventEmitter<string>();
 
   searchQuery = signal('');
@@ -89,7 +92,13 @@ export class NodePaletteComponent {
 
   filteredTypes = computed(() => {
     const q = this.searchQuery().toLowerCase();
-    const types = this._nodeTypes();
+    let types = this._nodeTypes();
+
+    // Hide Deployment category unless editing a DEPLOYMENT workflow
+    if (this._workflowType() !== 'DEPLOYMENT') {
+      types = types.filter(t => t.category !== 'Deployment');
+    }
+
     if (!q) return types;
     return types.filter(
       t => t.label.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)

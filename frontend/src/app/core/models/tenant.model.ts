@@ -14,6 +14,8 @@ export interface Tenant {
   is_root: boolean;
   level: number;
   description: string | null;
+  invoice_currency: string | null;
+  primary_region_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -73,6 +75,8 @@ export interface TenantUpdateRequest {
   contact_email?: string | null;
   billing_info?: Record<string, unknown> | null;
   description?: string | null;
+  invoice_currency?: string | null;
+  primary_region_id?: string | null;
 }
 
 export interface TenantSettingRequest {

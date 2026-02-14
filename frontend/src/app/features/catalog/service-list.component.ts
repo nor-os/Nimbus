@@ -1,8 +1,10 @@
 /**
- * Overview: Service catalog listing — paginated, filterable list of service offerings.
+ * Overview: Service listing page — flat offering table with pagination, category/status
+ *     filters, and clickable rows that navigate to the service edit page.
  * Architecture: Catalog feature component (Section 8)
- * Dependencies: @angular/core, @angular/router, app/core/services/catalog.service, app/core/services/cmdb.service
- * Concepts: Service offering listing with category/active filters, pagination, link to form
+ * Dependencies: @angular/core, @angular/router, app/core/services/catalog.service,
+ *     @shared/models/cmdb.model
+ * Concepts: Service offering status badges, pagination, category/status filters
  */
 import {
   Component,
@@ -15,7 +17,6 @@ import { CommonModule } from '@angular/common';
 import { RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { CatalogService } from '@core/services/catalog.service';
-import { TenantContextService } from '@core/services/tenant-context.service';
 import {
   ServiceOffering,
   MeasuringUnit,
@@ -43,92 +44,115 @@ const MEASURING_UNIT_LABELS: Record<MeasuringUnit, string> = {
     <nimbus-layout>
       <div class="service-list-page">
         <div class="page-header">
-          <h1>Service Catalog</h1>
-          <a
-            *nimbusHasPermission="'catalog:offering:create'"
-            routerLink="/catalog/services/new"
-            class="btn btn-primary"
-          >
-            Create Service
-          </a>
+          <h1>Services</h1>
+          <div class="header-actions">
+            <a
+              *nimbusHasPermission="'catalog:offering:create'"
+              routerLink="/catalog/services/new"
+              class="btn btn-primary"
+            >
+              Create Service
+            </a>
+          </div>
         </div>
 
-        <div class="filters">
-          <input
-            type="text"
-            [(ngModel)]="categoryFilter"
-            (ngModelChange)="onFilterChange()"
-            placeholder="Filter by category..."
-            class="filter-input"
-          />
-          <select
-            [(ngModel)]="activeFilter"
-            (ngModelChange)="onFilterChange()"
-            class="filter-select"
-          >
-            <option value="">All Statuses</option>
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </select>
-        </div>
+          <div class="filters">
+            <input
+              type="text"
+              [(ngModel)]="categoryFilter"
+              (ngModelChange)="onFilterChange()"
+              placeholder="Filter by category..."
+              class="filter-input"
+            />
+            <select
+              [(ngModel)]="activeFilter"
+              (ngModelChange)="onFilterChange()"
+              class="filter-select"
+            >
+              <option value="">All Active</option>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+            <select
+              [(ngModel)]="statusFilter"
+              (ngModelChange)="onFilterChange()"
+              class="filter-select"
+            >
+              <option value="">All Statuses</option>
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
 
-        <div class="table-container">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Measuring Unit</th>
-                <th>Status</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (offering of offerings(); track offering.id) {
-                <tr class="clickable-row" (click)="goToEdit(offering.id)">
-                  <td class="name-cell">{{ offering.name }}</td>
-                  <td>{{ offering.category || '\u2014' }}</td>
-                  <td>{{ unitLabel(offering.measuringUnit) }}</td>
-                  <td>
-                    <span
-                      class="badge"
-                      [class.badge-active]="offering.isActive"
-                      [class.badge-inactive]="!offering.isActive"
-                    >
-                      {{ offering.isActive ? 'Active' : 'Inactive' }}
-                    </span>
-                  </td>
-                  <td>{{ offering.updatedAt | date: 'medium' }}</td>
-                </tr>
-              } @empty {
+          <div class="table-container">
+            <table class="table">
+              <thead>
                 <tr>
-                  <td colspan="5" class="empty-state">No service offerings found</td>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Measuring Unit</th>
+                  <th>Status</th>
+                  <th>Offering Status</th>
+                  <th>Updated</th>
                 </tr>
-              }
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                @for (offering of offerings(); track offering.id) {
+                  <tr class="clickable-row" (click)="goToEdit(offering.id)">
+                    <td class="name-cell">{{ offering.name }}</td>
+                    <td>{{ offering.category || '\u2014' }}</td>
+                    <td>{{ unitLabel(offering.measuringUnit) }}</td>
+                    <td>
+                      <span
+                        class="badge"
+                        [class.badge-active]="offering.isActive"
+                        [class.badge-inactive]="!offering.isActive"
+                      >
+                        {{ offering.isActive ? 'Active' : 'Inactive' }}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        class="badge"
+                        [class.badge-draft]="offering.status === 'draft'"
+                        [class.badge-published]="offering.status === 'published'"
+                        [class.badge-archived]="offering.status === 'archived'"
+                      >
+                        {{ offering.status | titlecase }}
+                      </span>
+                    </td>
+                    <td>{{ offering.updatedAt | date: 'medium' }}</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="6" class="empty-state">No service offerings found</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
 
-        <div class="pagination">
-          <button
-            class="btn btn-sm"
-            [disabled]="currentOffset() === 0"
-            (click)="prevPage()"
-          >Previous</button>
-          <span class="page-info">
-            @if (total() > 0) {
-              Showing {{ currentOffset() + 1 }}\u2013{{ currentOffset() + offerings().length }}
-              of {{ total() }}
-            } @else {
-              No items
-            }
-          </span>
-          <button
-            class="btn btn-sm"
-            [disabled]="currentOffset() + offerings().length >= total()"
-            (click)="nextPage()"
-          >Next</button>
-        </div>
+          <div class="pagination">
+            <button
+              class="btn btn-sm"
+              [disabled]="currentOffset() === 0"
+              (click)="prevPage()"
+            >Previous</button>
+            <span class="page-info">
+              @if (total() > 0) {
+                Showing {{ currentOffset() + 1 }}\u2013{{ currentOffset() + offerings().length }}
+                of {{ total() }}
+              } @else {
+                No items
+              }
+            </span>
+            <button
+              class="btn btn-sm"
+              [disabled]="currentOffset() + offerings().length >= total()"
+              (click)="nextPage()"
+            >Next</button>
+          </div>
       </div>
     </nimbus-layout>
   `,
@@ -139,7 +163,9 @@ const MEASURING_UNIT_LABELS: Record<MeasuringUnit, string> = {
       margin-bottom: 1.5rem;
     }
     .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
+    .header-actions { display: flex; gap: 0.5rem; align-items: center; }
 
+    /* ── Filters ─────────────────────────────────────────────────── */
     .filters {
       display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap;
     }
@@ -157,6 +183,7 @@ const MEASURING_UNIT_LABELS: Record<MeasuringUnit, string> = {
     }
     .filter-select:focus { border-color: #3b82f6; outline: none; }
 
+    /* ── Table ────────────────────────────────────────────────────── */
     .table-container {
       overflow-x: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
     }
@@ -175,21 +202,27 @@ const MEASURING_UNIT_LABELS: Record<MeasuringUnit, string> = {
     .clickable-row { cursor: pointer; }
     .name-cell { font-weight: 500; color: #1e293b; }
 
+    /* ── Badges ───────────────────────────────────────────────────── */
     .badge {
       padding: 0.125rem 0.5rem; border-radius: 12px; font-size: 0.6875rem;
       font-weight: 600; display: inline-block;
     }
     .badge-active { background: #dcfce7; color: #16a34a; }
     .badge-inactive { background: #fee2e2; color: #dc2626; }
+    .badge-draft { background: #fef3c7; color: #92400e; }
+    .badge-published { background: #dcfce7; color: #166534; }
+    .badge-archived { background: #f1f5f9; color: #64748b; }
 
     .empty-state { text-align: center; color: #64748b; padding: 2rem; }
 
+    /* ── Pagination ───────────────────────────────────────────────── */
     .pagination {
       display: flex; align-items: center; justify-content: center;
       gap: 1rem; margin-top: 1rem;
     }
     .page-info { color: #64748b; font-size: 0.8125rem; }
 
+    /* ── Buttons ──────────────────────────────────────────────────── */
     .btn {
       font-family: inherit; font-size: 0.8125rem; font-weight: 500;
       border-radius: 6px; cursor: pointer; transition: background 0.15s;
@@ -199,6 +232,12 @@ const MEASURING_UNIT_LABELS: Record<MeasuringUnit, string> = {
       border: none; text-decoration: none;
     }
     .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: #fff; color: #374151; padding: 0.5rem 1rem;
+      border: 1px solid #e2e8f0; text-decoration: none;
+    }
+    .btn-secondary:hover { background: #f8fafc; }
     .btn-sm {
       padding: 0.375rem 0.75rem; border: 1px solid #e2e8f0;
       border-radius: 6px; background: #fff; color: #374151; cursor: pointer;
@@ -210,7 +249,6 @@ const MEASURING_UNIT_LABELS: Record<MeasuringUnit, string> = {
 })
 export class ServiceListComponent implements OnInit {
   private catalogService = inject(CatalogService);
-  private tenantContext = inject(TenantContextService);
   private router = inject(Router);
   private toastService = inject(ToastService);
 
@@ -220,6 +258,7 @@ export class ServiceListComponent implements OnInit {
   pageSize = 50;
   categoryFilter = '';
   activeFilter = '';
+  statusFilter = '';
 
   private filterDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -245,11 +284,13 @@ export class ServiceListComponent implements OnInit {
     }).subscribe({
       next: (response) => {
         let items = response.items;
-        // Client-side active filter since the API may not support it directly
         if (this.activeFilter === 'true') {
           items = items.filter((o) => o.isActive);
         } else if (this.activeFilter === 'false') {
           items = items.filter((o) => !o.isActive);
+        }
+        if (this.statusFilter) {
+          items = items.filter((o) => o.status === this.statusFilter);
         }
         this.offerings.set(items);
         this.total.set(response.total);

@@ -44,6 +44,7 @@ class TenantQuery:
                 is_root=tenant.is_root,
                 level=tenant.level,
                 description=tenant.description,
+                invoice_currency=tenant.invoice_currency,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )
@@ -75,6 +76,7 @@ class TenantQuery:
                     is_root=t.is_root,
                     level=t.level,
                     description=t.description,
+                    invoice_currency=t.invoice_currency,
                     created_at=t.created_at,
                     updated_at=t.updated_at,
                 )

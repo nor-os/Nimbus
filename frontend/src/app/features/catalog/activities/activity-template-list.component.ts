@@ -28,18 +28,18 @@ import { ToastService } from '@shared/services/toast.service';
     <nimbus-layout>
       <div class="activity-list-page">
         <div class="page-header">
-          <h1>Activity Templates</h1>
+          <h1>Activities</h1>
           <button
             *nimbusHasPermission="'catalog:activity:manage'"
             class="btn btn-primary"
             (click)="createTemplate()"
           >
-            Create Template
+            Create Activity
           </button>
         </div>
 
         @if (loading()) {
-          <div class="loading">Loading activity templates...</div>
+          <div class="loading">Loading activities...</div>
         }
 
         @if (!loading()) {

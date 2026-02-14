@@ -71,6 +71,8 @@ export interface ConfigurationItem {
   tags: Record<string, unknown>;
   cloudResourceId: string | null;
   pulumiUrn: string | null;
+  backendId: string | null;
+  backendName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,6 +93,13 @@ export interface RelationshipType {
   sourceClassIds: string[] | null;
   targetClassIds: string[] | null;
   isSystem: boolean;
+  domain: string;
+  sourceEntityType: string;
+  targetEntityType: string;
+  sourceSemanticTypes: string[] | null;
+  targetSemanticTypes: string[] | null;
+  sourceSemanticCategories: string[] | null;
+  targetSemanticCategories: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -196,6 +205,8 @@ export interface SavedSearch {
 
 // ── Service Catalog ─────────────────────────────────────────────────
 
+export type OfferingStatus = 'draft' | 'published' | 'archived';
+
 export interface ServiceOffering {
   id: string;
   tenantId: string;
@@ -208,6 +219,13 @@ export interface ServiceOffering {
   defaultCoverageModel: string | null;
   ciClassIds?: string[];
   isActive: boolean;
+  status: OfferingStatus;
+  clonedFromId: string | null;
+  baseFee: number | null;
+  feePeriod: string | null;
+  minimumAmount: number | null;
+  minimumCurrency: string | null;
+  minimumPeriod: string | null;
   regionIds?: string[];
   createdAt: string;
   updatedAt: string;
@@ -221,7 +239,10 @@ export interface ServiceOfferingList {
 export interface PriceListItem {
   id: string;
   priceListId: string;
-  serviceOfferingId: string;
+  serviceOfferingId: string | null;
+  providerSkuId: string | null;
+  activityDefinitionId: string | null;
+  markupPercent: number | null;
   deliveryRegionId: string | null;
   coverageModel: string | null;
   pricePerUnit: number;
@@ -237,11 +258,53 @@ export interface PriceList {
   tenantId: string | null;
   name: string;
   isDefault: boolean;
-  effectiveFrom: string;
-  effectiveTo: string | null;
+  groupId: string | null;
+  versionMajor: number;
+  versionMinor: number;
+  versionLabel: string;
+  status: string;
+  deliveryRegionId: string | null;
+  parentVersionId: string | null;
+  clonedFromPriceListId: string | null;
+  regionConstraintIds: string[];
   items: PriceListItem[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TenantPriceListAssignment {
+  tenantId: string;
+  assignmentType: string;
+  priceListId: string;
+  clonePriceListId: string | null;
+  additions: number;
+  deletions: number;
+  isCustomized: boolean;
+}
+
+export interface PriceListDiffItem {
+  id: string;
+  priceListId: string;
+  serviceOfferingId: string | null;
+  providerSkuId: string | null;
+  activityDefinitionId: string | null;
+  deliveryRegionId: string | null;
+  coverageModel: string | null;
+  pricePerUnit: number;
+  markupPercent: number | null;
+  currency: string;
+  minQuantity: number | null;
+  maxQuantity: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PriceListDiff {
+  sourcePriceListId: string;
+  clonePriceListId: string;
+  additions: PriceListDiffItem[];
+  deletions: PriceListDiffItem[];
+  common: PriceListDiffItem[];
 }
 
 export interface PriceListSummary {
@@ -249,16 +312,50 @@ export interface PriceListSummary {
   total: number;
 }
 
-export interface TenantPriceOverride {
+export interface PriceListOverlayItem {
   id: string;
   tenantId: string;
-  serviceOfferingId: string;
+  pinId: string;
+  overlayAction: string;
+  baseItemId: string | null;
+  serviceOfferingId: string | null;
+  providerSkuId: string | null;
+  activityDefinitionId: string | null;
   deliveryRegionId: string | null;
   coverageModel: string | null;
-  pricePerUnit: number;
+  pricePerUnit: number | null;
+  currency: string | null;
+  markupPercent: number | null;
   discountPercent: number | null;
+  minQuantity: number | null;
+  maxQuantity: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PinMinimumCharge {
+  id: string;
+  tenantId: string;
+  pinId: string;
+  category: string | null;
+  minimumAmount: number;
+  currency: string;
+  period: string;
   effectiveFrom: string;
   effectiveTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenantPriceListPin {
+  id: string;
+  tenantId: string;
+  priceListId: string;
+  priceList: PriceList | null;
+  overlayItems: PriceListOverlayItem[];
+  minimumCharges: PinMinimumCharge[];
+  effectiveFrom: string;
+  effectiveTo: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -274,6 +371,214 @@ export interface EffectivePrice {
   deliveryRegionId: string | null;
   coverageModel: string | null;
   complianceStatus: string | null;
+  sourceType: string | null;
+  markupPercent: number | null;
+  priceListId: string | null;
+}
+
+// ── Service Catalogs ───────────────────────────────────────────────
+
+export interface ServiceCatalogItem {
+  id: string;
+  catalogId: string;
+  serviceOfferingId: string | null;
+  serviceGroupId: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServiceCatalog {
+  id: string;
+  tenantId: string | null;
+  name: string;
+  description: string | null;
+  groupId: string | null;
+  versionMajor: number;
+  versionMinor: number;
+  versionLabel: string;
+  status: string;
+  parentVersionId: string | null;
+  clonedFromCatalogId: string | null;
+  regionConstraintIds: string[];
+  items: ServiceCatalogItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServiceCatalogList {
+  items: ServiceCatalog[];
+  total: number;
+}
+
+export interface CatalogOverlayItem {
+  id: string;
+  tenantId: string;
+  pinId: string;
+  overlayAction: string;
+  baseItemId: string | null;
+  serviceOfferingId: string | null;
+  serviceGroupId: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenantCatalogPin {
+  id: string;
+  tenantId: string;
+  catalogId: string;
+  catalog: ServiceCatalog | null;
+  overlayItems: CatalogOverlayItem[];
+  effectiveFrom: string;
+  effectiveTo: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenantCatalogAssignment {
+  tenantId: string;
+  assignmentType: string;
+  catalogId: string;
+  cloneCatalogId: string | null;
+  additions: number;
+  deletions: number;
+  isCustomized: boolean;
+}
+
+export interface CatalogDiffItem {
+  id: string;
+  catalogId: string;
+  serviceOfferingId: string | null;
+  serviceGroupId: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CatalogDiff {
+  sourceCatalogId: string;
+  cloneCatalogId: string;
+  additions: CatalogDiffItem[];
+  deletions: CatalogDiffItem[];
+  common: CatalogDiffItem[];
+}
+
+// ── Provider SKUs ──────────────────────────────────────────────────
+
+export interface ProviderSku {
+  id: string;
+  providerId: string;
+  externalSkuId: string;
+  name: string;
+  displayName: string | null;
+  description: string | null;
+  ciClassId: string | null;
+  measuringUnit: string;
+  category: string | null;
+  unitCost: number | null;
+  costCurrency: string;
+  attributes: Record<string, unknown> | null;
+  isActive: boolean;
+  semanticTypeId: string | null;
+  semanticTypeName: string | null;
+  resourceType: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderSkuList {
+  items: ProviderSku[];
+  total: number;
+}
+
+export interface ServiceOfferingSku {
+  id: string;
+  serviceOfferingId: string;
+  providerSkuId: string;
+  defaultQuantity: number;
+  isRequired: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Service Groups ─────────────────────────────────────────────────
+
+export interface ServiceGroupItem {
+  id: string;
+  groupId: string;
+  serviceOfferingId: string;
+  offeringName: string | null;
+  isRequired: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ServiceGroupStatus = 'draft' | 'published' | 'archived';
+
+export interface ServiceGroup {
+  id: string;
+  tenantId: string | null;
+  name: string;
+  displayName: string | null;
+  description: string | null;
+  status: ServiceGroupStatus;
+  items: ServiceGroupItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServiceGroupList {
+  items: ServiceGroup[];
+  total: number;
+}
+
+// ── Offering Cost Breakdown ────────────────────────────────────────
+
+export interface OfferingCostBreakdown {
+  sourceType: string;
+  sourceId: string;
+  sourceName: string;
+  quantity: number;
+  isRequired: boolean;
+  pricePerUnit: number;
+  currency: string;
+  measuringUnit: string;
+  markupPercent: number | null;
+}
+
+// ── Explorer Summary ────────────────────────────────────────────────
+
+export interface ExplorerTypeSummary {
+  semanticTypeId: string | null;
+  semanticTypeName: string;
+  ciClassId: string;
+  ciClassName: string;
+  ciClassIcon: string | null;
+  count: number;
+}
+
+export interface ExplorerCategorySummary {
+  categoryId: string | null;
+  categoryName: string;
+  categoryIcon: string | null;
+  types: ExplorerTypeSummary[];
+  totalCount: number;
+}
+
+export interface ExplorerBackendSummary {
+  backendId: string;
+  backendName: string;
+  providerName: string;
+  ciCount: number;
+}
+
+export interface ExplorerSummary {
+  totalCis: number;
+  categories: ExplorerCategorySummary[];
+  backends: ExplorerBackendSummary[];
 }
 
 // ── Input types ─────────────────────────────────────────────────────
@@ -312,6 +617,25 @@ export interface CIClassUpdateInput {
   icon?: string | null;
   isActive?: boolean | null;
   schemaDef?: Record<string, unknown> | null;
+}
+
+export interface CIAttributeDefinitionCreateInput {
+  name: string;
+  displayName: string;
+  dataType: string;
+  isRequired?: boolean;
+  defaultValue?: unknown | null;
+  validationRules?: Record<string, unknown> | null;
+  sortOrder?: number;
+}
+
+export interface CIAttributeDefinitionUpdateInput {
+  displayName?: string | null;
+  dataType?: string | null;
+  isRequired?: boolean | null;
+  defaultValue?: unknown | null;
+  validationRules?: Record<string, unknown> | null;
+  sortOrder?: number | null;
 }
 
 export interface CIRelationshipInput {
@@ -382,6 +706,11 @@ export interface ServiceOfferingCreateInput {
   operatingModel?: string | null;
   defaultCoverageModel?: string | null;
   ciClassIds?: string[] | null;
+  baseFee?: number | null;
+  feePeriod?: string | null;
+  minimumAmount?: number | null;
+  minimumCurrency?: string | null;
+  minimumPeriod?: string | null;
 }
 
 export interface ServiceOfferingUpdateInput {
@@ -394,6 +723,9 @@ export interface ServiceOfferingUpdateInput {
   defaultCoverageModel?: string | null;
   ciClassIds?: string[] | null;
   isActive?: boolean | null;
+  minimumAmount?: number | null;
+  minimumCurrency?: string | null;
+  minimumPeriod?: string | null;
 }
 
 export interface CIClassActivityAssociation {
@@ -405,6 +737,8 @@ export interface CIClassActivityAssociation {
   activityTemplateId: string;
   activityTemplateName: string;
   relationshipType: string | null;
+  relationshipTypeId: string | null;
+  relationshipTypeName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -413,18 +747,44 @@ export interface CIClassActivityAssociationCreateInput {
   ciClassId: string;
   activityTemplateId: string;
   relationshipType?: string | null;
+  relationshipTypeId?: string | null;
+}
+
+export interface SemanticActivityType {
+  id: string;
+  name: string;
+  displayName: string;
+  category: string | null;
+  description: string | null;
+  icon: string | null;
+  applicableSemanticCategories: string[] | null;
+  applicableSemanticTypes: string[] | null;
+  defaultRelationshipKindId: string | null;
+  defaultRelationshipKindName: string | null;
+  propertiesSchema: Record<string, unknown> | null;
+  isSystem: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PriceListCreateInput {
   name: string;
   isDefault?: boolean;
-  effectiveFrom: string;
-  effectiveTo?: string | null;
   clientTenantId?: string | null;
+  deliveryRegionId?: string | null;
+}
+
+export interface PriceListVersionInput {
+  priceListId: string;
+  bump: 'minor' | 'major';
 }
 
 export interface PriceListItemCreateInput {
-  serviceOfferingId: string;
+  serviceOfferingId?: string | null;
+  providerSkuId?: string | null;
+  activityDefinitionId?: string | null;
+  markupPercent?: number | null;
   deliveryRegionId?: string | null;
   coverageModel?: string | null;
   pricePerUnit: number;
@@ -436,6 +796,7 @@ export interface PriceListItemCreateInput {
 export interface PriceListItemUpdateInput {
   pricePerUnit?: number | null;
   currency?: string | null;
+  markupPercent?: number | null;
   minQuantity?: number | null;
   maxQuantity?: number | null;
 }
@@ -446,12 +807,37 @@ export interface PriceListCopyInput {
   clientTenantId?: string | null;
 }
 
-export interface TenantPriceOverrideCreateInput {
-  serviceOfferingId: string;
+// ── Overlay & Pin Minimum Input Types ─────────────────────────────
+
+export interface PriceListOverlayItemCreateInput {
+  overlayAction: string;
+  baseItemId?: string | null;
+  serviceOfferingId?: string | null;
+  providerSkuId?: string | null;
+  activityDefinitionId?: string | null;
   deliveryRegionId?: string | null;
   coverageModel?: string | null;
-  pricePerUnit: number;
+  pricePerUnit?: number | null;
+  currency?: string | null;
+  markupPercent?: number | null;
   discountPercent?: number | null;
+  minQuantity?: number | null;
+  maxQuantity?: number | null;
+}
+
+export interface CatalogOverlayItemCreateInput {
+  overlayAction: string;
+  baseItemId?: string | null;
+  serviceOfferingId?: string | null;
+  serviceGroupId?: string | null;
+  sortOrder?: number;
+}
+
+export interface PinMinimumChargeCreateInput {
+  category?: string | null;
+  minimumAmount: number;
+  currency?: string;
+  period?: string;
   effectiveFrom: string;
   effectiveTo?: string | null;
 }

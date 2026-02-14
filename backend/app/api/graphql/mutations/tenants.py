@@ -54,6 +54,8 @@ class TenantMutation:
                 is_root=tenant.is_root,
                 level=tenant.level,
                 description=tenant.description,
+                invoice_currency=tenant.invoice_currency,
+                primary_region_id=tenant.primary_region_id,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )
@@ -76,6 +78,10 @@ class TenantMutation:
                 kwargs["contact_email"] = input.contact_email
             if input.description is not None:
                 kwargs["description"] = input.description
+            if input.invoice_currency is not strawberry.UNSET:
+                kwargs["invoice_currency"] = input.invoice_currency
+            if input.primary_region_id is not strawberry.UNSET:
+                kwargs["primary_region_id"] = str(input.primary_region_id) if input.primary_region_id else None
 
             tenant = await service.update_tenant(str(tenant_id), **kwargs)
             await db.commit()
@@ -88,6 +94,8 @@ class TenantMutation:
                 is_root=tenant.is_root,
                 level=tenant.level,
                 description=tenant.description,
+                invoice_currency=tenant.invoice_currency,
+                primary_region_id=tenant.primary_region_id,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
             )

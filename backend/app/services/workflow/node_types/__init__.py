@@ -8,16 +8,21 @@ Concepts: Auto-registration, node type discovery
 from app.services.workflow.node_types import (
     approval_gate,
     audit_log,
+    cmdb_record,
     condition,
     delay,
+    deployment_gate,
     http_request,
     loop,
     notification,
     parallel,
     script,
+    stack_deploy,
+    stack_destroy,
     start_end,
     subworkflow,
     switch_node,
+    topology_resolve,
     variables,
 )
 
@@ -37,6 +42,12 @@ def register_all() -> None:
     script.register()
     audit_log.register()
     variables.register()
+    # Deployment nodes
+    topology_resolve.register()
+    stack_deploy.register()
+    stack_destroy.register()
+    cmdb_record.register()
+    deployment_gate.register()
 
 
 # Auto-register on import

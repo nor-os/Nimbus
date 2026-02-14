@@ -21,6 +21,8 @@ class TenantType:
     is_root: bool
     level: int
     description: str | None
+    invoice_currency: str | None
+    primary_region_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -97,6 +99,8 @@ class TenantUpdateInput:
     name: str | None = None
     contact_email: str | None = None
     description: str | None = None
+    invoice_currency: str | None = strawberry.UNSET
+    primary_region_id: uuid.UUID | None = strawberry.UNSET
 
 
 @strawberry.input

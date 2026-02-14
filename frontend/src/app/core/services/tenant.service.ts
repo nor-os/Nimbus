@@ -5,8 +5,16 @@
  * Concepts: Multi-tenancy, tenant lifecycle, quota management
  */
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { ApiService } from './api.service';
+import { TenantContextService } from './tenant-context.service';
+import { environment } from '@env/environment';
+import {
+  TenantTag,
+  TenantTagList,
+  TenantTagCreateInput,
+  TenantTagUpdateInput,
+} from '@shared/models/tenant-tag.model';
 import {
   Tenant,
   TenantDetail,
@@ -25,6 +33,8 @@ import {
 @Injectable({ providedIn: 'root' })
 export class TenantService {
   private api = inject(ApiService);
+  private tenantContext = inject(TenantContextService);
+  private gqlUrl = environment.graphqlUrl;
 
   // Tenant CRUD
   listTenants(offset = 0, limit = 50): Observable<Tenant[]> {
@@ -100,5 +110,73 @@ export class TenantService {
     return this.api.get<{ download_url: string }>(
       `/api/v1/tenants/${tenantId}/export/${jobId}/download`,
     );
+  }
+
+  // ── Tenant Tags (GraphQL) ──────────────────────────────────────────
+
+  listTags(tenantId: string, search?: string): Observable<TenantTagList> {
+    return this.gql<{ tenantTags: TenantTagList }>(`
+      query TenantTags($tenantId: UUID!, $search: String) {
+        tenantTags(tenantId: $tenantId, search: $search) {
+          items {
+            id tenantId key displayName description
+            valueSchema value isSecret sortOrder
+            createdAt updatedAt
+          }
+          total
+        }
+      }
+    `, { tenantId, search }).pipe(map(d => d.tenantTags));
+  }
+
+  createTag(tenantId: string, input: TenantTagCreateInput): Observable<TenantTag> {
+    return this.gql<{ createTenantTag: TenantTag }>(`
+      mutation CreateTenantTag($tenantId: UUID!, $input: TenantTagCreateInput!) {
+        createTenantTag(tenantId: $tenantId, input: $input) {
+          id tenantId key displayName description
+          valueSchema value isSecret sortOrder
+          createdAt updatedAt
+        }
+      }
+    `, { tenantId, input }).pipe(map(d => d.createTenantTag));
+  }
+
+  updateTag(tenantId: string, id: string, input: TenantTagUpdateInput): Observable<TenantTag> {
+    return this.gql<{ updateTenantTag: TenantTag }>(`
+      mutation UpdateTenantTag($tenantId: UUID!, $id: UUID!, $input: TenantTagUpdateInput!) {
+        updateTenantTag(tenantId: $tenantId, id: $id, input: $input) {
+          id tenantId key displayName description
+          valueSchema value isSecret sortOrder
+          createdAt updatedAt
+        }
+      }
+    `, { tenantId, id, input }).pipe(map(d => d.updateTenantTag));
+  }
+
+  deleteTag(tenantId: string, id: string): Observable<boolean> {
+    return this.gql<{ deleteTenantTag: boolean }>(`
+      mutation DeleteTenantTag($tenantId: UUID!, $id: UUID!) {
+        deleteTenantTag(tenantId: $tenantId, id: $id)
+      }
+    `, { tenantId, id }).pipe(map(d => d.deleteTenantTag));
+  }
+
+  private gql<T>(
+    query: string,
+    variables: Record<string, unknown> = {},
+  ): Observable<T> {
+    return this.api
+      .post<{ data: T; errors?: Array<{ message: string }> }>(this.gqlUrl, {
+        query,
+        variables,
+      })
+      .pipe(
+        map((response) => {
+          if (response.errors?.length) {
+            throw new Error(response.errors[0].message);
+          }
+          return response.data;
+        }),
+      );
   }
 }

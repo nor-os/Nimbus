@@ -11,6 +11,8 @@ import { ApiService } from './api.service';
 import { TenantContextService } from './tenant-context.service';
 import { environment } from '@env/environment';
 import {
+  CIAttributeDefinitionCreateInput,
+  CIAttributeDefinitionUpdateInput,
   CIClass,
   CIClassCreateInput,
   CIClassDetail,
@@ -30,6 +32,7 @@ import {
   CompartmentNode,
   CompartmentUpdateInput,
   ConfigurationItem,
+  ExplorerSummary,
   GraphNode,
   RelationshipType,
   SavedSearch,
@@ -59,12 +62,14 @@ const CLASS_DETAIL_FIELDS = `
 const CI_FIELDS = `
   id tenantId ciClassId ciClassName compartmentId name description
   lifecycleState attributes tags cloudResourceId pulumiUrn
-  createdAt updatedAt
+  backendId backendName createdAt updatedAt
 `;
 
 const RELATIONSHIP_TYPE_FIELDS = `
   id name displayName inverseName description sourceClassIds targetClassIds
-  isSystem createdAt updatedAt
+  isSystem domain sourceEntityType targetEntityType
+  sourceSemanticTypes targetSemanticTypes sourceSemanticCategories targetSemanticCategories
+  createdAt updatedAt
 `;
 
 const RELATIONSHIP_FIELDS = `
@@ -254,6 +259,84 @@ export class CmdbService {
     `, { tenantId, id, input }).pipe(map((d) => d.updateCiClass));
   }
 
+  deleteClass(id: string): Observable<boolean> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ deleteCiClass: boolean }>(`
+      mutation DeleteCIClass($tenantId: UUID!, $id: UUID!) {
+        deleteCiClass(tenantId: $tenantId, id: $id)
+      }
+    `, { tenantId, id }).pipe(map((d) => d.deleteCiClass));
+  }
+
+  addAttributeDefinition(
+    classId: string,
+    input: CIAttributeDefinitionCreateInput,
+  ): Observable<CIClassDetail> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ addAttributeDefinition: CIClassDetail }>(`
+      mutation AddAttrDef(
+        $tenantId: UUID!
+        $classId: UUID!
+        $input: CIAttributeDefinitionInput!
+      ) {
+        addAttributeDefinition(tenantId: $tenantId, classId: $classId, input: $input) {
+          ${CLASS_DETAIL_FIELDS}
+        }
+      }
+    `, { tenantId, classId, input }).pipe(map((d) => d.addAttributeDefinition));
+  }
+
+  updateAttributeDefinition(
+    classId: string,
+    attrId: string,
+    input: CIAttributeDefinitionUpdateInput,
+  ): Observable<CIClassDetail> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ updateAttributeDefinition: CIClassDetail }>(`
+      mutation UpdateAttrDef(
+        $tenantId: UUID!
+        $classId: UUID!
+        $attrId: UUID!
+        $input: CIAttributeDefinitionUpdateInput!
+      ) {
+        updateAttributeDefinition(
+          tenantId: $tenantId
+          classId: $classId
+          attrId: $attrId
+          input: $input
+        ) {
+          ${CLASS_DETAIL_FIELDS}
+        }
+      }
+    `, { tenantId, classId, attrId, input }).pipe(
+      map((d) => d.updateAttributeDefinition),
+    );
+  }
+
+  removeAttributeDefinition(
+    classId: string,
+    attrId: string,
+  ): Observable<CIClassDetail> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ removeAttributeDefinition: CIClassDetail }>(`
+      mutation RemoveAttrDef(
+        $tenantId: UUID!
+        $classId: UUID!
+        $attrId: UUID!
+      ) {
+        removeAttributeDefinition(
+          tenantId: $tenantId
+          classId: $classId
+          attrId: $attrId
+        ) {
+          ${CLASS_DETAIL_FIELDS}
+        }
+      }
+    `, { tenantId, classId, attrId }).pipe(
+      map((d) => d.removeAttributeDefinition),
+    );
+  }
+
   // ── Relationship Types ──────────────────────────────────────────
 
   listRelationshipTypes(): Observable<RelationshipType[]> {
@@ -266,6 +349,29 @@ export class CmdbService {
       }
     `, { tenantId }).pipe(
       map((data) => data.relationshipTypes),
+    );
+  }
+
+  updateRelationshipTypeConstraints(
+    id: string,
+    input: {
+      sourceSemanticCategories?: string[] | null;
+      targetSemanticCategories?: string[] | null;
+    },
+  ): Observable<RelationshipType> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ updateRelationshipTypeConstraints: RelationshipType }>(`
+      mutation UpdateRelationshipTypeConstraints(
+        $tenantId: UUID!
+        $id: UUID!
+        $input: RelationshipTypeConstraintInput!
+      ) {
+        updateRelationshipTypeConstraints(tenantId: $tenantId, id: $id, input: $input) {
+          ${RELATIONSHIP_TYPE_FIELDS}
+        }
+      }
+    `, { tenantId, id, input }).pipe(
+      map((d) => d.updateRelationshipTypeConstraints),
     );
   }
 
@@ -612,6 +718,52 @@ export class CmdbService {
         deleteSavedSearch(tenantId: $tenantId, id: $id, userId: $userId)
       }
     `, { tenantId, id, userId }).pipe(map((d) => d.deleteSavedSearch));
+  }
+
+  // ── Explorer Summary ────────────────────────────────────────────
+
+  getExplorerSummary(
+    compartmentId?: string,
+    backendId?: string,
+  ): Observable<ExplorerSummary> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ explorerSummary: ExplorerSummary }>(`
+      query ExplorerSummary(
+        $tenantId: UUID!
+        $compartmentId: UUID
+        $backendId: UUID
+      ) {
+        explorerSummary(
+          tenantId: $tenantId
+          compartmentId: $compartmentId
+          backendId: $backendId
+        ) {
+          totalCis
+          categories {
+            categoryId
+            categoryName
+            categoryIcon
+            totalCount
+            types {
+              semanticTypeId
+              semanticTypeName
+              ciClassId
+              ciClassName
+              ciClassIcon
+              count
+            }
+          }
+          backends {
+            backendId
+            backendName
+            providerName
+            ciCount
+          }
+        }
+      }
+    `, { tenantId, compartmentId, backendId }).pipe(
+      map((data) => data.explorerSummary),
+    );
   }
 
   // ── GraphQL helper ──────────────────────────────────────────────

@@ -12,30 +12,24 @@ from datetime import UTC, datetime
 from app.models.semantic_type import (
     SemanticCategory,
     SemanticProvider,
-    SemanticProviderResourceType,
     SemanticRelationshipKind,
     SemanticResourceType,
-    SemanticTypeMapping,
 )
 from app.schemas.semantic import (
-    ProviderResourceTypeStatusEnum,
     ProviderTypeEnum,
     SemanticCategoryResponse,
-    SemanticProviderResourceTypeResponse,
     SemanticProviderResponse,
     SemanticRelationshipKindResponse,
     SemanticResourceTypeListResponse,
     SemanticResourceTypeResponse,
     SemanticTypeFilter,
-    SemanticTypeMappingResponse,
 )
 from app.services.semantic.registry import (
     CATEGORIES,
-    PROVIDER_RESOURCE_TYPES,
+    PROVIDER_RESOURCE_MAPPINGS,
     PROVIDERS,
     RELATIONSHIP_KINDS,
     SEMANTIC_TYPES,
-    TYPE_MAPPINGS,
     PropertyDataType,
 )
 
@@ -54,21 +48,6 @@ class TestProviderTypeEnum:
     def test_is_str_enum(self):
         assert isinstance(ProviderTypeEnum.CLOUD, str)
         assert ProviderTypeEnum.CLOUD == "cloud"
-
-
-class TestProviderResourceTypeStatusEnum:
-    """Test ProviderResourceTypeStatusEnum Pydantic schema."""
-
-    def test_values(self):
-        assert set(ProviderResourceTypeStatusEnum) == {
-            ProviderResourceTypeStatusEnum.AVAILABLE,
-            ProviderResourceTypeStatusEnum.PREVIEW,
-            ProviderResourceTypeStatusEnum.DEPRECATED,
-        }
-
-    def test_is_str_enum(self):
-        assert isinstance(ProviderResourceTypeStatusEnum.AVAILABLE, str)
-        assert ProviderResourceTypeStatusEnum.AVAILABLE == "available"
 
 
 class TestPropertyDataType:
@@ -170,39 +149,6 @@ class TestPydanticSchemas:
         assert resp.name == "aws"
         assert resp.provider_type == ProviderTypeEnum.CLOUD
 
-    def test_provider_resource_type_response(self):
-        now = datetime.now(UTC)
-        prt = SemanticProviderResourceType(
-            id=uuid.uuid4(),
-            provider_id=uuid.uuid4(),
-            api_type="ec2:instance",
-            display_name="EC2 Instance",
-            description="AWS compute instance",
-            status="available",
-            is_system=True,
-        )
-        prt.created_at = now
-        prt.updated_at = now
-        resp = SemanticProviderResourceTypeResponse.model_validate(prt)
-        assert resp.api_type == "ec2:instance"
-        assert resp.status == ProviderResourceTypeStatusEnum.AVAILABLE
-
-    def test_type_mapping_response(self):
-        now = datetime.now(UTC)
-        mapping = SemanticTypeMapping(
-            id=uuid.uuid4(),
-            provider_resource_type_id=uuid.uuid4(),
-            semantic_type_id=uuid.uuid4(),
-            parameter_mapping={"vcpus": "cores"},
-            notes="Test mapping",
-            is_system=True,
-        )
-        mapping.created_at = now
-        mapping.updated_at = now
-        resp = SemanticTypeMappingResponse.model_validate(mapping)
-        assert resp.parameter_mapping == {"vcpus": "cores"}
-        assert resp.notes == "Test mapping"
-
     def test_list_response(self):
         resp = SemanticResourceTypeListResponse(items=[], total=0)
         assert resp.total == 0
@@ -249,35 +195,24 @@ class TestRegistryCompleteness:
         names = [p.name for p in PROVIDERS]
         assert len(names) == len(set(names)), "Duplicate provider names found"
 
-    def test_provider_resource_types_have_unique_keys(self):
-        keys = [(prt.provider_name, prt.api_type) for prt in PROVIDER_RESOURCE_TYPES]
-        assert len(keys) == len(set(keys)), "Duplicate provider resource type keys found"
+    def test_provider_resource_mappings_have_unique_keys(self):
+        keys = [(m.provider_name, m.api_type) for m in PROVIDER_RESOURCE_MAPPINGS]
+        assert len(keys) == len(set(keys)), "Duplicate provider resource mapping keys found"
 
-    def test_type_mappings_have_unique_keys(self):
-        keys = [(m.provider_name, m.api_type) for m in TYPE_MAPPINGS]
-        assert len(keys) == len(set(keys)), "Duplicate type mapping keys found"
-
-    def test_all_type_mappings_reference_valid_types(self):
+    def test_all_mappings_reference_valid_types(self):
         type_names = {t.name for t in SEMANTIC_TYPES}
-        for mapping in TYPE_MAPPINGS:
+        for mapping in PROVIDER_RESOURCE_MAPPINGS:
             assert mapping.semantic_type_name in type_names, (
                 f"Mapping {mapping.provider_name}/{mapping.api_type} "
                 f"references unknown type {mapping.semantic_type_name}"
             )
 
-    def test_all_type_mappings_reference_valid_prts(self):
-        prt_keys = {(prt.provider_name, prt.api_type) for prt in PROVIDER_RESOURCE_TYPES}
-        for mapping in TYPE_MAPPINGS:
-            assert (mapping.provider_name, mapping.api_type) in prt_keys, (
-                f"Mapping {mapping.provider_name}/{mapping.api_type} "
-                f"references unknown provider resource type"
-            )
-
-    def test_all_prts_reference_valid_providers(self):
+    def test_all_mappings_reference_valid_providers(self):
         provider_names = {p.name for p in PROVIDERS}
-        for prt in PROVIDER_RESOURCE_TYPES:
-            assert prt.provider_name in provider_names, (
-                f"PRT {prt.provider_name}/{prt.api_type} references unknown provider"
+        for mapping in PROVIDER_RESOURCE_MAPPINGS:
+            assert mapping.provider_name in provider_names, (
+                f"Mapping {mapping.provider_name}/{mapping.api_type} "
+                f"references unknown provider"
             )
 
     def test_categories_have_sort_order(self):
@@ -293,5 +228,5 @@ class TestRegistryCompleteness:
         assert provider_names == {"proxmox", "aws", "azure", "gcp", "oci"}
 
     def test_five_providers_covered_in_mappings(self):
-        providers = {m.provider_name for m in TYPE_MAPPINGS}
+        providers = {m.provider_name for m in PROVIDER_RESOURCE_MAPPINGS}
         assert providers == {"proxmox", "aws", "azure", "gcp", "oci"}

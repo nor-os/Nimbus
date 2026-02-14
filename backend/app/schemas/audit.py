@@ -133,12 +133,31 @@ class VerifyChainResponse(BaseModel):
 # ── Retention Policy ────────────────────────────────────
 
 
+class CategoryRetentionOverrideResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    event_category: EventCategoryEnum
+    hot_days: int
+    cold_days: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CategoryRetentionOverrideUpsert(BaseModel):
+    event_category: EventCategoryEnum
+    hot_days: int = Field(..., ge=1)
+    cold_days: int = Field(..., ge=1)
+
+
 class RetentionPolicyResponse(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     hot_days: int
     cold_days: int
     archive_enabled: bool
+    category_overrides: list[CategoryRetentionOverrideResponse] = []
     created_at: datetime
     updated_at: datetime
 

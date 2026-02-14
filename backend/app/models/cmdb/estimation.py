@@ -40,6 +40,9 @@ class ServiceEstimation(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         UUID(as_uuid=True), ForeignKey("delivery_regions.id"), nullable=True
     )
     coverage_model: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    price_list_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("price_lists.id"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="draft"
     )

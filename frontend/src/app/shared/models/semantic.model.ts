@@ -1,6 +1,6 @@
 /**
  * Overview: TypeScript interfaces for the semantic layer — categories, types, relationships,
- *     providers, provider resource types, and type mappings.
+ *     and providers.
  * Architecture: Frontend data models for the semantic type catalog (Section 5)
  * Dependencies: None
  * Concepts: Semantic types normalize provider resources into a unified model. Categories
@@ -8,7 +8,6 @@
  */
 
 export type ProviderType = 'cloud' | 'on_prem' | 'saas' | 'custom';
-export type ProviderResourceTypeStatus = 'available' | 'preview' | 'deprecated';
 
 export interface SemanticCategory {
   id: string;
@@ -37,39 +36,6 @@ export interface SemanticProvider {
   updatedAt: string;
 }
 
-export interface SemanticProviderResourceType {
-  id: string;
-  providerId: string;
-  providerName: string;
-  apiType: string;
-  displayName: string;
-  description: string | null;
-  documentationUrl: string | null;
-  parameterSchema: Record<string, unknown> | null;
-  status: ProviderResourceTypeStatus;
-  isSystem: boolean;
-  semanticTypeName: string | null;
-  semanticTypeId: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SemanticTypeMapping {
-  id: string;
-  providerResourceTypeId: string;
-  semanticTypeId: string;
-  providerName: string;
-  providerApiType: string;
-  providerDisplayName: string;
-  semanticTypeName: string;
-  semanticTypeDisplayName: string;
-  parameterMapping: Record<string, unknown> | null;
-  notes: string | null;
-  isSystem: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface SemanticResourceType {
   id: string;
   name: string;
@@ -83,7 +49,6 @@ export interface SemanticResourceType {
   allowedRelationshipKinds: string[] | null;
   sortOrder: number;
   isSystem: boolean;
-  mappings: SemanticTypeMapping[];
   children: SemanticResourceType[];
   createdAt: string;
   updatedAt: string;
@@ -97,6 +62,7 @@ export interface PropertyDef {
   default_value: string | null;
   unit: string | null;
   description: string;
+  allowed_values: string[] | null;
 }
 
 export interface SemanticResourceTypeList {
@@ -180,36 +146,6 @@ export interface SemanticProviderUpdateInput {
   documentationUrl?: string | null;
 }
 
-export interface SemanticProviderResourceTypeInput {
-  providerId: string;
-  apiType: string;
-  displayName: string;
-  description?: string | null;
-  documentationUrl?: string | null;
-  parameterSchema?: Record<string, unknown> | null;
-  status?: ProviderResourceTypeStatus;
-}
-
-export interface SemanticProviderResourceTypeUpdateInput {
-  displayName?: string;
-  description?: string | null;
-  documentationUrl?: string | null;
-  parameterSchema?: Record<string, unknown> | null;
-  status?: ProviderResourceTypeStatus;
-}
-
-export interface SemanticTypeMappingInput {
-  providerResourceTypeId: string;
-  semanticTypeId: string;
-  parameterMapping?: Record<string, unknown> | null;
-  notes?: string | null;
-}
-
-export interface SemanticTypeMappingUpdateInput {
-  parameterMapping?: Record<string, unknown> | null;
-  notes?: string | null;
-}
-
 export interface SemanticRelationshipKindInput {
   name: string;
   displayName: string;
@@ -222,3 +158,5 @@ export interface SemanticRelationshipKindUpdateInput {
   description?: string | null;
   inverseName?: string;
 }
+
+// Note: data_type in PropertyDef can also be 'os_image' — renders an image catalog picker.

@@ -1,15 +1,15 @@
 /**
- * Overview: Workflow definitions list — table with status tabs, search, CRUD actions.
+ * Overview: Workflow definitions list — table with type/status tabs, search, CRUD actions.
  * Architecture: List page for workflow definitions (Section 3.2)
  * Dependencies: @angular/core, @angular/common, @angular/router, workflow.service
- * Concepts: Definition listing, status filtering, create/edit/publish/archive/clone/delete
+ * Concepts: Definition listing, type filtering, status filtering, create/edit/publish/archive/clone/delete
  */
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { WorkflowService } from '@core/services/workflow.service';
-import { WorkflowDefinition, WorkflowDefinitionStatus } from '@shared/models/workflow.model';
+import { WorkflowDefinition, WorkflowDefinitionStatus, WorkflowType } from '@shared/models/workflow.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 
 @Component({
@@ -21,11 +21,26 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     <div class="page-container">
       <div class="page-header">
         <h1>Workflow Definitions</h1>
-        <button class="btn btn-primary" [routerLink]="['/workflows/definitions/new']">
-          + New Workflow
-        </button>
+        <div class="header-actions">
+          <button class="btn btn-secondary" (click)="seedSystemWorkflows()">Seed System Workflows</button>
+          <button class="btn btn-primary" [routerLink]="['/workflows/definitions/new']">
+            + New Workflow
+          </button>
+        </div>
       </div>
 
+      <!-- Type filter tabs -->
+      <div class="type-tabs">
+        @for (tab of typeTabs; track tab.value) {
+          <button
+            class="type-tab"
+            [class.active]="activeTypeTab() === tab.value"
+            (click)="setTypeTab(tab.value)"
+          >{{ tab.label }}</button>
+        }
+      </div>
+
+      <!-- Status filter tabs -->
       <div class="tabs">
         @for (tab of statusTabs; track tab.value) {
           <button
@@ -51,6 +66,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
           <thead>
             <tr>
               <th>Name</th>
+              <th>Type</th>
               <th>Status</th>
               <th>Version</th>
               <th>Last Modified</th>
@@ -62,29 +78,36 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
               <tr>
                 <td>
                   <a [routerLink]="['/workflows/definitions', def.id]" class="def-name">
+                    <span class="wf-icon" [class]="'type-icon-' + def.workflowType">{{ typeIcon(def.workflowType) }}</span>
                     {{ def.name }}
                   </a>
                   @if (def.description) {
                     <div class="def-desc">{{ def.description }}</div>
                   }
+                  @if (def.sourceTopologyId) {
+                    <div class="def-link">
+                      <a [routerLink]="['/architecture', def.sourceTopologyId]" class="topo-link" title="View source topology">&#x26D3; Linked topology</a>
+                    </div>
+                  }
                 </td>
+                <td><span class="type-badge" [class]="'type-' + def.workflowType">{{ def.workflowType }}</span></td>
                 <td><span class="status-badge" [class]="'status-' + def.status">{{ def.status }}</span></td>
                 <td>v{{ def.version }}</td>
                 <td>{{ def.updatedAt | date:'short' }}</td>
                 <td class="actions">
-                  <button class="btn-sm" [routerLink]="['/workflows/definitions', def.id, 'edit']" title="Edit">&#9998;</button>
+                  <button class="btn-sm" [routerLink]="['/workflows/definitions', def.id, 'edit']" title="Edit">&#x270E;</button>
                   @if (def.status === 'DRAFT') {
-                    <button class="btn-sm btn-success" (click)="publish(def.id)" title="Publish">&#10004;</button>
+                    <button class="btn-sm btn-success" (click)="publish(def.id)" title="Publish">&#x2713;</button>
                   }
                   @if (def.status === 'ACTIVE') {
-                    <button class="btn-sm" (click)="archive(def.id)" title="Archive">&#128451;</button>
+                    <button class="btn-sm" (click)="archive(def.id)" title="Archive">&#x2610;</button>
                   }
-                  <button class="btn-sm" (click)="clone(def.id)" title="Clone">&#128203;</button>
-                  <button class="btn-sm btn-danger" (click)="remove(def.id)" title="Delete">&#128465;</button>
+                  <button class="btn-sm" (click)="clone(def.id)" title="Clone">&#x2398;</button>
+                  <button class="btn-sm btn-danger" (click)="remove(def.id)" title="Delete">&#x2715;</button>
                 </td>
               </tr>
             } @empty {
-              <tr><td colspan="5" class="empty-row">No workflow definitions found</td></tr>
+              <tr><td colspan="6" class="empty-row">No workflow definitions found</td></tr>
             }
           </tbody>
         </table>
@@ -99,13 +122,26 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
       margin-bottom: 1.5rem;
     }
     .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
-    .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; }
+    .header-actions { display: flex; gap: 8px; }
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; font-family: inherit; }
     .btn-primary { background: #3b82f6; color: #fff; }
     .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
+    .btn-secondary:hover { background: #f8fafc; }
+    .type-tabs {
+      display: flex; gap: 4px; margin-bottom: 0.75rem;
+    }
+    .type-tab {
+      padding: 6px 14px; border: 1px solid #e2e8f0; background: #fff; color: #64748b;
+      cursor: pointer; font-size: 0.75rem; border-radius: 16px; font-weight: 500;
+      font-family: inherit; transition: all 0.15s;
+    }
+    .type-tab:hover { border-color: #94a3b8; color: #374151; }
+    .type-tab.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
     .tabs { display: flex; gap: 4px; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
     .tab {
       padding: 6px 12px; border: none; background: none; color: #64748b;
-      cursor: pointer; font-size: 0.8125rem; border-radius: 4px;
+      cursor: pointer; font-size: 0.8125rem; border-radius: 4px; font-family: inherit;
     }
     .tab:hover { color: #1e293b; }
     .tab.active { background: #eff6ff; color: #3b82f6; font-weight: 500; }
@@ -128,6 +164,24 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     .def-name { color: #3b82f6; text-decoration: none; font-weight: 500; }
     .def-name:hover { text-decoration: underline; }
     .def-desc { font-size: 0.6875rem; color: #64748b; margin-top: 2px; }
+    .def-link { margin-top: 2px; }
+    .topo-link { font-size: 0.6875rem; color: #8b5cf6; text-decoration: none; }
+    .topo-link:hover { text-decoration: underline; }
+    .wf-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 4px; font-size: 0.75rem;
+      margin-right: 6px; vertical-align: middle;
+    }
+    .type-icon-AUTOMATION { background: #eff6ff; color: #3b82f6; }
+    .type-icon-SYSTEM { background: #f3e8ff; color: #7c3aed; }
+    .type-icon-DEPLOYMENT { background: #ecfdf5; color: #059669; }
+    .type-badge {
+      padding: 0.125rem 0.5rem; border-radius: 12px; font-size: 0.625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .type-AUTOMATION { background: #eff6ff; color: #3b82f6; }
+    .type-SYSTEM { background: #f3e8ff; color: #7c3aed; }
+    .type-DEPLOYMENT { background: #ecfdf5; color: #059669; }
     .status-badge {
       padding: 0.125rem 0.5rem; border-radius: 12px; font-size: 0.6875rem; font-weight: 600;
     }
@@ -152,8 +206,16 @@ export class WorkflowListComponent implements OnInit {
 
   definitions = signal<WorkflowDefinition[]>([]);
   activeTab = signal<string | null>(null);
+  activeTypeTab = signal<WorkflowType | null>(null);
   searchQuery = signal('');
   loading = signal(false);
+
+  typeTabs: { label: string; value: WorkflowType | null }[] = [
+    { label: 'All', value: null },
+    { label: 'Automation', value: 'AUTOMATION' },
+    { label: 'System', value: 'SYSTEM' },
+    { label: 'Deployment', value: 'DEPLOYMENT' },
+  ];
 
   statusTabs = [
     { label: 'All', value: null as string | null },
@@ -180,10 +242,16 @@ export class WorkflowListComponent implements OnInit {
     this.loadDefinitions();
   }
 
+  setTypeTab(type: WorkflowType | null): void {
+    this.activeTypeTab.set(type);
+    this.loadDefinitions();
+  }
+
   loadDefinitions(): void {
     this.loading.set(true);
     const status = this.activeTab() ?? undefined;
-    this.workflowService.listDefinitions({ status }).subscribe({
+    const workflowType = this.activeTypeTab() ?? undefined;
+    this.workflowService.listDefinitions({ status, workflowType }).subscribe({
       next: defs => { this.definitions.set(defs); this.loading.set(false); },
       error: () => this.loading.set(false),
     });
@@ -205,5 +273,24 @@ export class WorkflowListComponent implements OnInit {
     if (confirm('Are you sure you want to delete this workflow definition?')) {
       this.workflowService.deleteDefinition(id).subscribe(() => this.loadDefinitions());
     }
+  }
+
+  typeIcon(type: WorkflowType): string {
+    switch (type) {
+      case 'AUTOMATION': return '\u2699';  // ⚙
+      case 'SYSTEM': return '\u2699';      // ⚙
+      case 'DEPLOYMENT': return '\u25B6';  // ▶
+      default: return '\u25C7';            // ◇
+    }
+  }
+
+  seedSystemWorkflows(): void {
+    this.workflowService.seedSystemWorkflows().subscribe({
+      next: created => {
+        if (created.length) {
+          this.loadDefinitions();
+        }
+      },
+    });
   }
 }

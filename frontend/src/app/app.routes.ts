@@ -32,6 +32,39 @@ export const routes: Routes = [
     data: { breadcrumb: 'Dashboard' },
   },
   {
+    path: 'backends',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/backends/backend-list.component').then(
+            (m) => m.BackendListComponent,
+          ),
+        canActivate: [permissionGuard('cloud:backend:read')],
+        data: { breadcrumb: 'Backends' },
+      },
+      {
+        path: 'images',
+        loadComponent: () =>
+          import('./features/backends/os-image-catalog/os-image-catalog.component').then(
+            (m) => m.OsImageCatalogComponent,
+          ),
+        canActivate: [permissionGuard('semantic:image:read')],
+        data: { breadcrumb: [{ label: 'Backends', path: '/backends' }, 'Images'] },
+      },
+      {
+        path: ':id',
+        loadComponent: () =>
+          import('./features/backends/backend-detail.component').then(
+            (m) => m.BackendDetailComponent,
+          ),
+        canActivate: [permissionGuard('cloud:backend:read')],
+        data: { breadcrumb: [{ label: 'Backends', path: '/backends' }, 'Details'] },
+      },
+    ],
+  },
+  {
     path: 'tenants',
     canActivate: [authGuard],
     children: [
@@ -350,6 +383,15 @@ export const routes: Routes = [
         data: { breadcrumb: 'Configuration Items' },
       },
       {
+        path: 'explorer',
+        loadComponent: () =>
+          import('./features/cmdb/explorer/cmdb-explorer.component').then(
+            (m) => m.CmdbExplorerComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:ci:read')],
+        data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Explorer'] },
+      },
+      {
         path: 'create',
         loadComponent: () =>
           import('./features/cmdb/ci-form/ci-form.component').then(
@@ -366,6 +408,15 @@ export const routes: Routes = [
           ),
         canActivate: [permissionGuard('cmdb:class:read')],
         data: { breadcrumb: [{ label: 'CMDB', path: '/cmdb' }, 'Classes'] },
+      },
+      {
+        path: 'classes/:id',
+        loadComponent: () =>
+          import('./features/cmdb/classes/class-editor.component').then(
+            (m) => m.ClassEditorComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:class:manage')],
+        data: { breadcrumb: [{ label: 'Classes', path: '/cmdb/classes' }, 'Edit'] },
       },
       {
         path: 'compartments',
@@ -455,6 +506,42 @@ export const routes: Routes = [
     canActivate: [authGuard],
     children: [
       {
+        path: 'catalogs',
+        loadComponent: () =>
+          import('./features/catalog/catalogs/catalog-list.component').then(
+            (m) => m.CatalogListComponent,
+          ),
+        canActivate: [permissionGuard('catalog:catalog:read')],
+        data: { breadcrumb: 'Catalogs' },
+      },
+      {
+        path: 'catalogs/:id',
+        loadComponent: () =>
+          import('./features/catalog/catalogs/catalog-detail.component').then(
+            (m) => m.CatalogDetailComponent,
+          ),
+        canActivate: [permissionGuard('catalog:catalog:read')],
+        data: { breadcrumb: [{ label: 'Catalogs', path: '/catalog/catalogs' }, 'Details'] },
+      },
+      {
+        path: 'skus',
+        loadComponent: () =>
+          import('./features/catalog/skus/sku-list.component').then(
+            (m) => m.SkuListComponent,
+          ),
+        canActivate: [permissionGuard('catalog:sku:read')],
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'SKUs'] },
+      },
+      {
+        path: 'skus/:id',
+        loadComponent: () =>
+          import('./features/catalog/skus/sku-detail.component').then(
+            (m) => m.SkuDetailComponent,
+          ),
+        canActivate: [permissionGuard('catalog:sku:read')],
+        data: { breadcrumb: [{ label: 'SKUs', path: '/catalog/skus' }, 'Details'] },
+      },
+      {
         path: 'services',
         loadComponent: () =>
           import('./features/catalog/service-list.component').then(
@@ -489,15 +576,6 @@ export const routes: Routes = [
           ),
         canActivate: [permissionGuard('cmdb:catalog:manage')],
         data: { breadcrumb: [{ label: 'Service Catalog', path: '/catalog/services' }, 'Pricing'] },
-      },
-      {
-        path: 'tenant-pricing',
-        loadComponent: () =>
-          import('./features/catalog/tenant-pricing.component').then(
-            (m) => m.TenantPricingComponent,
-          ),
-        canActivate: [permissionGuard('cmdb:catalog:manage')],
-        data: { breadcrumb: [{ label: 'Service Catalog', path: '/catalog/services' }, 'Tenant Pricing'] },
       },
       {
         path: 'regions',
@@ -551,7 +629,7 @@ export const routes: Routes = [
             (m) => m.StaffListComponent,
           ),
         canActivate: [permissionGuard('catalog:staff:read')],
-        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Rate Cards'] },
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Roles & Rates'] },
       },
       {
         path: 'rate-cards/matrix',
@@ -560,7 +638,7 @@ export const routes: Routes = [
             (m) => m.RateCardMatrixComponent,
           ),
         canActivate: [permissionGuard('catalog:staff:read')],
-        data: { breadcrumb: [{ label: 'Rate Cards', path: '/catalog/rate-cards' }, 'Matrix'] },
+        data: { breadcrumb: [{ label: 'Roles & Rates', path: '/catalog/rate-cards' }, 'Matrix'] },
       },
       {
         path: 'activities',
@@ -644,6 +722,24 @@ export const routes: Routes = [
         data: { breadcrumb: [{ label: 'Estimations', path: '/catalog/estimations' }, 'Details'] },
       },
       {
+        path: 'groups',
+        loadComponent: () =>
+          import('./features/catalog/groups/group-list.component').then(
+            (m) => m.GroupListComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:catalog:read')],
+        data: { breadcrumb: [{ label: 'Catalog', path: '/catalog/services' }, 'Groups'] },
+      },
+      {
+        path: 'groups/:id',
+        loadComponent: () =>
+          import('./features/catalog/groups/group-detail.component').then(
+            (m) => m.GroupDetailComponent,
+          ),
+        canActivate: [permissionGuard('catalog:group:read')],
+        data: { breadcrumb: [{ label: 'Groups', path: '/catalog/groups' }, 'Details'] },
+      },
+      {
         path: 'profitability',
         loadComponent: () =>
           import('./features/catalog/profitability/profitability-dashboard.component').then(
@@ -660,17 +756,151 @@ export const routes: Routes = [
     ],
   },
   {
-    path: 'semantic',
+    path: 'service',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: 'catalog',
+        loadComponent: () =>
+          import('./features/service/tenant-catalog.component').then(
+            (m) => m.TenantCatalogComponent,
+          ),
+        canActivate: [permissionGuard('catalog:catalog:read')],
+        data: { breadcrumb: 'Catalog' },
+      },
+      {
+        path: 'pricing',
+        loadComponent: () =>
+          import('./features/service/tenant-price-lists.component').then(
+            (m) => m.TenantPriceListsComponent,
+          ),
+        canActivate: [permissionGuard('catalog:catalog:read')],
+        data: { breadcrumb: [{ label: 'Service', path: '/service/catalog' }, 'Price Lists'] },
+      },
+      {
+        path: '',
+        redirectTo: 'catalog',
+        pathMatch: 'full',
+      },
+    ],
+  },
+  {
+    path: 'architecture',
     canActivate: [authGuard],
     children: [
       {
         path: '',
         loadComponent: () =>
+          import('./features/architecture/topology-list/topology-list.component').then(
+            (m) => m.TopologyListComponent,
+          ),
+        canActivate: [permissionGuard('architecture:topology:read')],
+        data: { breadcrumb: 'Architecture' },
+      },
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('./features/architecture/editor/topology-editor.component').then(
+            (m) => m.TopologyEditorComponent,
+          ),
+        canActivate: [permissionGuard('architecture:topology:create')],
+        data: { breadcrumb: [{ label: 'Architecture', path: '/architecture' }, 'New'] },
+      },
+      {
+        path: 'blueprints',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-list.component').then(
+            (m) => m.ClusterListComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:cluster:read')],
+        data: { breadcrumb: [{ label: 'Architecture', path: '/architecture' }, 'Stack Blueprints'] },
+      },
+      {
+        path: 'blueprints/new',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-form.component').then(
+            (m) => m.ClusterFormComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:cluster:create')],
+        data: { breadcrumb: [{ label: 'Stack Blueprints', path: '/architecture/blueprints' }, 'New'] },
+      },
+      {
+        path: 'blueprints/:id/edit',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-form.component').then(
+            (m) => m.ClusterFormComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:cluster:manage')],
+        data: { breadcrumb: [{ label: 'Stack Blueprints', path: '/architecture/blueprints' }, 'Edit'] },
+      },
+      {
+        path: 'blueprints/:id',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-detail.component').then(
+            (m) => m.ClusterDetailComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:cluster:read')],
+        data: { breadcrumb: [{ label: 'Stack Blueprints', path: '/architecture/blueprints' }, 'Details'] },
+      },
+      {
+        path: ':id/edit',
+        loadComponent: () =>
+          import('./features/architecture/editor/topology-editor.component').then(
+            (m) => m.TopologyEditorComponent,
+          ),
+        canActivate: [permissionGuard('architecture:topology:update')],
+        data: { breadcrumb: [{ label: 'Architecture', path: '/architecture' }, 'Edit'] },
+      },
+      {
+        path: ':id',
+        loadComponent: () =>
+          import('./features/architecture/topology-detail/topology-detail.component').then(
+            (m) => m.TopologyDetailComponent,
+          ),
+        canActivate: [permissionGuard('architecture:topology:read')],
+        data: { breadcrumb: [{ label: 'Architecture', path: '/architecture' }, 'Details'] },
+      },
+    ],
+  },
+  {
+    path: 'semantic',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: 'catalog',
+        loadComponent: () =>
           import('./features/semantic/semantic-explorer/semantic-explorer.component').then(
             (m) => m.SemanticExplorerComponent,
           ),
         canActivate: [permissionGuard('semantic:type:read')],
-        data: { breadcrumb: 'Semantic Explorer' },
+        data: { breadcrumb: [{ label: 'Semantic', path: '/semantic/catalog' }, 'Catalog'], view: 'catalog' },
+      },
+      {
+        path: 'providers',
+        loadComponent: () =>
+          import('./features/semantic/semantic-explorer/semantic-explorer.component').then(
+            (m) => m.SemanticExplorerComponent,
+          ),
+        canActivate: [permissionGuard('semantic:type:read')],
+        data: { breadcrumb: [{ label: 'Semantic', path: '/semantic/catalog' }, 'Providers'], view: 'providers' },
+      },
+      {
+        path: 'relationships',
+        loadComponent: () =>
+          import('./features/semantic/semantic-explorer/semantic-explorer.component').then(
+            (m) => m.SemanticExplorerComponent,
+          ),
+        canActivate: [permissionGuard('semantic:type:read')],
+        data: { breadcrumb: [{ label: 'Semantic', path: '/semantic/catalog' }, 'Relationships'], view: 'relationships' },
+      },
+      {
+        path: 'constraints',
+        loadComponent: () =>
+          import('./features/semantic/semantic-explorer/semantic-explorer.component').then(
+            (m) => m.SemanticExplorerComponent,
+          ),
+        canActivate: [permissionGuard('semantic:type:read')],
+        data: { breadcrumb: [{ label: 'Semantic', path: '/semantic/catalog' }, 'Constraints'], view: 'constraints' },
       },
       {
         path: 'types/:id',
@@ -679,7 +909,47 @@ export const routes: Routes = [
             (m) => m.TypeDetailComponent,
           ),
         canActivate: [permissionGuard('semantic:type:read')],
-        data: { breadcrumb: [{ label: 'Semantic Explorer', path: '/semantic' }, 'Details'] },
+        data: { breadcrumb: [{ label: 'Semantic Catalog', path: '/semantic/catalog' }, 'Details'] },
+      },
+      {
+        path: '',
+        redirectTo: 'catalog',
+        pathMatch: 'full',
+      },
+    ],
+  },
+  {
+    path: 'cost',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: 'calculator',
+        loadComponent: () =>
+          import('./features/cost/cost-calculator.component').then(
+            (m) => m.CostCalculatorComponent,
+          ),
+        canActivate: [permissionGuard('catalog:sku:read')],
+        data: { breadcrumb: [{ label: 'Cost', path: '/cost/calculator' }, 'Calculator'] },
+      },
+      {
+        path: '',
+        redirectTo: 'calculator',
+        pathMatch: 'full',
+      },
+    ],
+  },
+  {
+    path: 'governance',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: 'policies',
+        loadComponent: () =>
+          import('./features/governance/policy-library/policy-library.component').then(
+            (m) => m.PolicyLibraryComponent,
+          ),
+        canActivate: [permissionGuard('policy:library:read')],
+        data: { breadcrumb: 'Policy Library' },
       },
     ],
   },
@@ -776,6 +1046,17 @@ export const routes: Routes = [
         canActivate: [permissionGuard('notification:webhook:read')],
         data: {
           breadcrumb: [{ label: 'Webhooks', path: '/settings/webhooks' }, 'Deliveries'],
+        },
+      },
+      {
+        path: 'currency',
+        loadComponent: () =>
+          import(
+            './features/settings/currency/currency-settings.component'
+          ).then((m) => m.CurrencySettingsComponent),
+        canActivate: [permissionGuard('settings:currency:read')],
+        data: {
+          breadcrumb: [{ label: 'Settings', path: '/settings/auth' }, 'Currency & Rates'],
         },
       },
     ],

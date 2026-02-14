@@ -8,7 +8,7 @@ Concepts: Workflow definitions, JSONB graph storage, versioning, draft/active/ar
 import enum
 import uuid
 
-from sqlalchemy import Enum, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +20,12 @@ class WorkflowDefinitionStatus(str, enum.Enum):
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
+
+
+class WorkflowType(str, enum.Enum):
+    AUTOMATION = "AUTOMATION"
+    SYSTEM = "SYSTEM"
+    DEPLOYMENT = "DEPLOYMENT"
 
 
 class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
@@ -50,6 +56,19 @@ class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     max_concurrent: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="10"
     )
+    workflow_type: Mapped[WorkflowType] = mapped_column(
+        Enum(WorkflowType, name="workflow_type", create_constraint=True),
+        nullable=False,
+        server_default="AUTOMATION",
+    )
+    source_topology_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("architecture_topologies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -59,4 +78,6 @@ class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         Index("ix_workflow_definitions_tenant", "tenant_id"),
         Index("ix_workflow_definitions_status", "tenant_id", "status"),
         Index("ix_workflow_definitions_created_by", "created_by"),
+        Index("ix_workflow_definitions_type", "tenant_id", "workflow_type"),
+        Index("ix_workflow_definitions_source_topology", "source_topology_id"),
     )

@@ -34,6 +34,7 @@ class NodeCategory(str, Enum):
     INTEGRATION = "Integration"
     DATA = "Data"
     UTILITY = "Utility"
+    DEPLOYMENT = "Deployment"
 
 
 @dataclass

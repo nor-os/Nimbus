@@ -1,6 +1,6 @@
 """
-Overview: GraphQL mutations for semantic layer CRUD — categories, types, providers, provider
-    resource types, type mappings, and relationship kinds with is_system protection.
+Overview: GraphQL mutations for semantic layer CRUD — categories, types, providers,
+    and relationship kinds with is_system protection.
 Architecture: GraphQL mutation resolvers for the semantic layer (Section 5)
 Dependencies: strawberry, app.services.semantic.service
 Concepts: Create/update/delete with permission checks, system record protection, FK validation
@@ -14,10 +14,9 @@ from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
 from app.api.graphql.queries.semantic import (
+    _activity_type_to_gql,
     _category_to_type,
     _provider_to_gql,
-    _prt_to_gql,
-    _type_mapping_to_gql,
     _type_to_gql,
 )
 from app.api.graphql.types.semantic import (
@@ -25,20 +24,17 @@ from app.api.graphql.types.semantic import (
     SemanticCategoryType,
     SemanticCategoryUpdateInput,
     SemanticProviderInput,
-    SemanticProviderResourceTypeInput,
-    SemanticProviderResourceTypeType,
-    SemanticProviderResourceTypeUpdateInput,
     SemanticProviderType,
     SemanticProviderUpdateInput,
+    SemanticActivityTypeInput,
+    SemanticActivityTypeType,
+    SemanticActivityTypeUpdateInput,
     SemanticRelationshipKindInput,
     SemanticRelationshipKindType,
     SemanticRelationshipKindUpdateInput,
     SemanticResourceTypeInput,
     SemanticResourceTypeType,
     SemanticResourceTypeUpdateInput,
-    SemanticTypeMappingInput,
-    SemanticTypeMappingType,
-    SemanticTypeMappingUpdateInput,
 )
 
 logger = logging.getLogger(__name__)
@@ -307,162 +303,6 @@ class SemanticMutation:
             await db.commit()
             return deleted
 
-    # -- Provider Resource Type mutations ----------------------------------
-
-    @strawberry.mutation
-    async def create_provider_resource_type(
-        self,
-        info: Info,
-        tenant_id: uuid.UUID,
-        input: SemanticProviderResourceTypeInput,
-    ) -> SemanticProviderResourceTypeType:
-        """Create a new provider resource type."""
-        await check_graphql_permission(
-            info, "semantic:provider:manage", str(tenant_id)
-        )
-        from app.db.session import async_session_factory
-        from app.services.semantic.service import SemanticService
-
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            prt = await service.create_provider_resource_type(
-                provider_id=input.provider_id,
-                api_type=input.api_type,
-                display_name=input.display_name,
-                description=input.description,
-                documentation_url=input.documentation_url,
-                parameter_schema=input.parameter_schema,
-                status=input.status.value,
-            )
-            await db.commit()
-            # Re-fetch with relationships
-            prt = await service.get_provider_resource_type(prt.id)
-            return _prt_to_gql(prt)
-
-    @strawberry.mutation
-    async def update_provider_resource_type(
-        self,
-        info: Info,
-        tenant_id: uuid.UUID,
-        id: uuid.UUID,
-        input: SemanticProviderResourceTypeUpdateInput,
-    ) -> SemanticProviderResourceTypeType | None:
-        """Update a provider resource type."""
-        await check_graphql_permission(
-            info, "semantic:provider:manage", str(tenant_id)
-        )
-        from app.db.session import async_session_factory
-        from app.services.semantic.service import SemanticService
-
-        kwargs = {}
-        if input.display_name is not None:
-            kwargs["display_name"] = input.display_name
-        if input.description is not strawberry.UNSET:
-            kwargs["description"] = input.description
-        if input.documentation_url is not strawberry.UNSET:
-            kwargs["documentation_url"] = input.documentation_url
-        if input.parameter_schema is not strawberry.UNSET:
-            kwargs["parameter_schema"] = input.parameter_schema
-        if input.status is not None:
-            kwargs["status"] = input.status.value
-
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            prt = await service.update_provider_resource_type(id, **kwargs)
-            if not prt:
-                return None
-            await db.commit()
-            return _prt_to_gql(prt)
-
-    @strawberry.mutation
-    async def delete_provider_resource_type(
-        self, info: Info, tenant_id: uuid.UUID, id: uuid.UUID
-    ) -> bool:
-        """Delete a provider resource type (soft delete)."""
-        await check_graphql_permission(
-            info, "semantic:provider:manage", str(tenant_id)
-        )
-        from app.db.session import async_session_factory
-        from app.services.semantic.service import SemanticService
-
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            deleted = await service.delete_provider_resource_type(id)
-            await db.commit()
-            return deleted
-
-    # -- Type Mapping mutations --------------------------------------------
-
-    @strawberry.mutation
-    async def create_type_mapping(
-        self, info: Info, tenant_id: uuid.UUID, input: SemanticTypeMappingInput
-    ) -> SemanticTypeMappingType:
-        """Create a new type mapping."""
-        await check_graphql_permission(
-            info, "semantic:mapping:manage", str(tenant_id)
-        )
-        from app.db.session import async_session_factory
-        from app.services.semantic.service import SemanticService
-
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            mapping = await service.create_type_mapping(
-                provider_resource_type_id=input.provider_resource_type_id,
-                semantic_type_id=input.semantic_type_id,
-                parameter_mapping=input.parameter_mapping,
-                notes=input.notes,
-            )
-            await db.commit()
-            # Re-fetch with relationships
-            mapping = await service.get_type_mapping(mapping.id)
-            return _type_mapping_to_gql(mapping)
-
-    @strawberry.mutation
-    async def update_type_mapping(
-        self,
-        info: Info,
-        tenant_id: uuid.UUID,
-        id: uuid.UUID,
-        input: SemanticTypeMappingUpdateInput,
-    ) -> SemanticTypeMappingType | None:
-        """Update a type mapping."""
-        await check_graphql_permission(
-            info, "semantic:mapping:manage", str(tenant_id)
-        )
-        from app.db.session import async_session_factory
-        from app.services.semantic.service import SemanticService
-
-        kwargs = {}
-        if input.parameter_mapping is not strawberry.UNSET:
-            kwargs["parameter_mapping"] = input.parameter_mapping
-        if input.notes is not strawberry.UNSET:
-            kwargs["notes"] = input.notes
-
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            mapping = await service.update_type_mapping(id, **kwargs)
-            if not mapping:
-                return None
-            await db.commit()
-            return _type_mapping_to_gql(mapping)
-
-    @strawberry.mutation
-    async def delete_type_mapping(
-        self, info: Info, tenant_id: uuid.UUID, id: uuid.UUID
-    ) -> bool:
-        """Delete a type mapping (soft delete)."""
-        await check_graphql_permission(
-            info, "semantic:mapping:manage", str(tenant_id)
-        )
-        from app.db.session import async_session_factory
-        from app.services.semantic.service import SemanticService
-
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            deleted = await service.delete_type_mapping(id)
-            await db.commit()
-            return deleted
-
     # -- Relationship kind mutations ---------------------------------------
 
     @strawberry.mutation
@@ -532,5 +372,101 @@ class SemanticMutation:
         async with async_session_factory() as db:
             service = SemanticService(db)
             deleted = await service.delete_relationship_kind(id)
+            await db.commit()
+            return deleted
+
+    # -- Activity type mutations -------------------------------------------
+
+    @strawberry.mutation
+    async def create_semantic_activity_type(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        input: SemanticActivityTypeInput,
+    ) -> SemanticActivityTypeType:
+        """Create a semantic activity type."""
+        await check_graphql_permission(
+            info, "semantic:activity-type:manage", str(tenant_id)
+        )
+        from app.db.session import async_session_factory
+        from app.services.semantic.activity_type_service import ActivityTypeService
+
+        data = {
+            "name": input.name,
+            "display_name": input.display_name,
+            "category": input.category,
+            "description": input.description,
+            "icon": input.icon,
+            "applicable_semantic_categories": input.applicable_semantic_categories,
+            "applicable_semantic_types": input.applicable_semantic_types,
+            "default_relationship_kind_id": str(input.default_relationship_kind_id) if input.default_relationship_kind_id else None,
+            "properties_schema": input.properties_schema,
+            "sort_order": input.sort_order,
+        }
+        async with async_session_factory() as db:
+            service = ActivityTypeService(db)
+            at = await service.create_activity_type(data)
+            await db.commit()
+            await db.refresh(at, ["default_relationship_kind"])
+            return _activity_type_to_gql(at)
+
+    @strawberry.mutation
+    async def update_semantic_activity_type(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        id: uuid.UUID,
+        input: SemanticActivityTypeUpdateInput,
+    ) -> SemanticActivityTypeType | None:
+        """Update a semantic activity type."""
+        await check_graphql_permission(
+            info, "semantic:activity-type:manage", str(tenant_id)
+        )
+        from app.db.session import async_session_factory
+        from app.services.semantic.activity_type_service import ActivityTypeService
+
+        data: dict = {}
+        if input.display_name is not None:
+            data["display_name"] = input.display_name
+        if input.category is not strawberry.UNSET:
+            data["category"] = input.category
+        if input.description is not strawberry.UNSET:
+            data["description"] = input.description
+        if input.icon is not strawberry.UNSET:
+            data["icon"] = input.icon
+        if input.applicable_semantic_categories is not strawberry.UNSET:
+            data["applicable_semantic_categories"] = input.applicable_semantic_categories
+        if input.applicable_semantic_types is not strawberry.UNSET:
+            data["applicable_semantic_types"] = input.applicable_semantic_types
+        if input.default_relationship_kind_id is not strawberry.UNSET:
+            data["default_relationship_kind_id"] = str(input.default_relationship_kind_id) if input.default_relationship_kind_id else None
+        if input.properties_schema is not strawberry.UNSET:
+            data["properties_schema"] = input.properties_schema
+        if input.sort_order is not None:
+            data["sort_order"] = input.sort_order
+
+        async with async_session_factory() as db:
+            service = ActivityTypeService(db)
+            at = await service.update_activity_type(str(id), data)
+            if not at:
+                return None
+            await db.commit()
+            await db.refresh(at, ["default_relationship_kind"])
+            return _activity_type_to_gql(at)
+
+    @strawberry.mutation
+    async def delete_semantic_activity_type(
+        self, info: Info, tenant_id: uuid.UUID, id: uuid.UUID
+    ) -> bool:
+        """Delete a semantic activity type (soft delete)."""
+        await check_graphql_permission(
+            info, "semantic:activity-type:manage", str(tenant_id)
+        )
+        from app.db.session import async_session_factory
+        from app.services.semantic.activity_type_service import ActivityTypeService
+
+        async with async_session_factory() as db:
+            service = ActivityTypeService(db)
+            deleted = await service.delete_activity_type(str(id))
             await db.commit()
             return deleted

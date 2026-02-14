@@ -2,14 +2,16 @@
  * Overview: Audit configuration page with tabs for retention, redaction rules, chain verification, and archives.
  * Architecture: Feature component for audit configuration (Section 3.2)
  * Dependencies: @angular/core, @angular/common, @angular/forms, app/core/services/audit.service
- * Concepts: Retention policies, redaction rules, hash chain verification, archive management
+ * Concepts: Retention policies, per-category overrides, redaction rules, hash chain verification, archive management
  */
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuditService } from '@core/services/audit.service';
 import {
   AuditLoggingConfig,
+  CategoryRetentionOverride,
+  EventCategory,
   RetentionPolicy,
   RedactionRule,
   ArchiveEntry,
@@ -19,6 +21,30 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { ToastService } from '@shared/services/toast.service';
 
 type Tab = 'logging' | 'retention' | 'redaction' | 'verification' | 'archives';
+
+const ALL_CATEGORIES: EventCategory[] = [
+  'API', 'AUTH', 'DATA', 'PERMISSION', 'SYSTEM', 'SECURITY', 'TENANT', 'USER',
+];
+
+const CATEGORY_LABELS: Record<EventCategory, string> = {
+  API: 'API Requests',
+  AUTH: 'Authentication',
+  DATA: 'Data Operations',
+  PERMISSION: 'Permissions',
+  SYSTEM: 'System Events',
+  SECURITY: 'Security',
+  TENANT: 'Tenant Management',
+  USER: 'User Accounts',
+};
+
+interface CategoryRow {
+  category: EventCategory;
+  label: string;
+  hotDays: number;
+  coldDays: number;
+  hasOverride: boolean;
+  editing: boolean;
+}
 
 @Component({
   selector: 'nimbus-audit-config',
@@ -93,20 +119,94 @@ type Tab = 'logging' | 'retention' | 'redaction' | 'verification' | 'archives';
         @if (activeTab() === 'retention') {
           <div class="tab-content">
             <h2>Retention Policy</h2>
+            <p class="description">Configure how long audit logs are kept. Set global defaults, then optionally override per event category.</p>
+
             @if (retention()) {
-              <div class="form-group">
-                <label>Hot storage (days in PostgreSQL)</label>
-                <input type="number" [(ngModel)]="retentionHotDays" min="1" class="form-input" (blur)="saveRetention()" />
+              <div class="global-retention">
+                <h3>Global Defaults</h3>
+                <div class="retention-row">
+                  <div class="form-group">
+                    <label>Hot storage (days)</label>
+                    <input type="number" [(ngModel)]="retentionHotDays" min="1" class="form-input" (blur)="saveRetention()" />
+                  </div>
+                  <div class="form-group">
+                    <label>Cold storage (days)</label>
+                    <input type="number" [(ngModel)]="retentionColdDays" min="1" class="form-input" (blur)="saveRetention()" />
+                  </div>
+                  <div class="form-group">
+                    <label class="checkbox-label">
+                      <input type="checkbox" [(ngModel)]="retentionArchiveEnabled" (ngModelChange)="saveRetention()" />
+                      Enable automatic archival
+                    </label>
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Cold storage (days in MinIO)</label>
-                <input type="number" [(ngModel)]="retentionColdDays" min="1" class="form-input" (blur)="saveRetention()" />
-              </div>
-              <div class="form-group">
-                <label>
-                  <input type="checkbox" [(ngModel)]="retentionArchiveEnabled" (ngModelChange)="saveRetention()" />
-                  Enable automatic archival
-                </label>
+
+              <div class="category-overrides">
+                <h3>Per-Category Overrides</h3>
+                <p class="sub-description">Categories without an override use the global defaults above.</p>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      <th>Hot (days)</th>
+                      <th>Cold (days)</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of categoryRows(); track row.category) {
+                      <tr [class.override-row]="row.hasOverride">
+                        <td>
+                          <span class="category-name">{{ row.label }}</span>
+                          <span class="category-key">{{ row.category }}</span>
+                        </td>
+                        @if (row.editing) {
+                          <td>
+                            <input
+                              type="number"
+                              [(ngModel)]="row.hotDays"
+                              min="1"
+                              class="form-input inline"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              [(ngModel)]="row.coldDays"
+                              min="1"
+                              class="form-input inline"
+                            />
+                          </td>
+                          <td>
+                            <span class="badge badge-editing">Editing</span>
+                          </td>
+                          <td>
+                            <button class="btn-link" (click)="saveCategoryOverride(row)">Save</button>
+                            <button class="btn-link" (click)="cancelEditCategory(row)">Cancel</button>
+                          </td>
+                        } @else {
+                          <td>{{ row.hotDays }}</td>
+                          <td>{{ row.coldDays }}</td>
+                          <td>
+                            @if (row.hasOverride) {
+                              <span class="badge badge-active">Custom</span>
+                            } @else {
+                              <span class="badge badge-default">Default</span>
+                            }
+                          </td>
+                          <td>
+                            <button class="btn-link" (click)="editCategory(row)">Edit</button>
+                            @if (row.hasOverride) {
+                              <button class="btn-link danger" (click)="resetCategory(row)">Reset</button>
+                            }
+                          </td>
+                        }
+                      </tr>
+                    }
+                  </tbody>
+                </table>
               </div>
             }
           </div>
@@ -245,6 +345,7 @@ type Tab = 'logging' | 'retention' | 'redaction' | 'verification' | 'archives';
     .config-page { padding: 0; }
     h1 { margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
     h2 { margin: 0 0 1rem; font-size: 1.125rem; font-weight: 600; color: #1e293b; }
+    h3 { margin: 0 0 0.75rem; font-size: 0.9375rem; font-weight: 600; color: #334155; }
     .tab-bar {
       display: flex; gap: 0.25rem; margin-bottom: 1.5rem;
       border-bottom: 2px solid #e2e8f0; padding-bottom: 0;
@@ -269,6 +370,7 @@ type Tab = 'logging' | 'retention' | 'redaction' | 'verification' | 'archives';
     }
     .form-input:focus { border-color: #3b82f6; outline: none; }
     .form-input.sm { width: 80px; }
+    .form-input.inline { width: 80px; }
     .new-rule-form {
       display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;
       padding: 0.75rem; background: #f8fafc; border-radius: 6px;
@@ -297,8 +399,11 @@ type Tab = 'logging' | 'retention' | 'redaction' | 'verification' | 'archives';
     .badge { padding: 0.125rem 0.5rem; border-radius: 12px; font-size: 0.6875rem; font-weight: 600; }
     .badge-active { background: #dcfce7; color: #16a34a; }
     .badge-inactive { background: #fef2f2; color: #dc2626; }
+    .badge-default { background: #f1f5f9; color: #64748b; }
+    .badge-editing { background: #fef3c7; color: #d97706; }
     .empty-state { text-align: center; color: #94a3b8; padding: 2rem; }
     .description { color: #64748b; font-size: 0.875rem; margin-bottom: 1rem; }
+    .sub-description { color: #94a3b8; font-size: 0.75rem; margin: -0.5rem 0 0.75rem; }
     .verify-controls { margin-bottom: 1rem; }
     .verify-result { padding: 1rem; border-radius: 8px; margin-top: 1rem; }
     .verify-result.valid { background: #f0fdf4; border: 1px solid #bbf7d0; }
@@ -315,6 +420,15 @@ type Tab = 'logging' | 'retention' | 'redaction' | 'verification' | 'archives';
     .toggle-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
     .toggle-text { font-size: 0.875rem; font-weight: 500; color: #1e293b; }
     .toggle-description { font-size: 0.75rem; color: #64748b; margin-left: 1.375rem; }
+
+    /* ── Retention-specific ──────────────────────────── */
+    .global-retention { margin-bottom: 2rem; }
+    .retention-row { display: flex; gap: 1.5rem; align-items: flex-end; flex-wrap: wrap; }
+    .checkbox-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0; }
+    .category-overrides { margin-top: 0.5rem; }
+    .category-name { font-weight: 500; color: #1e293b; }
+    .category-key { display: block; font-size: 0.6875rem; color: #94a3b8; font-family: monospace; }
+    .override-row { background: #f0f9ff; }
   `],
 })
 export class AuditConfigComponent implements OnInit {
@@ -343,6 +457,29 @@ export class AuditConfigComponent implements OnInit {
   newRulePattern = '';
   newRuleReplacement = '[REDACTED]';
   newRulePriority = 0;
+
+  // Per-category override state
+  private categoryOverridesRaw = signal<CategoryRetentionOverride[]>([]);
+
+  categoryRows = computed<CategoryRow[]>(() => {
+    const policy = this.retention();
+    const overrides = this.categoryOverridesRaw();
+    const defaultHot = policy?.hot_days ?? 30;
+    const defaultCold = policy?.cold_days ?? 365;
+    const overrideMap = new Map(overrides.map(o => [o.event_category, o]));
+
+    return ALL_CATEGORIES.map(cat => {
+      const ov = overrideMap.get(cat);
+      return {
+        category: cat,
+        label: CATEGORY_LABELS[cat],
+        hotDays: ov ? ov.hot_days : defaultHot,
+        coldDays: ov ? ov.cold_days : defaultCold,
+        hasOverride: !!ov,
+        editing: false,
+      };
+    });
+  });
 
   tabs = [
     { key: 'logging' as Tab, label: 'Logging' },
@@ -382,12 +519,59 @@ export class AuditConfigComponent implements OnInit {
       archive_enabled: this.retentionArchiveEnabled,
     }).subscribe({
       next: (policy) => {
-        this.retention.set(policy);
+        this.applyRetentionPolicy(policy);
         this.toastService.success('Retention policy updated');
       },
       error: () => this.toastService.error('Failed to update retention policy'),
     });
   }
+
+  // ── Category override methods ────────────────────────
+
+  editCategory(row: CategoryRow): void {
+    row.editing = true;
+  }
+
+  cancelEditCategory(row: CategoryRow): void {
+    row.editing = false;
+    // Reset values from signal
+    const policy = this.retention();
+    const overrides = this.categoryOverridesRaw();
+    const ov = overrides.find(o => o.event_category === row.category);
+    row.hotDays = ov ? ov.hot_days : (policy?.hot_days ?? 30);
+    row.coldDays = ov ? ov.cold_days : (policy?.cold_days ?? 365);
+  }
+
+  saveCategoryOverride(row: CategoryRow): void {
+    if (row.hotDays < 1 || row.coldDays < 1) {
+      this.toastService.error('Days must be at least 1');
+      return;
+    }
+    this.auditService.upsertCategoryOverride({
+      event_category: row.category,
+      hot_days: row.hotDays,
+      cold_days: row.coldDays,
+    }).subscribe({
+      next: () => {
+        row.editing = false;
+        this.toastService.success(`Retention override saved for ${row.label}`);
+        this.loadRetention();
+      },
+      error: () => this.toastService.error('Failed to save category override'),
+    });
+  }
+
+  resetCategory(row: CategoryRow): void {
+    this.auditService.deleteCategoryOverride(row.category).subscribe({
+      next: () => {
+        this.toastService.success(`${row.label} reverted to global defaults`);
+        this.loadRetention();
+      },
+      error: () => this.toastService.error('Failed to reset category override'),
+    });
+  }
+
+  // ── Existing methods ─────────────────────────────────
 
   createRule(): void {
     if (!this.newRulePattern.trim()) return;
@@ -469,13 +653,16 @@ export class AuditConfigComponent implements OnInit {
 
   private loadRetention(): void {
     this.auditService.getRetentionPolicy().subscribe({
-      next: (policy) => {
-        this.retention.set(policy);
-        this.retentionHotDays = policy.hot_days;
-        this.retentionColdDays = policy.cold_days;
-        this.retentionArchiveEnabled = policy.archive_enabled;
-      },
+      next: (policy) => this.applyRetentionPolicy(policy),
     });
+  }
+
+  private applyRetentionPolicy(policy: RetentionPolicy): void {
+    this.retention.set(policy);
+    this.retentionHotDays = policy.hot_days;
+    this.retentionColdDays = policy.cold_days;
+    this.retentionArchiveEnabled = policy.archive_enabled;
+    this.categoryOverridesRaw.set(policy.category_overrides ?? []);
   }
 
   private loadRedactionRules(): void {

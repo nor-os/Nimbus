@@ -8,6 +8,7 @@
 export type WorkflowDefinitionStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 export type WorkflowExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type WorkflowNodeExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED' | 'CANCELLED';
+export type WorkflowType = 'AUTOMATION' | 'SYSTEM' | 'DEPLOYMENT';
 
 export interface WorkflowDefinition {
   id: string;
@@ -20,6 +21,9 @@ export interface WorkflowDefinition {
   createdBy: string;
   timeoutSeconds: number;
   maxConcurrent: number;
+  workflowType: WorkflowType;
+  sourceTopologyId: string | null;
+  isSystem: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -113,6 +117,13 @@ export interface WorkflowDefinitionCreateInput {
   graph?: WorkflowGraph;
   timeoutSeconds?: number;
   maxConcurrent?: number;
+  workflowType?: WorkflowType;
+}
+
+export interface GenerateDeploymentWorkflowInput {
+  topologyId: string;
+  addApprovalGates?: boolean;
+  addNotifications?: boolean;
 }
 
 export interface WorkflowDefinitionUpdateInput {

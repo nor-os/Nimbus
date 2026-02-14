@@ -133,7 +133,7 @@ const ESTIMATION_LINE_ITEM_FIELDS = `
 
 const ESTIMATION_FIELDS = `
   id tenantId clientTenantId serviceOfferingId deliveryRegionId coverageModel
-  status quantity sellPricePerUnit sellCurrency totalEstimatedCost totalSellPrice
+  priceListId status quantity sellPricePerUnit sellCurrency totalEstimatedCost totalSellPrice
   marginAmount marginPercent approvedBy approvedAt
   lineItems { ${ESTIMATION_LINE_ITEM_FIELDS} }
   createdAt updatedAt
@@ -1009,6 +1009,19 @@ export class DeliveryService {
     );
   }
 
+  refreshEstimationPrices(estimationId: string): Observable<ServiceEstimation> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ refreshEstimationPrices: ServiceEstimation }>(`
+      mutation RefreshEstimationPrices($tenantId: UUID!, $estimationId: UUID!) {
+        refreshEstimationPrices(tenantId: $tenantId, estimationId: $estimationId) {
+          ${ESTIMATION_FIELDS}
+        }
+      }
+    `, { tenantId, estimationId }).pipe(
+      map((d) => d.refreshEstimationPrices),
+    );
+  }
+
   // ── Price List Templates ──────────────────────────────────────────
 
   listPriceListTemplates(filters?: {
@@ -1121,27 +1134,21 @@ export class DeliveryService {
 
   cloneTemplateToPriceList(
     templateId: string,
-    effectiveFrom: string,
-    effectiveTo?: string | null,
   ): Observable<{ priceListId: string }> {
     const tenantId = this.tenantContext.currentTenantId();
     return this.gql<{ clonePriceListTemplateToPriceList: { priceListId: string } }>(`
       mutation ClonePriceListTemplateToPriceList(
         $tenantId: UUID!
         $templateId: UUID!
-        $effectiveFrom: DateTime!
-        $effectiveTo: DateTime
       ) {
         clonePriceListTemplateToPriceList(
           tenantId: $tenantId
           templateId: $templateId
-          effectiveFrom: $effectiveFrom
-          effectiveTo: $effectiveTo
         ) {
           priceListId
         }
       }
-    `, { tenantId, templateId, effectiveFrom, effectiveTo }).pipe(
+    `, { tenantId, templateId }).pipe(
       map((d) => d.clonePriceListTemplateToPriceList),
     );
   }

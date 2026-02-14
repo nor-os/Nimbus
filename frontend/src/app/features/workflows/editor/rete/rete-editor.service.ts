@@ -11,6 +11,9 @@ import { ConnectionPlugin, Presets as ConnectionPresets } from 'rete-connection-
 import { AngularPlugin, Presets as AngularPresets } from 'rete-angular-plugin/17';
 import { MinimapPlugin } from 'rete-minimap-plugin';
 import { WorkflowGraph, WorkflowNode, WorkflowConnection, NodeTypeInfo, PortDef } from '@shared/models/workflow.model';
+import { CustomNodeComponent } from './custom-node.component';
+import { CustomSocketComponent } from './custom-socket.component';
+import { CustomConnectionComponent } from './custom-connection.component';
 
 type Schemes = GetSchemes<ClassicPreset.Node, ClassicPreset.Connection<ClassicPreset.Node, ClassicPreset.Node>>;
 
@@ -38,7 +41,13 @@ export class ReteEditorService {
     const angularPlugin = new AngularPlugin<Schemes, any>({ injector });
 
     connection.addPreset(ConnectionPresets.classic.setup());
-    angularPlugin.addPreset(AngularPresets.classic.setup());
+    angularPlugin.addPreset(AngularPresets.classic.setup({
+      customize: {
+        node: () => CustomNodeComponent as any,
+        socket: () => CustomSocketComponent as any,
+        connection: () => CustomConnectionComponent as any,
+      },
+    }));
 
     this.editor.use(this.area);
     this.area.use(connection);
@@ -206,6 +215,8 @@ export class ReteEditorService {
     // Store workflow metadata on the node
     (node as any)._workflowType = wfNode.type;
     (node as any)._config = { ...wfNode.config };
+    (node as any)._category = typeDef?.category || 'Utility';
+    (node as any)._icon = typeDef?.icon || '';
     // Override the auto-generated ID with our stable ID
     (node as any).id = wfNode.id;
 

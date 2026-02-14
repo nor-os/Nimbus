@@ -341,6 +341,7 @@ export interface ServiceEstimation {
   serviceOfferingId: string;
   deliveryRegionId: string | null;
   coverageModel: string | null;
+  priceListId: string | null;
   status: EstimationStatus;
   quantity: number;
   sellPricePerUnit: number;
@@ -385,6 +386,7 @@ export interface ServiceEstimationCreateInput {
   serviceOfferingId: string;
   deliveryRegionId?: string | null;
   coverageModel?: string | null;
+  priceListId?: string | null;
   quantity?: number;
   sellPricePerUnit?: number;
   sellCurrency?: string;
@@ -396,6 +398,7 @@ export interface ServiceEstimationUpdateInput {
   sellCurrency?: string | null;
   deliveryRegionId?: string | null;
   coverageModel?: string | null;
+  priceListId?: string | null;
 }
 
 export interface EstimationLineItemCreateInput {

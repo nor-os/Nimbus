@@ -1,13 +1,18 @@
 /**
  * Overview: Service offering create/edit form — manage service name, description,
- *     category (with autocomplete), service type, measuring unit (filtered by type),
+ *     category (with autocomplete), service group association (with on-the-fly creation),
+ *     service type, measuring unit (filtered by type),
  *     operating model, region picker (with add link), multi-select CI class chips,
- *     CI class ↔ activity associations, coverage model, and active status.
+ *     CI class ↔ activity associations, coverage model, active status, status badge
+ *     with lifecycle actions (publish/archive/clone), base fee + fee period,
+ *     and provider SKU composition for resource offerings.
  * Architecture: Catalog feature component (Section 8)
  * Dependencies: @angular/core, @angular/router, @angular/forms, app/core/services/catalog.service,
  *     app/core/services/cmdb.service, app/core/services/delivery.service, app/core/services/semantic.service
  * Concepts: Service offering CRUD, type-filtered measuring units, multi-CI-class chip selector,
- *     category autocomplete, CI class ↔ activity associations, region add link
+ *     category autocomplete, service group membership, CI class ↔ activity associations,
+ *     region add link, offering lifecycle (draft/published/archived), read-only mode for
+ *     published/archived, SKU composition
  */
 import { Component, inject, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -17,8 +22,11 @@ import { CatalogService } from '@core/services/catalog.service';
 import { CmdbService } from '@core/services/cmdb.service';
 import { DeliveryService } from '@core/services/delivery.service';
 import { SemanticService } from '@core/services/semantic.service';
-import { ServiceOffering, CIClass, CIClassActivityAssociation, MeasuringUnit } from '@shared/models/cmdb.model';
-import { SemanticResourceType } from '@shared/models/semantic.model';
+import {
+  ServiceOffering, CIClass, CIClassActivityAssociation, MeasuringUnit,
+  ProviderSku, ServiceOfferingSku, OfferingStatus,
+} from '@shared/models/cmdb.model';
+import { SemanticResourceType, SemanticProvider } from '@shared/models/semantic.model';
 import { ActivityTemplate, DeliveryRegion, ServiceProcess, ServiceProcessAssignment } from '@shared/models/delivery.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { HasPermissionDirective } from '@shared/directives/has-permission.directive';
@@ -38,6 +46,11 @@ const COVERAGE_MODELS = [
   { value: '', label: 'None' }, { value: 'business_hours', label: 'Business Hours' },
   { value: 'extended', label: 'Extended' }, { value: '24x7', label: '24/7' },
 ];
+const FEE_PERIODS = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'annual', label: 'Annual' },
+];
 
 @Component({
   selector: 'nimbus-service-form',
@@ -48,8 +61,47 @@ const COVERAGE_MODELS = [
     <nimbus-layout>
       <div class="service-form-page">
         <div class="page-header">
-          <h1>{{ isEditMode() ? 'Edit Service Offering' : 'Create Service Offering' }}</h1>
+          <div class="page-header-left">
+            <h1>{{ isEditMode() ? 'Edit Service Offering' : 'Create Service Offering' }}</h1>
+            @if (isEditMode() && offeringStatus()) {
+              <span class="badge-status" [class]="'badge-status-' + offeringStatus()">
+                {{ offeringStatus() | titlecase }}
+              </span>
+            }
+          </div>
+          @if (isEditMode() && offeringStatus()) {
+            <div class="page-header-actions">
+              @if (offeringStatus() === 'draft') {
+                <button type="button" class="btn btn-success" (click)="publishOffering()" [disabled]="lifecycleActionInProgress()">
+                  {{ lifecycleActionInProgress() ? 'Publishing...' : 'Publish' }}
+                </button>
+              }
+              @if (offeringStatus() === 'published') {
+                <button type="button" class="btn btn-warning" (click)="archiveOffering()" [disabled]="lifecycleActionInProgress()">
+                  {{ lifecycleActionInProgress() ? 'Archiving...' : 'Archive' }}
+                </button>
+                <button type="button" class="btn btn-secondary" (click)="cloneOffering()" [disabled]="lifecycleActionInProgress()">Clone</button>
+              }
+              @if (offeringStatus() === 'archived') {
+                <button type="button" class="btn btn-secondary" (click)="cloneOffering()" [disabled]="lifecycleActionInProgress()">Clone</button>
+              }
+            </div>
+          }
         </div>
+
+        <!-- Read-only banner for published/archived offerings -->
+        @if (isReadOnly()) {
+          <div class="info-banner">
+            <span class="info-banner-icon">&#9432;</span>
+            <span>
+              This offering is {{ offeringStatus() }}. To make changes, clone it first.
+            </span>
+            <button type="button" class="btn btn-primary btn-sm" (click)="cloneAndEdit()" [disabled]="lifecycleActionInProgress()">
+              {{ lifecycleActionInProgress() ? 'Cloning...' : 'Clone & Edit' }}
+            </button>
+          </div>
+        }
+
         @if (loading()) { <div class="loading">Loading...</div> }
         @if (!loading()) {
           <form [formGroup]="form" (ngSubmit)="onSubmit()" class="form">
@@ -123,6 +175,53 @@ const COVERAGE_MODELS = [
                 @for (cm of coverageModels; track cm.value) { <option [value]="cm.value">{{ cm.label }}</option> }
               </select>
             </div>
+
+            <!-- Base Fee + Fee Period -->
+            <div class="form-group">
+              <label for="baseFee">Base Fee</label>
+              <input id="baseFee" type="number" formControlName="baseFee" class="form-input"
+                placeholder="Fixed recurring charge (optional)" min="0" step="0.01" />
+              <span class="form-hint">Optional fixed recurring charge applied to the offering.</span>
+            </div>
+            @if (form.get('baseFee')?.value != null && form.get('baseFee')?.value !== 0) {
+              <div class="form-group">
+                <label for="feePeriod">Fee Period</label>
+                <select id="feePeriod" formControlName="feePeriod" class="form-input form-select">
+                  <option value="">Select period...</option>
+                  @for (fp of feePeriods; track fp.value) { <option [value]="fp.value">{{ fp.label }}</option> }
+                </select>
+                <span class="form-hint">Billing period for the base fee.</span>
+              </div>
+            }
+
+            <!-- Minimum Charge -->
+            <div class="form-group" style="margin-top: 0.5rem; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
+              <label for="minimumAmount">Minimum Charge</label>
+              <input id="minimumAmount" type="number" formControlName="minimumAmount" class="form-input"
+                placeholder="Minimum monthly/annual charge (optional)" min="0" step="0.01" />
+              <span class="form-hint">Minimum billing threshold for this service.</span>
+            </div>
+            @if (minimumAmountValue() > 0) {
+              <div class="form-row" style="display: flex; gap: 1rem;">
+                <div class="form-group" style="flex: 1;">
+                  <label for="minimumCurrency">Currency</label>
+                  <select id="minimumCurrency" formControlName="minimumCurrency" class="form-input form-select">
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                    <option value="GBP">GBP</option>
+                    <option value="CHF">CHF</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                  <label for="minimumPeriod">Period</label>
+                  <select id="minimumPeriod" formControlName="minimumPeriod" class="form-input form-select">
+                    <option value="monthly">Monthly</option>
+                    <option value="annual">Annual</option>
+                  </select>
+                </div>
+              </div>
+            }
+
             <!-- CI Classes multi-select chips -->
             <div class="form-group autocomplete-wrapper">
               <label>CI Classes</label>
@@ -134,12 +233,16 @@ const COVERAGE_MODELS = [
                     @if (cls.semanticTypeId) {
                       <a class="chip-link" (click)="navigateToSemanticType(cls.semanticTypeId!)" title="View in Semantic Explorer">&#8599;</a>
                     }
-                    <button type="button" class="chip-remove" (click)="removeCIClass(cls.id)">&times;</button>
+                    @if (!isReadOnly()) {
+                      <button type="button" class="chip-remove" (click)="removeCIClass(cls.id)">&times;</button>
+                    }
                   </span>
                 }
-                <input type="text" class="chip-input" placeholder="Search CI classes..."
-                  [(ngModel)]="ciClassSearchText" [ngModelOptions]="{standalone: true}"
-                  (input)="onCIClassSearch()" (focus)="showClassDropdown.set(true)" (blur)="hideClassDropdownDelayed()" />
+                @if (!isReadOnly()) {
+                  <input type="text" class="chip-input" placeholder="Search CI classes..."
+                    [(ngModel)]="ciClassSearchText" [ngModelOptions]="{standalone: true}"
+                    (input)="onCIClassSearch()" (focus)="showClassDropdown.set(true)" (blur)="hideClassDropdownDelayed()" />
+                }
               </div>
               @if (showClassDropdown() && filteredClasses().length > 0) {
                 <div class="autocomplete-dropdown">
@@ -161,6 +264,7 @@ const COVERAGE_MODELS = [
                 </label>
               </div>
             }
+
             <!-- CI Class ↔ Activity Associations -->
             @if (isEditMode() && selectedCIClassIds().length > 0) {
               <div class="assoc-section">
@@ -172,48 +276,123 @@ const COVERAGE_MODELS = [
                       @for (a of ciClassAssociations(); track a.id) {
                         <tr><td>{{ a.ciClassDisplayName }}</td><td>{{ a.relationshipType || '\u2014' }}</td>
                           <td>{{ a.activityTemplateName }}</td>
-                          <td><button type="button" class="btn-action btn-delete" (click)="removeAssociation(a.id)">Remove</button></td></tr>
+                          <td>
+                            @if (!isReadOnly()) {
+                              <button type="button" class="btn-action btn-delete" (click)="removeAssociation(a.id)">Remove</button>
+                            }
+                          </td></tr>
                       }
                     </tbody>
                   </table>
                 } @else { <div class="no-assignments">No associations defined.</div> }
-                <div class="assoc-add-form">
-                  <select class="form-input assign-field" [(ngModel)]="assocCIClassId" [ngModelOptions]="{standalone: true}">
-                    <option value="">CI Class...</option>
-                    @for (cls of selectedClassDetails(); track cls.id) { <option [value]="cls.id">{{ cls.displayName }}</option> }
-                  </select>
-                  <input type="text" class="form-input assign-field" placeholder="Relationship type"
-                    [(ngModel)]="assocRelType" [ngModelOptions]="{standalone: true}" list="rel-type-suggestions" />
-                  <datalist id="rel-type-suggestions">
-                    @for (s of relationshipTypeSuggestions(); track s) { <option [value]="s"></option> }
-                  </datalist>
-                  <select class="form-input assign-field" [(ngModel)]="assocActivityTemplateId" [ngModelOptions]="{standalone: true}">
-                    <option value="">Activity Template...</option>
-                    @for (tmpl of activityTemplates(); track tmpl.id) { <option [value]="tmpl.id">{{ tmpl.name }}</option> }
-                  </select>
-                  <button type="button" class="btn btn-sm btn-primary" (click)="addAssociation()"
-                    [disabled]="!assocCIClassId || !assocActivityTemplateId">Add</button>
-                </div>
+                @if (!isReadOnly()) {
+                  <div class="assoc-add-form">
+                    <select class="form-input assign-field" [(ngModel)]="assocCIClassId" [ngModelOptions]="{standalone: true}">
+                      <option value="">CI Class...</option>
+                      @for (cls of selectedClassDetails(); track cls.id) { <option [value]="cls.id">{{ cls.displayName }}</option> }
+                    </select>
+                    <input type="text" class="form-input assign-field" placeholder="Relationship type"
+                      [(ngModel)]="assocRelType" [ngModelOptions]="{standalone: true}" list="rel-type-suggestions" />
+                    <datalist id="rel-type-suggestions">
+                      @for (s of relationshipTypeSuggestions(); track s) { <option [value]="s"></option> }
+                    </datalist>
+                    <select class="form-input assign-field" [(ngModel)]="assocActivityTemplateId" [ngModelOptions]="{standalone: true}">
+                      <option value="">Activity Template...</option>
+                      @for (tmpl of activityTemplates(); track tmpl.id) { <option [value]="tmpl.id">{{ tmpl.name }}</option> }
+                    </select>
+                    <button type="button" class="btn btn-sm btn-primary" (click)="addAssociation()"
+                      [disabled]="!assocCIClassId || !assocActivityTemplateId">Add</button>
+                  </div>
+                }
               </div>
             }
+
+            <!-- Provider SKU Composition (resource offerings in edit mode) -->
+            @if (isEditMode() && serviceTypeValue() === 'resource') {
+              <div class="sku-section">
+                <h3 class="process-title">Provider SKU Composition</h3>
+                @if (offeringSkuRows().length > 0) {
+                  <table class="assign-table">
+                    <thead>
+                      <tr>
+                        <th>SKU Name</th>
+                        <th>Provider</th>
+                        <th>Quantity</th>
+                        <th>Required?</th>
+                        <th>Sort Order</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (row of offeringSkuRows(); track row.link.id) {
+                        <tr>
+                          <td>{{ row.skuName }}</td>
+                          <td>{{ row.providerName }}</td>
+                          <td>{{ row.link.defaultQuantity }}</td>
+                          <td>{{ row.link.isRequired ? 'Yes' : 'No' }}</td>
+                          <td>{{ row.link.sortOrder }}</td>
+                          <td>
+                            @if (!isReadOnly()) {
+                              <button type="button" class="btn-action btn-delete" (click)="removeSkuFromOffering(row.link.id)">Remove</button>
+                            }
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                } @else {
+                  <div class="no-assignments">No SKUs linked to this offering.</div>
+                }
+
+                @if (!isReadOnly()) {
+                  <div class="sku-add-form">
+                    <select class="form-input assign-field" [(ngModel)]="skuProviderFilter" [ngModelOptions]="{standalone: true}"
+                      (ngModelChange)="onSkuProviderChange()">
+                      <option value="">Select provider...</option>
+                      @for (prov of semanticProviders(); track prov.id) {
+                        <option [value]="prov.id">{{ prov.displayName }}</option>
+                      }
+                    </select>
+                    <select class="form-input assign-field" [(ngModel)]="skuSelectedId" [ngModelOptions]="{standalone: true}"
+                      [disabled]="!skuProviderFilter">
+                      <option value="">Select SKU...</option>
+                      @for (sku of availableSkus(); track sku.id) {
+                        <option [value]="sku.id">{{ sku.displayName || sku.name }}</option>
+                      }
+                    </select>
+                    <input type="number" class="form-input assign-field-sm" placeholder="Qty"
+                      [(ngModel)]="skuQuantity" [ngModelOptions]="{standalone: true}" min="1" />
+                    <label class="toggle-label">
+                      <input type="checkbox" [(ngModel)]="skuIsRequired" [ngModelOptions]="{standalone: true}" />
+                      <span>Required</span>
+                    </label>
+                    <button type="button" class="btn btn-sm btn-primary" (click)="addSkuToOffering()"
+                      [disabled]="!skuSelectedId || !skuProviderFilter">Add</button>
+                  </div>
+                }
+              </div>
+            }
+
             <!-- Delivery Processes -->
             @if (isEditMode()) {
               <div class="process-section">
                 <h3 class="process-title">Delivery Processes</h3>
-                <div class="assign-form">
-                  <select class="form-input assign-field" [(ngModel)]="assignProcessId" [ngModelOptions]="{standalone: true}">
-                    <option value="">Select process...</option>
-                    @for (proc of processes(); track proc.id) { <option [value]="proc.id">{{ proc.name }}</option> }
-                  </select>
-                  <select class="form-input assign-field-sm" [(ngModel)]="assignCoverage" [ngModelOptions]="{standalone: true}">
-                    <option value="">No coverage</option><option value="business_hours">Business Hours</option>
-                    <option value="extended">Extended</option><option value="24x7">24x7</option>
-                  </select>
-                  <label class="toggle-label">
-                    <input type="checkbox" [(ngModel)]="assignIsDefault" [ngModelOptions]="{standalone: true}" /><span>Default</span>
-                  </label>
-                  <button type="button" class="btn btn-sm btn-primary" (click)="assignProcess()" [disabled]="!assignProcessId">Assign</button>
-                </div>
+                @if (!isReadOnly()) {
+                  <div class="assign-form">
+                    <select class="form-input assign-field" [(ngModel)]="assignProcessId" [ngModelOptions]="{standalone: true}">
+                      <option value="">Select process...</option>
+                      @for (proc of processes(); track proc.id) { <option [value]="proc.id">{{ proc.name }}</option> }
+                    </select>
+                    <select class="form-input assign-field-sm" [(ngModel)]="assignCoverage" [ngModelOptions]="{standalone: true}">
+                      <option value="">No coverage</option><option value="business_hours">Business Hours</option>
+                      <option value="extended">Extended</option><option value="24x7">24x7</option>
+                    </select>
+                    <label class="toggle-label">
+                      <input type="checkbox" [(ngModel)]="assignIsDefault" [ngModelOptions]="{standalone: true}" /><span>Default</span>
+                    </label>
+                    <button type="button" class="btn btn-sm btn-primary" (click)="assignProcess()" [disabled]="!assignProcessId">Assign</button>
+                  </div>
+                }
                 @if (assignments().length > 0) {
                   <table class="assign-table">
                     <thead><tr><th>Process</th><th>Coverage</th><th>Default?</th><th>Actions</th></tr></thead>
@@ -221,7 +400,11 @@ const COVERAGE_MODELS = [
                       @for (a of assignments(); track a.id) {
                         <tr><td>{{ processNameForId(a.processId) }}</td><td>{{ a.coverageModel || '\u2014' }}</td>
                           <td>{{ a.isDefault ? 'Yes' : 'No' }}</td>
-                          <td><button type="button" class="btn-action btn-delete" (click)="removeAssignment(a.id)">Remove</button></td></tr>
+                          <td>
+                            @if (!isReadOnly()) {
+                              <button type="button" class="btn-action btn-delete" (click)="removeAssignment(a.id)">Remove</button>
+                            }
+                          </td></tr>
                       }
                     </tbody>
                   </table>
@@ -229,12 +412,19 @@ const COVERAGE_MODELS = [
               </div>
             }
             @if (errorMessage()) { <div class="form-error">{{ errorMessage() }}</div> }
-            <div class="form-actions">
-              <button type="submit" class="btn btn-primary" [disabled]="form.invalid || submitting()">
-                {{ submitting() ? 'Saving...' : (isEditMode() ? 'Update' : 'Create') }}
-              </button>
-              <button type="button" class="btn btn-secondary" (click)="cancel()">Cancel</button>
-            </div>
+            @if (!isReadOnly()) {
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary" [disabled]="form.invalid || submitting()">
+                  {{ submitting() ? 'Saving...' : (isEditMode() ? 'Update' : 'Create') }}
+                </button>
+                <button type="button" class="btn btn-secondary" (click)="cancel()">Cancel</button>
+              </div>
+            }
+            @if (isReadOnly()) {
+              <div class="form-actions">
+                <button type="button" class="btn btn-secondary" (click)="cancel()">Back</button>
+              </div>
+            }
           </form>
         }
       </div>
@@ -242,15 +432,29 @@ const COVERAGE_MODELS = [
   `,
   styles: [`
     .service-form-page { padding: 0; max-width: 680px; }
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap; }
+    .page-header-left { display: flex; align-items: center; gap: 0.75rem; }
     .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
+    .page-header-actions { display: flex; gap: 0.5rem; }
     .loading { padding: 2rem; text-align: center; color: #64748b; font-size: 0.8125rem; }
+
+    /* Status badges */
+    .badge-status { display: inline-flex; align-items: center; padding: 0.1875rem 0.625rem; border-radius: 12px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+    .badge-status-draft { background: #fef3c7; color: #92400e; }
+    .badge-status-published { background: #dcfce7; color: #166534; }
+    .badge-status-archived { background: #f1f5f9; color: #64748b; }
+
+    /* Info banner */
+    .info-banner { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; margin-bottom: 1.25rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.8125rem; color: #1e40af; }
+    .info-banner-icon { font-size: 1.125rem; flex-shrink: 0; }
+
     .form { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.5rem; }
     .form-group { margin-bottom: 1.25rem; }
     .form-group label { display: block; margin-bottom: 0.375rem; font-size: 0.8125rem; font-weight: 600; color: #374151; }
     .form-input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8125rem; box-sizing: border-box; font-family: inherit; transition: border-color 0.15s; background: #fff; color: #1e293b; }
     .form-input::placeholder { color: #94a3b8; }
     .form-input:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15); }
+    .form-input:disabled { background: #f8fafc; color: #94a3b8; cursor: not-allowed; }
     .form-textarea { resize: vertical; min-height: 60px; }
     .form-select { cursor: pointer; }
     .form-hint { display: block; font-size: 0.6875rem; color: #64748b; margin-top: 0.25rem; }
@@ -285,6 +489,13 @@ const COVERAGE_MODELS = [
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
     .btn-secondary:hover { background: #f8fafc; }
+    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-success { background: #16a34a; color: #fff; border: none; }
+    .btn-success:hover { background: #15803d; }
+    .btn-success:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-warning { background: #f59e0b; color: #fff; border: none; }
+    .btn-warning:hover { background: #d97706; }
+    .btn-warning:disabled { opacity: 0.5; cursor: not-allowed; }
     .process-section { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #e2e8f0; }
     .process-title { font-size: 0.9375rem; font-weight: 600; color: #1e293b; margin: 0 0 0.75rem; }
     .assign-form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
@@ -298,6 +509,11 @@ const COVERAGE_MODELS = [
     .btn-delete:hover { background: #fef2f2; }
     .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.75rem; border: none; }
     .no-assignments { color: #94a3b8; font-size: 0.8125rem; padding: 0.5rem 0; }
+
+    /* SKU composition section */
+    .sku-section { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #e2e8f0; }
+    .sku-add-form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.75rem; }
+
   `],
 })
 export class ServiceFormComponent implements OnInit {
@@ -321,6 +537,7 @@ export class ServiceFormComponent implements OnInit {
   deliveryRegions = signal<DeliveryRegion[]>([]);
   selectedRegionIds = signal<string[]>([]);
   serviceTypeValue = signal<string>('resource');
+  minimumAmountValue = signal<number>(0);
   assignProcessId = '';
   assignCoverage = '';
   assignIsDefault = false;
@@ -361,6 +578,39 @@ export class ServiceFormComponent implements OnInit {
   readonly serviceTypes = SERVICE_TYPES;
   readonly operatingModels = OPERATING_MODELS;
   readonly coverageModels = COVERAGE_MODELS;
+  readonly feePeriods = FEE_PERIODS;
+
+  // Lifecycle state
+  offeringStatus = signal<OfferingStatus | null>(null);
+  lifecycleActionInProgress = signal(false);
+  isReadOnly = computed(() => {
+    const status = this.offeringStatus();
+    return status === 'published' || status === 'archived';
+  });
+
+  // SKU composition state
+  offeringSkuLinks = signal<ServiceOfferingSku[]>([]);
+  skuDetailsMap = signal<Record<string, ProviderSku>>({});
+  semanticProviders = signal<SemanticProvider[]>([]);
+  availableSkus = signal<ProviderSku[]>([]);
+  skuProviderFilter = '';
+  skuSelectedId = '';
+  skuQuantity = 1;
+  skuIsRequired = false;
+  offeringSkuRows = computed(() => {
+    const links = this.offeringSkuLinks();
+    const skuMap = this.skuDetailsMap();
+    const providers = this.semanticProviders();
+    return links.map(link => {
+      const sku = skuMap[link.providerSkuId];
+      const provider = sku ? providers.find(p => p.id === sku.providerId) : null;
+      return {
+        link,
+        skuName: sku ? (sku.displayName || sku.name) : link.providerSkuId.substring(0, 8) + '...',
+        providerName: provider?.displayName || (sku?.providerId?.substring(0, 8) + '...' || '--'),
+      };
+    });
+  });
 
   form = this.fb.group({
     name: ['', [Validators.required]], description: [''], category: [''],
@@ -368,6 +618,11 @@ export class ServiceFormComponent implements OnInit {
     serviceType: ['resource' as string, [Validators.required]],
     operatingModel: ['regional' as string, [Validators.required]],
     defaultCoverageModel: [''], isActive: [true],
+    baseFee: [null as number | null],
+    feePeriod: ['' as string],
+    minimumAmount: [null as number | null],
+    minimumCurrency: ['EUR' as string],
+    minimumPeriod: ['monthly' as string],
   });
   private offeringId: string | null = null;
 
@@ -379,6 +634,7 @@ export class ServiceFormComponent implements OnInit {
     this.loadRegions();
     this.loadCategories();
     this.loadSemanticTypes();
+    this.loadSemanticProviders();
     this.setupFormReactions();
     if (this.offeringId) {
       this.loading.set(true);
@@ -389,7 +645,7 @@ export class ServiceFormComponent implements OnInit {
   }
 
   onSubmit(): void {
-    if (this.form.invalid) return;
+    if (this.form.invalid || this.isReadOnly()) return;
     this.submitting.set(true);
     this.errorMessage.set('');
     if (this.isEditMode() && this.offeringId) { this.submitUpdate(this.offeringId); } else { this.submitCreate(); }
@@ -401,6 +657,7 @@ export class ServiceFormComponent implements OnInit {
   hideCategoryDropdownDelayed(): void { setTimeout(() => this.showCategoryDropdown.set(false), 150); }
 
   toggleRegion(regionId: string): void {
+    if (this.isReadOnly()) return;
     const current = this.selectedRegionIds();
     this.selectedRegionIds.set(current.includes(regionId) ? current.filter(id => id !== regionId) : [...current, regionId]);
   }
@@ -409,11 +666,15 @@ export class ServiceFormComponent implements OnInit {
   onCIClassSearch(): void { this.showClassDropdown.set(true); }
   hideClassDropdownDelayed(): void { setTimeout(() => this.showClassDropdown.set(false), 150); }
   addCIClass(id: string): void {
+    if (this.isReadOnly()) return;
     if (!this.selectedCIClassIds().includes(id)) { this.selectedCIClassIds.set([...this.selectedCIClassIds(), id]); }
     this.ciClassSearchText = '';
     this.showClassDropdown.set(false);
   }
-  removeCIClass(id: string): void { this.selectedCIClassIds.set(this.selectedCIClassIds().filter(cid => cid !== id)); }
+  removeCIClass(id: string): void {
+    if (this.isReadOnly()) return;
+    this.selectedCIClassIds.set(this.selectedCIClassIds().filter(cid => cid !== id));
+  }
   getCategoryForClass(cls: CIClass): string {
     if (!cls.semanticTypeId) return '';
     const st = this.semanticTypes().find(t => t.id === cls.semanticTypeId);
@@ -422,6 +683,7 @@ export class ServiceFormComponent implements OnInit {
   navigateToSemanticType(semanticTypeId: string): void { this.router.navigate(['/semantic', 'types', semanticTypeId]); }
 
   addAssociation(): void {
+    if (this.isReadOnly()) return;
     if (!this.assocCIClassId || !this.assocActivityTemplateId) return;
     this.catalogService.createCIClassActivityAssociation({
       ciClassId: this.assocCIClassId, activityTemplateId: this.assocActivityTemplateId,
@@ -432,6 +694,7 @@ export class ServiceFormComponent implements OnInit {
     });
   }
   removeAssociation(id: string): void {
+    if (this.isReadOnly()) return;
     this.catalogService.deleteCIClassActivityAssociation(id).subscribe({
       next: () => { this.ciClassAssociations.update(list => list.filter(a => a.id !== id)); this.toastService.success('Association removed'); },
       error: (err) => this.toastService.error(err.message || 'Failed to remove association'),
@@ -439,6 +702,7 @@ export class ServiceFormComponent implements OnInit {
   }
 
   assignProcess(): void {
+    if (this.isReadOnly()) return;
     if (!this.offeringId || !this.assignProcessId) return;
     this.deliveryService.createAssignment({ serviceOfferingId: this.offeringId, processId: this.assignProcessId, coverageModel: this.assignCoverage || null, isDefault: this.assignIsDefault }).subscribe({
       next: (a) => { this.assignments.update(list => [...list, a]); this.assignProcessId = ''; this.assignCoverage = ''; this.assignIsDefault = false; this.toastService.success('Process assigned'); },
@@ -446,6 +710,7 @@ export class ServiceFormComponent implements OnInit {
     });
   }
   removeAssignment(id: string): void {
+    if (this.isReadOnly()) return;
     this.deliveryService.deleteAssignment(id).subscribe({
       next: () => { this.assignments.update(list => list.filter(a => a.id !== id)); this.toastService.success('Assignment removed'); },
       error: (err) => this.toastService.error(err.message || 'Failed to remove assignment'),
@@ -456,6 +721,108 @@ export class ServiceFormComponent implements OnInit {
     return p ? p.name : processId.substring(0, 8) + '...';
   }
 
+  // ── Lifecycle actions ──────────────────────────────────────────────
+
+  publishOffering(): void {
+    if (!this.offeringId) return;
+    this.lifecycleActionInProgress.set(true);
+    this.catalogService.publishOffering(this.offeringId).subscribe({
+      next: (updated) => {
+        this.existingOffering.set(updated);
+        this.offeringStatus.set(updated.status);
+        this.applyReadOnlyState();
+        this.lifecycleActionInProgress.set(false);
+        this.toastService.success(`"${updated.name}" published`);
+      },
+      error: (err) => {
+        this.lifecycleActionInProgress.set(false);
+        this.toastService.error(err.message || 'Failed to publish offering');
+      },
+    });
+  }
+
+  archiveOffering(): void {
+    if (!this.offeringId) return;
+    this.lifecycleActionInProgress.set(true);
+    this.catalogService.archiveOffering(this.offeringId).subscribe({
+      next: (updated) => {
+        this.existingOffering.set(updated);
+        this.offeringStatus.set(updated.status);
+        this.applyReadOnlyState();
+        this.lifecycleActionInProgress.set(false);
+        this.toastService.success(`"${updated.name}" archived`);
+      },
+      error: (err) => {
+        this.lifecycleActionInProgress.set(false);
+        this.toastService.error(err.message || 'Failed to archive offering');
+      },
+    });
+  }
+
+  cloneOffering(): void {
+    if (!this.offeringId) return;
+    this.lifecycleActionInProgress.set(true);
+    this.catalogService.cloneOffering(this.offeringId).subscribe({
+      next: (cloned) => {
+        this.lifecycleActionInProgress.set(false);
+        this.toastService.success(`Cloned as "${cloned.name}"`);
+        this.router.navigate(['/catalog', 'services', cloned.id, 'edit']);
+      },
+      error: (err) => {
+        this.lifecycleActionInProgress.set(false);
+        this.toastService.error(err.message || 'Failed to clone offering');
+      },
+    });
+  }
+
+  cloneAndEdit(): void {
+    this.cloneOffering();
+  }
+
+  // ── SKU composition actions ────────────────────────────────────────
+
+  onSkuProviderChange(): void {
+    this.skuSelectedId = '';
+    this.availableSkus.set([]);
+    if (this.skuProviderFilter) {
+      this.catalogService.listSkus({ providerId: this.skuProviderFilter, activeOnly: true, limit: 500 }).subscribe({
+        next: (result) => this.availableSkus.set(result.items),
+        error: () => this.availableSkus.set([]),
+      });
+    }
+  }
+
+  addSkuToOffering(): void {
+    if (this.isReadOnly() || !this.offeringId || !this.skuSelectedId) return;
+    const nextSortOrder = this.offeringSkuLinks().length;
+    this.catalogService.addSkuToOffering(
+      this.offeringId, this.skuSelectedId, this.skuQuantity, this.skuIsRequired, nextSortOrder,
+    ).subscribe({
+      next: (link) => {
+        this.offeringSkuLinks.update(list => [...list, link]);
+        this.loadSkuDetail(link.providerSkuId);
+        this.skuSelectedId = '';
+        this.skuQuantity = 1;
+        this.skuIsRequired = false;
+        this.toastService.success('SKU added to offering');
+      },
+      error: (err) => this.toastService.error(err.message || 'Failed to add SKU'),
+    });
+  }
+
+  removeSkuFromOffering(linkId: string): void {
+    if (this.isReadOnly()) return;
+    this.catalogService.removeSkuFromOffering(linkId).subscribe({
+      next: () => {
+        this.offeringSkuLinks.update(list => list.filter(l => l.id !== linkId));
+        this.toastService.success('SKU removed from offering');
+      },
+      error: (err) => this.toastService.error(err.message || 'Failed to remove SKU'),
+    });
+  }
+
+  // ── Private methods ────────────────────────────────────────────────
+
   private setupFormReactions(): void {
     this.form.get('serviceType')?.valueChanges.subscribe(value => {
       const type = value || 'resource';
@@ -465,6 +832,7 @@ export class ServiceFormComponent implements OnInit {
       if (currentUnit && !validUnits.includes(currentUnit as MeasuringUnit)) { this.form.patchValue({ measuringUnit: 'month' }); }
     });
     this.form.get('operatingModel')?.valueChanges.subscribe(value => { if (value === 'follow_the_sun') { this.selectedRegionIds.set([]); } });
+    this.form.get('minimumAmount')?.valueChanges.subscribe(value => { this.minimumAmountValue.set(value || 0); });
   }
 
   private submitCreate(): void {
@@ -473,6 +841,8 @@ export class ServiceFormComponent implements OnInit {
       name: values.name!, description: values.description || null, category: values.category || null,
       measuringUnit: values.measuringUnit || 'month', ciClassIds: this.selectedCIClassIds().length > 0 ? this.selectedCIClassIds() : null,
       serviceType: values.serviceType || 'resource', operatingModel: values.operatingModel || null, defaultCoverageModel: values.defaultCoverageModel || null,
+      baseFee: values.baseFee || null, feePeriod: values.feePeriod || null,
+      minimumAmount: values.minimumAmount || null, minimumCurrency: values.minimumCurrency || null, minimumPeriod: values.minimumPeriod || null,
     }).subscribe({
       next: (offering) => {
         const regionIds = this.selectedRegionIds();
@@ -494,6 +864,7 @@ export class ServiceFormComponent implements OnInit {
       measuringUnit: values.measuringUnit || null, ciClassIds: this.selectedCIClassIds(),
       serviceType: values.serviceType || null, operatingModel: values.operatingModel || null,
       defaultCoverageModel: values.defaultCoverageModel || null, isActive: values.isActive,
+      minimumAmount: values.minimumAmount || null, minimumCurrency: values.minimumCurrency || null, minimumPeriod: values.minimumPeriod || null,
     }).subscribe({
       next: (offering) => {
         const regionIds = this.selectedRegionIds();
@@ -513,24 +884,61 @@ export class ServiceFormComponent implements OnInit {
   private loadSemanticTypes(): void { this.semanticService.listTypes({ limit: 500 }).subscribe({ next: (r) => this.semanticTypes.set(r.items) }); }
   private loadActivityTemplates(): void { this.deliveryService.listActivityTemplates({ limit: 500 }).subscribe({ next: (r) => this.activityTemplates.set(r.items) }); }
   private loadRelationshipTypeSuggestions(): void { this.catalogService.listRelationshipTypeSuggestions().subscribe({ next: (s) => this.relationshipTypeSuggestions.set(s) }); }
+  private loadSemanticProviders(): void { this.semanticService.listProviders().subscribe({ next: (providers) => this.semanticProviders.set(providers) }); }
 
   private loadExistingOffering(id: string): void {
     this.catalogService.getOffering(id).subscribe({
       next: (offering) => {
         if (!offering) { this.loading.set(false); this.toastService.error('Service offering not found'); this.router.navigate(['/catalog', 'services']); return; }
         this.existingOffering.set(offering);
+        this.offeringStatus.set(offering.status);
         this.serviceTypeValue.set(offering.serviceType || 'resource');
         this.form.patchValue({
           name: offering.name, description: offering.description || '', category: offering.category || '',
           measuringUnit: offering.measuringUnit, serviceType: offering.serviceType || 'resource',
           operatingModel: offering.operatingModel || 'regional', defaultCoverageModel: offering.defaultCoverageModel || '', isActive: offering.isActive,
+          baseFee: offering.baseFee, feePeriod: offering.feePeriod || '',
+          minimumAmount: offering.minimumAmount, minimumCurrency: offering.minimumCurrency || 'EUR', minimumPeriod: offering.minimumPeriod || 'monthly',
         });
         if (offering.regionIds) { this.selectedRegionIds.set(offering.regionIds); }
         if (offering.ciClassIds) { this.selectedCIClassIds.set(offering.ciClassIds); this.loadAssociationsForOffering(); }
+        this.applyReadOnlyState();
         this.loading.set(false);
         this.deliveryService.listAssignments(offering.id).subscribe({ next: (assignments) => this.assignments.set(assignments) });
+        this.loadOfferingSkus(offering.id);
       },
       error: () => { this.loading.set(false); this.toastService.error('Failed to load service offering'); this.router.navigate(['/catalog', 'services']); },
+    });
+  }
+
+  private applyReadOnlyState(): void {
+    if (this.isReadOnly()) {
+      this.form.disable();
+    } else {
+      this.form.enable();
+    }
+  }
+
+  private loadOfferingSkus(offeringId: string): void {
+    this.catalogService.listOfferingSkus(offeringId).subscribe({
+      next: (links) => {
+        this.offeringSkuLinks.set(links);
+        for (const link of links) {
+          this.loadSkuDetail(link.providerSkuId);
+        }
+      },
+      error: () => { /* SKU loading is best-effort */ },
+    });
+  }
+
+  private loadSkuDetail(skuId: string): void {
+    if (this.skuDetailsMap()[skuId]) return;
+    this.catalogService.getSku(skuId).subscribe({
+      next: (sku) => {
+        if (sku) {
+          this.skuDetailsMap.update(map => ({ ...map, [skuId]: sku }));
+        }
+      },
     });
   }
 

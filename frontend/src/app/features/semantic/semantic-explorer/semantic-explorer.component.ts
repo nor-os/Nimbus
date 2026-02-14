@@ -1,15 +1,18 @@
 /**
- * Overview: Unified Semantic Explorer — tabbed view with Catalog, Providers, and Relationships,
+ * Overview: Unified Semantic Explorer — route-driven views for Catalog, Relationships, and Constraints,
  *     side detail panel, and full CRUD via dialogs.
- * Architecture: Feature component combining type catalog, provider hierarchy, and relationship management (Section 5)
- * Dependencies: @angular/core, @angular/common, @angular/forms, app/core/services/semantic.service
- * Concepts: View toggle (Catalog/Providers/Relationships), provider drill-down, side detail panel,
+ * Architecture: Feature component with route data-driven view selection (Section 5)
+ * Dependencies: @angular/core, @angular/common, @angular/forms, @angular/router, app/core/services/semantic.service
+ * Concepts: Route-driven views (Catalog/Relationships/Constraints), side detail panel,
  *     CRUD dialogs, is_system protection
  */
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { SemanticService } from '@core/services/semantic.service';
+import { CmdbService } from '@core/services/cmdb.service';
+import { RelationshipType } from '@shared/models/cmdb.model';
 import { PermissionCheckService } from '@core/services/permission-check.service';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { ToastService } from '@shared/services/toast.service';
@@ -22,18 +25,14 @@ import {
   SemanticRelationshipKind,
   SemanticCategory,
   SemanticProvider,
-  SemanticProviderResourceType,
-  SemanticTypeMapping,
 } from '@shared/models/semantic.model';
 import { CategoryDialogComponent } from '../dialogs/category-dialog.component';
 import { TypeDialogComponent, TypeDialogData } from '../dialogs/type-dialog.component';
 import { ProviderDialogComponent } from '../dialogs/provider-dialog.component';
-import { ProviderResourceTypeDialogComponent, PRTDialogData } from '../dialogs/provider-resource-type-dialog.component';
-import { TypeMappingDialogComponent, TypeMappingDialogData } from '../dialogs/type-mapping-dialog.component';
 import { RelationshipKindDialogComponent } from '../dialogs/relationship-kind-dialog.component';
 import { SearchableSelectComponent, SelectOption } from '@shared/components/searchable-select/searchable-select.component';
 
-type ViewMode = 'catalog' | 'providers' | 'relationships';
+type ViewMode = 'catalog' | 'relationships' | 'constraints';
 
 @Component({
   selector: 'nimbus-semantic-explorer',
@@ -45,21 +44,14 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
       <!-- Header -->
       <div class="page-header">
         <div class="header-top">
-          <h1>Semantic Explorer</h1>
+          <h1>{{ pageTitle() }}</h1>
           <div class="header-actions" *nimbusHasPermission="'semantic:type:manage'">
             @if (activeView() === 'catalog') {
-              <button class="btn btn-sm btn-outline" (click)="openCategoryDialog()">+ Category</button>
-              <button class="btn btn-sm btn-primary" (click)="openTypeDialog()">+ Type</button>
-            }
-            @if (activeView() === 'providers' && !selectedProvider()) {
-              <button class="btn btn-sm btn-primary" (click)="openProviderDialog()">+ Provider</button>
-            }
-            @if (activeView() === 'providers' && selectedProvider()) {
-              <button class="btn btn-sm btn-outline" (click)="openPRTDialog()">+ Resource Type</button>
-              <button class="btn btn-sm btn-primary" (click)="openTypeMappingDialog()">+ Mapping</button>
+              <button class="btn btn-secondary" (click)="openCategoryDialog()">+ Category</button>
+              <button class="btn btn-primary" (click)="openTypeDialog()">+ Type</button>
             }
             @if (activeView() === 'relationships') {
-              <button class="btn btn-sm btn-primary" (click)="openRelationshipKindDialog()">+ Relationship</button>
+              <button class="btn btn-primary" (click)="openRelationshipKindDialog()">+ Relationship</button>
             }
           </div>
         </div>
@@ -75,13 +67,8 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
           <span class="stat">{{ relationshipCount() }} relationships</span>
         </div>
 
-        <!-- View toggle + filters -->
+        <!-- Filters -->
         <div class="toolbar">
-          <div class="view-toggle">
-            <button [class.active]="activeView() === 'catalog'" (click)="switchView('catalog')">Catalog</button>
-            <button [class.active]="activeView() === 'providers'" (click)="switchView('providers')">Providers</button>
-            <button [class.active]="activeView() === 'relationships'" (click)="switchView('relationships')">Relationships</button>
-          </div>
           @if (activeView() === 'catalog') {
             <div class="filter-area">
               <input type="text" class="search-input" placeholder="Search types..." [ngModel]="searchTerm()" (ngModelChange)="searchTerm.set($event)" />
@@ -132,7 +119,6 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
                           <p class="card-desc">{{ t.description }}</p>
                         }
                         <div class="card-meta">
-                          <span>{{ t.mappings.length }} mappings</span>
                           @if (t.children.length) { <span>{{ t.children.length }} children</span> }
                         </div>
                         <div class="card-actions" *nimbusHasPermission="'semantic:type:manage'">
@@ -151,88 +137,68 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
               }
             }
 
-            <!-- PROVIDERS VIEW -->
-            @if (activeView() === 'providers') {
-              @if (!selectedProvider()) {
-                <!-- Level 1: Provider cards -->
-                <div class="provider-grid">
-                  @for (p of providers(); track p.id) {
-                    <div class="provider-card" (click)="selectProvider(p)">
-                      <div class="provider-card-top">
-                        <span class="provider-card-name">{{ p.displayName }}</span>
-                        <span class="badge" [class]="'ptype-' + p.providerType">{{ p.providerType }}</span>
-                        @if (p.isSystem) { <span class="badge system">System</span> }
-                      </div>
-                      @if (p.description) {
-                        <p class="card-desc">{{ p.description }}</p>
-                      }
-                      <div class="card-meta">
-                        <span>{{ p.resourceTypeCount }} resource types</span>
-                      </div>
-                      <div class="card-actions" *nimbusHasPermission="'semantic:provider:manage'">
-                        <button class="icon-btn" (click)="editProvider(p); $event.stopPropagation()" title="Edit">&#9998;</button>
-                        @if (!p.isSystem) {
-                          <button class="icon-btn danger" (click)="deleteProvider(p); $event.stopPropagation()" title="Delete">&#10005;</button>
-                        }
-                      </div>
-                    </div>
-                  }
-                </div>
-                @if (providers().length === 0) {
-                  <div class="empty-state">No providers found.</div>
-                }
-              } @else {
-                <!-- Level 2: Resource types table for selected provider -->
-                <div class="breadcrumb">
-                  <button class="breadcrumb-link" (click)="selectedProvider.set(null)">Providers</button>
-                  <span class="breadcrumb-sep">&#8250;</span>
-                  <span class="breadcrumb-current">{{ selectedProvider()!.displayName }}</span>
+            <!-- CONSTRAINTS VIEW -->
+            @if (activeView() === 'constraints') {
+              <div class="constraints-section">
+                <div class="constraints-toolbar">
+                  <select class="domain-filter" [ngModel]="constraintDomainFilter()" (ngModelChange)="constraintDomainFilter.set($event)">
+                    <option value="">All Domains</option>
+                    <option value="infrastructure">Infrastructure</option>
+                    <option value="operational">Operational</option>
+                  </select>
+                  <span class="toolbar-hint">Click cells to cycle: · → S → T → S+T → ·</span>
                 </div>
                 <div class="table-wrapper">
-                  <table>
+                  <table class="constraint-matrix">
                     <thead>
                       <tr>
-                        <th>API Type</th>
-                        <th>Display Name</th>
-                        <th>Status</th>
-                        <th>Semantic Type</th>
-                        <th>System</th>
-                        <th *nimbusHasPermission="'semantic:provider:manage'">Actions</th>
+                        <th class="sticky-col">Category</th>
+                        @for (rt of filteredRelTypes(); track rt.id) {
+                          <th class="rt-header">
+                            <span class="rt-name">{{ rt.displayName }}</span>
+                            <span class="rt-domain badge">{{ rt.domain }}</span>
+                          </th>
+                        }
                       </tr>
                     </thead>
                     <tbody>
-                      @for (prt of providerResourceTypes(); track prt.id) {
+                      @for (cat of constraintCategories(); track cat) {
                         <tr>
-                          <td class="mono">{{ prt.apiType }}</td>
-                          <td>{{ prt.displayName }}</td>
-                          <td>
-                            <span class="badge" [class]="'status-' + prt.status">{{ prt.status }}</span>
-                          </td>
-                          <td>
-                            @if (prt.semanticTypeName) {
-                              <span class="badge category">{{ prt.semanticTypeName }}</span>
-                            } @else {
-                              <span class="muted">—</span>
-                            }
-                          </td>
-                          <td>
-                            @if (prt.isSystem) { <span class="badge system">System</span> }
-                          </td>
-                          <td *nimbusHasPermission="'semantic:provider:manage'">
-                            <button class="icon-btn" (click)="editPRT(prt)" title="Edit">&#9998;</button>
-                            @if (!prt.isSystem) {
-                              <button class="icon-btn danger" (click)="deletePRT(prt)" title="Delete">&#10005;</button>
-                            }
-                          </td>
+                          <td class="sticky-col cat-name">{{ cat }}</td>
+                          @for (rt of filteredRelTypes(); track rt.id) {
+                            <td class="cell editable"
+                                [class.src]="isCategoryInConstraint(rt.sourceSemanticCategories, cat)"
+                                [class.tgt]="isCategoryInConstraint(rt.targetSemanticCategories, cat)"
+                                [class.both]="isCategoryInConstraint(rt.sourceSemanticCategories, cat) && isCategoryInConstraint(rt.targetSemanticCategories, cat)"
+                                [class.saving]="isSavingConstraint(rt.id, cat)"
+                                [title]="constraintCellTitle(rt, cat)"
+                                (click)="cycleConstraint(rt, cat)"
+                            >
+                              @if (isSavingConstraint(rt.id, cat)) {
+                                <span class="cell-icon saving-icon">⏳</span>
+                              } @else if (isCategoryInConstraint(rt.sourceSemanticCategories, cat) && isCategoryInConstraint(rt.targetSemanticCategories, cat)) {
+                                <span class="cell-icon">S+T</span>
+                              } @else if (isCategoryInConstraint(rt.sourceSemanticCategories, cat)) {
+                                <span class="cell-icon">S</span>
+                              } @else if (isCategoryInConstraint(rt.targetSemanticCategories, cat)) {
+                                <span class="cell-icon">T</span>
+                              } @else {
+                                <span class="cell-icon empty">&middot;</span>
+                              }
+                            </td>
+                          }
                         </tr>
                       }
                     </tbody>
                   </table>
                 </div>
-                @if (providerResourceTypes().length === 0) {
-                  <div class="empty-state">No resource types for this provider.</div>
-                }
-              }
+                <div class="constraints-legend">
+                  <span class="legend-item"><span class="legend-box src"></span> Source allowed</span>
+                  <span class="legend-item"><span class="legend-box tgt"></span> Target allowed</span>
+                  <span class="legend-item"><span class="legend-box both"></span> Both</span>
+                  <span class="legend-item"><span class="legend-box empty-box"></span> No constraint</span>
+                </div>
+              </div>
             }
 
             <!-- RELATIONSHIPS VIEW -->
@@ -271,6 +237,7 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
                 </table>
               </div>
             }
+
           </div>
 
           <!-- Side detail panel -->
@@ -288,7 +255,7 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
               @if (t.description) { <p class="panel-desc">{{ t.description }}</p> }
 
               <div class="panel-actions" *nimbusHasPermission="'semantic:type:manage'">
-                <button class="btn btn-sm btn-outline" (click)="editType(t)">Edit Type</button>
+                <button class="btn btn-secondary" (click)="editType(t)">Edit Type</button>
                 @if (!t.isSystem) {
                   <button class="btn btn-sm btn-danger" (click)="deleteType(t)">Delete Type</button>
                 }
@@ -307,19 +274,6 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
                       </div>
                     }
                   </div>
-                </div>
-              }
-
-              <!-- Mappings -->
-              @if (t.mappings.length) {
-                <div class="panel-section">
-                  <h4>Provider Mappings ({{ t.mappings.length }})</h4>
-                  @for (m of t.mappings; track m.id) {
-                    <div class="mapping-row">
-                      <span class="provider-name">{{ m.providerName }}</span>
-                      <span class="mono">{{ m.providerDisplayName || m.providerApiType }}</span>
-                    </div>
-                  }
                 </div>
               }
 
@@ -360,8 +314,8 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
     </nimbus-layout>
   `,
   styles: [`
-    .explorer { padding: 1.5rem; }
-    .page-header { margin-bottom: 1.25rem; }
+    .explorer { padding: 0; }
+    .page-header { margin-bottom: 1.5rem; }
     .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.375rem; }
     .header-top h1 { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
     .header-actions { display: flex; gap: 0.5rem; }
@@ -370,14 +324,6 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
     .stat-sep { color: #cbd5e1; }
 
     .toolbar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-    .view-toggle { display: inline-flex; border-radius: 6px; overflow: hidden; border: 1px solid #e2e8f0; }
-    .view-toggle button {
-      font-family: inherit; font-size: 0.8125rem; font-weight: 500; padding: 0.4375rem 1rem;
-      border: none; background: #f1f5f9; color: #64748b; cursor: pointer; transition: all 0.15s;
-    }
-    .view-toggle button + button { border-left: 1px solid #e2e8f0; }
-    .view-toggle button.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-    .view-toggle button:hover:not(.active) { background: #e2e8f0; color: #374151; }
 
     .filter-area { display: flex; gap: 0.5rem; flex: 1; }
     .search-input, .filter-area select {
@@ -467,13 +413,13 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
     .icon-btn:hover { color: #3b82f6; background: rgba(59,130,246,0.08); }
     .icon-btn.danger:hover { color: #dc2626; background: rgba(220,38,38,0.08); }
 
-    .btn { font-family: inherit; font-size: 0.8125rem; font-weight: 500; border-radius: 6px; cursor: pointer; padding: 0.4375rem 1rem; transition: all 0.15s; }
+    .btn { font-family: inherit; font-size: 0.8125rem; font-weight: 500; border-radius: 6px; cursor: pointer; padding: 0.5rem 1rem; border: none; transition: all 0.15s; }
     .btn-sm { font-size: 0.75rem; padding: 0.375rem 0.875rem; }
-    .btn-primary { background: #3b82f6; color: #fff; border: none; }
+    .btn-primary { background: #3b82f6; color: #fff; }
     .btn-primary:hover { background: #2563eb; }
-    .btn-outline { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
-    .btn-outline:hover { background: #f8fafc; }
-    .btn-danger { background: #dc2626; color: #fff; border: none; }
+    .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
+    .btn-secondary:hover { background: #f8fafc; }
+    .btn-danger { background: #dc2626; color: #fff; }
     .btn-danger:hover { background: #b91c1c; }
 
     /* Side panel */
@@ -505,25 +451,78 @@ type ViewMode = 'catalog' | 'providers' | 'relationships';
     }
     .chip.clickable { cursor: pointer; }
     .chip.clickable:hover { border-color: #3b82f6; color: #3b82f6; }
+
+    /* Constraints view */
+    .constraints-section { display: flex; flex-direction: column; gap: 1rem; }
+    .constraints-toolbar { display: flex; gap: 0.75rem; align-items: center; }
+    .domain-filter {
+      padding: 0.375rem 0.75rem; border: 1px solid #e2e8f0; border-radius: 6px;
+      font-size: 0.8125rem; color: #374151; background: #fff; outline: none; font-family: inherit;
+    }
+    .constraint-matrix { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    .constraint-matrix th, .constraint-matrix td {
+      border: 1px solid #e2e8f0; padding: 0.375rem 0.5rem; text-align: center;
+    }
+    .constraint-matrix th { background: #f8fafc; font-weight: 600; color: #374151; }
+    .sticky-col { text-align: left; min-width: 120px; background: #fff; }
+    .cat-name { font-weight: 500; color: #1e293b; }
+    .rt-header { min-width: 100px; font-size: 0.75rem; }
+    .rt-name { display: block; }
+    .rt-domain { font-size: 0.625rem; }
+    .cell { cursor: default; }
+    .cell.editable { cursor: pointer; transition: background 0.15s, opacity 0.15s; }
+    .cell.editable:hover { filter: brightness(0.95); }
+    .cell.src { background: #dbeafe; }
+    .cell.tgt { background: #fef3c7; }
+    .cell.both { background: #d1fae5; }
+    .cell.saving { opacity: 0.6; pointer-events: none; }
+    .cell-icon { font-size: 0.75rem; font-weight: 600; }
+    .cell-icon.empty { color: #cbd5e1; font-size: 1rem; }
+    .cell-icon.saving-icon { font-size: 0.75rem; }
+    .toolbar-hint { font-size: 0.75rem; color: #94a3b8; font-style: italic; }
+    .constraints-legend {
+      display: flex; gap: 1.25rem; align-items: center; font-size: 0.75rem; color: #64748b;
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.375rem; }
+    .legend-box {
+      width: 14px; height: 14px; border-radius: 3px; border: 1px solid #e2e8f0;
+    }
+    .legend-box.src { background: #dbeafe; }
+    .legend-box.tgt { background: #fef3c7; }
+    .legend-box.both { background: #d1fae5; }
+    .legend-box.empty-box { background: #fff; }
+
   `],
 })
 export class SemanticExplorerComponent implements OnInit {
   private semanticService = inject(SemanticService);
+  private cmdbService = inject(CmdbService);
   private permissionCheck = inject(PermissionCheckService);
   private toast = inject(ToastService);
   private dialogService = inject(DialogService);
   private confirmService = inject(ConfirmService);
+  private route = inject(ActivatedRoute);
 
   activeView = signal<ViewMode>('catalog');
   loading = signal(true);
   categories = signal<SemanticCategoryWithTypes[]>([]);
   relationshipKinds = signal<SemanticRelationshipKind[]>([]);
   providers = signal<SemanticProvider[]>([]);
-  providerResourceTypes = signal<SemanticProviderResourceType[]>([]);
-  selectedProvider = signal<SemanticProvider | null>(null);
   searchTerm = signal('');
   categoryFilter = signal('');
   selectedType = signal<SemanticResourceType | null>(null);
+  // Constraints tab
+  relationshipTypes = signal<RelationshipType[]>([]);
+  constraintDomainFilter = signal<string>('');
+  savingConstraints = signal<Set<string>>(new Set());
+
+  private readonly viewTitles: Record<ViewMode, string> = {
+    catalog: 'Semantic Catalog',
+    relationships: 'Relationship Kinds',
+    constraints: 'Constraints Matrix',
+  };
+
+  pageTitle = computed(() => this.viewTitles[this.activeView()] || 'Semantic Explorer');
 
   categoryOptions = computed(() => this.categories().map(c => ({ value: c.name, label: c.displayName })));
 
@@ -557,26 +556,125 @@ export class SemanticExplorerComponent implements OnInit {
       .filter((g) => g.types.length > 0);
   });
 
+  // Constraint computed properties
+  filteredRelTypes = computed(() => {
+    const domain = this.constraintDomainFilter();
+    const types = this.relationshipTypes();
+    if (!domain) return types;
+    return types.filter((t) => t.domain === domain);
+  });
+
+  constraintCategories = computed(() => {
+    const cats = this.categories().map((c) => c.name);
+    return cats.sort();
+  });
+
   ngOnInit(): void {
-    this.loadData();
+    const view = this.route.snapshot.data['view'] as ViewMode | undefined;
+    if (view) {
+      this.switchView(view);
+    } else {
+      this.switchView('catalog');
+    }
   }
 
   switchView(view: ViewMode): void {
     this.activeView.set(view);
     this.selectedType.set(null);
-    if (view === 'providers') {
-      this.selectedProvider.set(null);
-      this.loadProviders();
+    this.loadData();
+    if (view === 'constraints') {
+      this.loadRelationshipTypes();
     }
+  }
+
+  // -- Constraint helpers ---------------------------------------------------
+
+  isCategoryInConstraint(constraintList: string[] | null, category: string): boolean {
+    if (!constraintList) return false;
+    return constraintList.includes(category);
+  }
+
+  constraintCellTitle(rt: RelationshipType, category: string): string {
+    const parts: string[] = [];
+    if (this.isCategoryInConstraint(rt.sourceSemanticCategories, category)) parts.push('Source');
+    if (this.isCategoryInConstraint(rt.targetSemanticCategories, category)) parts.push('Target');
+    return parts.length > 0 ? `${rt.displayName}: ${parts.join(' + ')} for ${category}` : `${rt.displayName}: No constraint for ${category}`;
+  }
+
+  isSavingConstraint(rtId: string, category: string): boolean {
+    return this.savingConstraints().has(`${rtId}:${category}`);
+  }
+
+  cycleConstraint(rt: RelationshipType, category: string): void {
+    const key = `${rt.id}:${category}`;
+    if (this.savingConstraints().has(key)) return;
+
+    const isSrc = this.isCategoryInConstraint(rt.sourceSemanticCategories, category);
+    const isTgt = this.isCategoryInConstraint(rt.targetSemanticCategories, category);
+
+    // Cycle: none → S → T → S+T → none
+    let addSrc = false;
+    let addTgt = false;
+    if (!isSrc && !isTgt) {
+      addSrc = true; addTgt = false;    // → S
+    } else if (isSrc && !isTgt) {
+      addSrc = false; addTgt = true;    // → T
+    } else if (!isSrc && isTgt) {
+      addSrc = true; addTgt = true;     // → S+T
+    } else {
+      addSrc = false; addTgt = false;   // → none
+    }
+
+    const newSrcCats = this.toggleCategory(rt.sourceSemanticCategories, category, addSrc);
+    const newTgtCats = this.toggleCategory(rt.targetSemanticCategories, category, addTgt);
+
+    // Mark saving
+    const saving = new Set(this.savingConstraints());
+    saving.add(key);
+    this.savingConstraints.set(saving);
+
+    this.cmdbService.updateRelationshipTypeConstraints(rt.id, {
+      sourceSemanticCategories: newSrcCats.length > 0 ? newSrcCats : null,
+      targetSemanticCategories: newTgtCats.length > 0 ? newTgtCats : null,
+    }).subscribe({
+      next: (updated) => {
+        // Update the local relationship types array
+        const types = this.relationshipTypes().map((t) =>
+          t.id === updated.id ? updated : t,
+        );
+        this.relationshipTypes.set(types);
+        this.removeSavingKey(key);
+      },
+      error: (e: Error) => {
+        this.toast.error(e.message);
+        this.removeSavingKey(key);
+      },
+    });
+  }
+
+  private toggleCategory(
+    existing: string[] | null,
+    category: string,
+    include: boolean,
+  ): string[] {
+    const list = existing ? [...existing] : [];
+    const idx = list.indexOf(category);
+    if (include && idx === -1) {
+      list.push(category);
+    } else if (!include && idx !== -1) {
+      list.splice(idx, 1);
+    }
+    return list;
+  }
+
+  private removeSavingKey(key: string): void {
+    const saving = new Set(this.savingConstraints());
+    saving.delete(key);
+    this.savingConstraints.set(saving);
   }
 
   selectType(t: SemanticResourceType): void {
     this.selectedType.set(t);
-  }
-
-  selectProvider(p: SemanticProvider): void {
-    this.selectedProvider.set(p);
-    this.loadProviderResourceTypes(p.id);
   }
 
   // -- Category CRUD ------------------------------------------------------
@@ -722,88 +820,6 @@ export class SemanticExplorerComponent implements OnInit {
     });
   }
 
-  // -- Provider Resource Type CRUD ----------------------------------------
-
-  async openPRTDialog(prt?: SemanticProviderResourceType): Promise<void> {
-    const data: PRTDialogData = {
-      prt: prt ?? null,
-      providers: this.providers(),
-      preselectedProviderId: this.selectedProvider()?.id,
-    };
-    const result = await this.dialogService.open<Record<string, unknown>>(
-      ProviderResourceTypeDialogComponent,
-      data,
-    );
-    if (!result) return;
-
-    if (prt) {
-      this.semanticService.updateProviderResourceType(prt.id, result as any).subscribe({
-        next: () => {
-          this.toast.success('Resource type updated');
-          this.loadProviderResourceTypes(this.selectedProvider()!.id);
-        },
-        error: (e: Error) => this.toast.error(e.message),
-      });
-    } else {
-      this.semanticService.createProviderResourceType(result as any).subscribe({
-        next: () => {
-          this.toast.success('Resource type created');
-          this.loadProviderResourceTypes(this.selectedProvider()!.id);
-          this.loadProviders();
-        },
-        error: (e: Error) => this.toast.error(e.message),
-      });
-    }
-  }
-
-  editPRT(prt: SemanticProviderResourceType): void {
-    this.openPRTDialog(prt);
-  }
-
-  async deletePRT(prt: SemanticProviderResourceType): Promise<void> {
-    const ok = await this.confirmService.confirm({
-      title: 'Delete Resource Type',
-      message: `Delete resource type "${prt.displayName}"?`,
-      confirmLabel: 'Delete',
-      variant: 'danger',
-    });
-    if (!ok) return;
-
-    this.semanticService.deleteProviderResourceType(prt.id).subscribe({
-      next: () => {
-        this.toast.success('Resource type deleted');
-        this.loadProviderResourceTypes(this.selectedProvider()!.id);
-        this.loadProviders();
-      },
-      error: (e: Error) => this.toast.error(e.message),
-    });
-  }
-
-  // -- Type Mapping CRUD --------------------------------------------------
-
-  async openTypeMappingDialog(): Promise<void> {
-    const allTypes = this.categories().flatMap((c) => c.types);
-    const data: TypeMappingDialogData = {
-      mapping: null,
-      providerResourceTypes: this.providerResourceTypes(),
-      semanticTypes: allTypes,
-    };
-    const result = await this.dialogService.open<Record<string, unknown>>(
-      TypeMappingDialogComponent,
-      data,
-    );
-    if (!result) return;
-
-    this.semanticService.createTypeMapping(result as any).subscribe({
-      next: () => {
-        this.toast.success('Mapping created');
-        this.loadProviderResourceTypes(this.selectedProvider()!.id);
-        this.loadData();
-      },
-      error: (e: Error) => this.toast.error(e.message),
-    });
-  }
-
   // -- Relationship kind CRUD ---------------------------------------------
 
   async openRelationshipKindDialog(kind?: SemanticRelationshipKind): Promise<void> {
@@ -878,9 +894,10 @@ export class SemanticExplorerComponent implements OnInit {
     });
   }
 
-  private loadProviderResourceTypes(providerId: string): void {
-    this.semanticService.listProviderResourceTypes(providerId).subscribe({
-      next: (prts) => this.providerResourceTypes.set(prts),
+  private loadRelationshipTypes(): void {
+    this.cmdbService.listRelationshipTypes().subscribe({
+      next: (types) => this.relationshipTypes.set(types),
     });
   }
+
 }

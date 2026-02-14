@@ -14,6 +14,8 @@ import {
   AuditLoggingConfigUpdate,
   AuditSearchParams,
   ArchiveEntry,
+  CategoryRetentionOverride,
+  CategoryRetentionOverrideUpsert,
   ExportRequest,
   ExportResponse,
   ExportStatus,
@@ -114,6 +116,19 @@ export class AuditService {
 
   updateRetentionPolicy(update: RetentionPolicyUpdate): Observable<RetentionPolicy> {
     return this.api.put<RetentionPolicy>(`${this.basePath}/retention`, update);
+  }
+
+  upsertCategoryOverride(data: CategoryRetentionOverrideUpsert): Observable<CategoryRetentionOverride> {
+    return this.api.put<CategoryRetentionOverride>(
+      `${this.basePath}/retention/categories/${data.event_category}`,
+      data,
+    );
+  }
+
+  deleteCategoryOverride(eventCategory: string): Observable<void> {
+    return this.api.delete<void>(
+      `${this.basePath}/retention/categories/${eventCategory}`,
+    );
   }
 
   // ── Redaction Rules ───────────────────────────────

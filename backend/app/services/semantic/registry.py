@@ -1,12 +1,11 @@
 """
 Overview: Semantic type registry — single source of truth for all abstract resource types,
-    categories, relationships, property schemas, providers, and type mappings.
+    categories, relationships, property schemas, providers, and provider resource mappings.
 Architecture: Core definitions that seed the database (Section 5)
 Dependencies: dataclasses
 Concepts: Semantic types normalize provider-specific resources into a unified model.
     Categories group types. Relationships define how types connect. Providers represent
-    infrastructure platforms. ProviderResourceTypes define provider-specific resource APIs.
-    TypeMappings link provider resource types to semantic types.
+    infrastructure platforms. ProviderResourceMappings link provider API types to semantic types.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ class PropertyDataType(StrEnum):
     FLOAT = "float"
     BOOLEAN = "boolean"
     JSON = "json"
+    OS_IMAGE = "os_image"
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +43,7 @@ class PropertyDef:
     default_value: str | None = None
     unit: str | None = None
     description: str = ""
+    allowed_values: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -96,26 +97,13 @@ class ProviderDef:
 
 
 @dataclass(frozen=True)
-class ProviderResourceTypeDef:
-    """Defines a provider-specific resource type API (e.g., aws:ec2:instance, proxmox:qemu)."""
-
-    provider_name: str
-    api_type: str
-    display_name: str
-    description: str = ""
-    parameter_schema: dict | None = None  # JSON schema, populated in Phase 11/18
-    status: str = "available"  # "available", "deprecated", "preview"
-
-
-@dataclass(frozen=True)
-class TypeMappingDef:
-    """Maps a provider resource type to a semantic type."""
+class ProviderResourceMappingDef:
+    """Maps a provider resource type to a semantic type (used by MappingEngine)."""
 
     provider_name: str
     api_type: str
     semantic_type_name: str  # References SemanticTypeDef.name
-    parameter_mapping: dict | None = None  # Mapping config, populated in Phase 11/18
-    notes: str = ""
+    display_name: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +159,13 @@ CATEGORIES: list[SemanticCategoryDef] = [
         description="Applications, services, endpoints, and message queues",
         icon="layers",
         sort_order=7,
+    ),
+    SemanticCategoryDef(
+        name="services",
+        display_name="Services",
+        description="Business and managed services — the bridge between infrastructure assets and service delivery",
+        icon="briefcase",
+        sort_order=8,
     ),
 ]
 
@@ -250,15 +245,11 @@ SEMANTIC_TYPES: list[SemanticTypeDef] = [
             PropertyDef("memory_gb", "Memory", PropertyDataType.FLOAT, required=True, unit="GB"),
             PropertyDef("storage_gb", "Storage", PropertyDataType.FLOAT, unit="GB"),
             PropertyDef(
-                "os_type", "OS Type", PropertyDataType.STRING, description="linux, windows, other"
-            ),
-            PropertyDef("os_version", "OS Version", PropertyDataType.STRING),
-            PropertyDef(
-                "state",
-                "State",
-                PropertyDataType.STRING,
+                "os_image",
+                "OS Image",
+                PropertyDataType.OS_IMAGE,
                 required=True,
-                description="running, stopped, suspended",
+                description="Operating system image from the catalog",
             ),
             PropertyDef("availability_zone", "Availability Zone", PropertyDataType.STRING),
             PropertyDef("public_ip", "Public IP", PropertyDataType.STRING),
@@ -1018,6 +1009,260 @@ SEMANTIC_TYPES: list[SemanticTypeDef] = [
 
 
 # ---------------------------------------------------------------------------
+# Services category — bridges infrastructure assets and service delivery
+# ---------------------------------------------------------------------------
+
+SERVICES_TYPES: list[SemanticTypeDef] = [
+    SemanticTypeDef(
+        name="ServiceCluster",
+        display_name="Service Cluster",
+        category="services",
+        description="A logical group of resources forming a service unit with defined role slots",
+        icon="layers",
+        properties=[
+            PropertyDef(
+                "cluster_type",
+                "Cluster Type",
+                PropertyDataType.STRING,
+                required=True,
+                description="service_cluster or service_group",
+            ),
+            PropertyDef(
+                "target_size",
+                "Target Size",
+                PropertyDataType.INTEGER,
+                description="Expected number of member CIs",
+            ),
+            PropertyDef(
+                "sla_target",
+                "SLA Target",
+                PropertyDataType.STRING,
+                description="SLA tier or percentage target",
+            ),
+            PropertyDef("state", "State", PropertyDataType.STRING, required=True),
+        ],
+        allowed_relationship_kinds=["contains", "connects_to", "depends_on", "monitored_by"],
+        sort_order=1,
+    ),
+    SemanticTypeDef(
+        name="ServiceGroup",
+        display_name="Service Group",
+        category="services",
+        description="A logical grouping of related services for organizational purposes",
+        icon="folder",
+        properties=[
+            PropertyDef(
+                "group_purpose",
+                "Group Purpose",
+                PropertyDataType.STRING,
+                description="The purpose or function of this service group",
+            ),
+            PropertyDef("state", "State", PropertyDataType.STRING, required=True),
+        ],
+        allowed_relationship_kinds=["contains", "connects_to", "depends_on", "monitored_by"],
+        sort_order=2,
+    ),
+    SemanticTypeDef(
+        name="ManagedService",
+        display_name="Managed Service",
+        category="services",
+        description="A fully managed service delivered to tenants (e.g., Managed Firewall, Managed Backup)",
+        icon="briefcase",
+        properties=[
+            PropertyDef(
+                "service_category",
+                "Service Category",
+                PropertyDataType.STRING,
+                required=True,
+                description="security, infrastructure, application, data, platform",
+            ),
+            PropertyDef(
+                "operating_model",
+                "Operating Model",
+                PropertyDataType.STRING,
+                description="regional, global, follow_the_sun",
+            ),
+            PropertyDef(
+                "coverage_model",
+                "Coverage Model",
+                PropertyDataType.STRING,
+                description="business_hours, extended, 24x7",
+            ),
+            PropertyDef(
+                "sla_tier",
+                "SLA Tier",
+                PropertyDataType.STRING,
+                description="bronze, silver, gold, platinum",
+            ),
+            PropertyDef("state", "State", PropertyDataType.STRING, required=True),
+        ],
+        allowed_relationship_kinds=["contains", "connects_to", "depends_on", "monitored_by"],
+        sort_order=3,
+    ),
+    SemanticTypeDef(
+        name="SecurityService",
+        display_name="Security Service",
+        category="services",
+        description="Security-focused service (SIEM, vulnerability management, WAF, SOC)",
+        icon="shield",
+        properties=[
+            PropertyDef(
+                "security_domain",
+                "Security Domain",
+                PropertyDataType.STRING,
+                required=True,
+                description="perimeter, endpoint, identity, data, monitoring, compliance",
+            ),
+            PropertyDef(
+                "compliance_frameworks",
+                "Compliance Frameworks",
+                PropertyDataType.STRING,
+                description="Comma-separated: ISO27001, SOC2, GDPR, PCI-DSS",
+            ),
+            PropertyDef(
+                "coverage_model",
+                "Coverage Model",
+                PropertyDataType.STRING,
+                description="business_hours, extended, 24x7",
+            ),
+            PropertyDef("state", "State", PropertyDataType.STRING, required=True),
+        ],
+        allowed_relationship_kinds=["contains", "connects_to", "depends_on", "secures", "monitored_by"],
+        sort_order=4,
+    ),
+    SemanticTypeDef(
+        name="ConsultingService",
+        display_name="Consulting Service",
+        category="services",
+        description="Advisory and consulting service (architecture review, migration planning, optimization)",
+        icon="users",
+        properties=[
+            PropertyDef(
+                "consulting_type",
+                "Consulting Type",
+                PropertyDataType.STRING,
+                required=True,
+                description="architecture, migration, optimization, training, assessment",
+            ),
+            PropertyDef(
+                "delivery_model",
+                "Delivery Model",
+                PropertyDataType.STRING,
+                description="project, retainer, on_demand",
+            ),
+            PropertyDef(
+                "measuring_unit",
+                "Measuring Unit",
+                PropertyDataType.STRING,
+                description="hour, day, project, engagement",
+            ),
+            PropertyDef("state", "State", PropertyDataType.STRING, required=True),
+        ],
+        allowed_relationship_kinds=["contains", "connects_to", "depends_on"],
+        sort_order=5,
+    ),
+    SemanticTypeDef(
+        name="SupportService",
+        display_name="Support Service",
+        category="services",
+        description="Operational support service (helpdesk, L1/L2/L3, incident response, on-call)",
+        icon="headphones",
+        properties=[
+            PropertyDef(
+                "support_tier",
+                "Support Tier",
+                PropertyDataType.STRING,
+                required=True,
+                description="l1, l2, l3, specialist",
+            ),
+            PropertyDef(
+                "coverage_model",
+                "Coverage Model",
+                PropertyDataType.STRING,
+                description="business_hours, extended, 24x7",
+            ),
+            PropertyDef(
+                "response_time_minutes",
+                "Response Time",
+                PropertyDataType.INTEGER,
+                unit="min",
+                description="Target initial response time",
+            ),
+            PropertyDef(
+                "resolution_time_hours",
+                "Resolution Time",
+                PropertyDataType.INTEGER,
+                unit="h",
+                description="Target resolution time",
+            ),
+            PropertyDef("state", "State", PropertyDataType.STRING, required=True),
+        ],
+        allowed_relationship_kinds=["contains", "connects_to", "depends_on", "monitored_by"],
+        sort_order=6,
+    ),
+    SemanticTypeDef(
+        name="IncidentManagement",
+        display_name="Incident Management",
+        category="services",
+        description="Incident management process service (detection, triage, resolution, post-mortem)",
+        icon="alert-triangle",
+        properties=[
+            PropertyDef(
+                "process_scope",
+                "Process Scope",
+                PropertyDataType.STRING,
+                required=True,
+                description="detection, triage, resolution, post_mortem, full_lifecycle",
+            ),
+            PropertyDef(
+                "severity_levels",
+                "Severity Levels",
+                PropertyDataType.STRING,
+                description="Comma-separated: P1, P2, P3, P4",
+            ),
+            PropertyDef(
+                "escalation_policy",
+                "Escalation Policy",
+                PropertyDataType.STRING,
+                description="automatic, manual, hybrid",
+            ),
+            PropertyDef("state", "State", PropertyDataType.STRING, required=True),
+        ],
+        allowed_relationship_kinds=["contains", "connects_to", "depends_on", "monitored_by"],
+        sort_order=7,
+    ),
+    SemanticTypeDef(
+        name="PlatformService",
+        display_name="Platform Service",
+        category="services",
+        description="Platform-level service (CI/CD, container orchestration, API gateway, service mesh)",
+        icon="grid",
+        properties=[
+            PropertyDef(
+                "platform_type",
+                "Platform Type",
+                PropertyDataType.STRING,
+                required=True,
+                description="cicd, container_platform, api_gateway, service_mesh, observability",
+            ),
+            PropertyDef(
+                "target_environment",
+                "Target Environment",
+                PropertyDataType.STRING,
+                description="development, staging, production, all",
+            ),
+            PropertyDef("state", "State", PropertyDataType.STRING, required=True),
+        ],
+        allowed_relationship_kinds=["contains", "connects_to", "depends_on", "monitored_by"],
+        sort_order=8,
+    ),
+]
+
+# Merge services types into the main list
+SEMANTIC_TYPES = SEMANTIC_TYPES + SERVICES_TYPES
+
+
+# ---------------------------------------------------------------------------
 # Providers
 # ---------------------------------------------------------------------------
 
@@ -1071,272 +1316,137 @@ PROVIDERS: list[ProviderDef] = [
 
 
 # ---------------------------------------------------------------------------
-# Provider resource types
+# Provider resource mappings (merged from PRT + TypeMapping)
 # ---------------------------------------------------------------------------
 
-PROVIDER_RESOURCE_TYPES: list[ProviderResourceTypeDef] = [
+PROVIDER_RESOURCE_MAPPINGS: list[ProviderResourceMappingDef] = [
     # ── Proxmox ───────────────────────────────────────────────────────────
-    ProviderResourceTypeDef("proxmox", "qemu", "Proxmox QEMU/KVM virtual machine"),
-    ProviderResourceTypeDef("proxmox", "lxc", "Proxmox LXC container"),
-    ProviderResourceTypeDef("proxmox", "node", "Proxmox cluster node"),
-    ProviderResourceTypeDef("proxmox", "linux-bridge", "Proxmox Linux bridge"),
-    ProviderResourceTypeDef("proxmox", "ovs-bridge", "Proxmox OVS bridge"),
-    ProviderResourceTypeDef("proxmox", "sdn-vnet", "Proxmox SDN VNet"),
-    ProviderResourceTypeDef("proxmox", "sdn-subnet", "Proxmox SDN subnet"),
-    ProviderResourceTypeDef("proxmox", "storage-lvm", "Proxmox LVM storage"),
-    ProviderResourceTypeDef("proxmox", "storage-lvmthin", "Proxmox LVM-Thin storage"),
-    ProviderResourceTypeDef("proxmox", "storage-zfs", "Proxmox ZFS storage"),
-    ProviderResourceTypeDef("proxmox", "storage-ceph", "Proxmox Ceph RBD storage"),
-    ProviderResourceTypeDef("proxmox", "storage-nfs", "Proxmox NFS storage"),
-    ProviderResourceTypeDef("proxmox", "storage-cephfs", "Proxmox CephFS storage"),
-    ProviderResourceTypeDef("proxmox", "storage-pbs", "Proxmox Backup Server"),
-    ProviderResourceTypeDef("proxmox", "firewall-group", "Proxmox firewall security group"),
-    ProviderResourceTypeDef("proxmox", "ha-group", "Proxmox HA group"),
+    ProviderResourceMappingDef("proxmox", "qemu", "VirtualMachine", "Proxmox QEMU/KVM VM"),
+    ProviderResourceMappingDef("proxmox", "lxc", "Container", "Proxmox LXC container"),
+    ProviderResourceMappingDef("proxmox", "node", "BareMetalServer", "Proxmox cluster node"),
+    ProviderResourceMappingDef("proxmox", "linux-bridge", "VirtualNetwork", "Proxmox Linux bridge"),
+    ProviderResourceMappingDef("proxmox", "ovs-bridge", "VirtualNetwork", "Proxmox OVS bridge"),
+    ProviderResourceMappingDef("proxmox", "sdn-vnet", "VirtualNetwork", "Proxmox SDN VNet"),
+    ProviderResourceMappingDef("proxmox", "sdn-subnet", "Subnet", "Proxmox SDN subnet"),
+    ProviderResourceMappingDef("proxmox", "storage-lvm", "BlockStorage", "Proxmox LVM storage"),
+    ProviderResourceMappingDef("proxmox", "storage-lvmthin", "BlockStorage", "Proxmox LVM-Thin storage"),
+    ProviderResourceMappingDef("proxmox", "storage-zfs", "BlockStorage", "Proxmox ZFS storage"),
+    ProviderResourceMappingDef("proxmox", "storage-ceph", "BlockStorage", "Proxmox Ceph RBD storage"),
+    ProviderResourceMappingDef("proxmox", "storage-nfs", "FileStorage", "Proxmox NFS storage"),
+    ProviderResourceMappingDef("proxmox", "storage-cephfs", "FileStorage", "Proxmox CephFS storage"),
+    ProviderResourceMappingDef("proxmox", "storage-pbs", "Backup", "Proxmox Backup Server"),
+    ProviderResourceMappingDef("proxmox", "firewall-group", "SecurityGroup", "Proxmox firewall security group"),
+    ProviderResourceMappingDef("proxmox", "ha-group", "Application", "Proxmox HA group"),
     # ── AWS ───────────────────────────────────────────────────────────────
-    ProviderResourceTypeDef("aws", "ec2:instance", "AWS EC2 Instance"),
-    ProviderResourceTypeDef("aws", "ecs:task", "AWS ECS Task"),
-    ProviderResourceTypeDef("aws", "ecs:service", "AWS ECS Service"),
-    ProviderResourceTypeDef("aws", "lambda:function", "AWS Lambda Function"),
-    ProviderResourceTypeDef("aws", "ec2:vpc", "AWS VPC"),
-    ProviderResourceTypeDef("aws", "ec2:subnet", "AWS VPC Subnet"),
-    ProviderResourceTypeDef("aws", "ec2:network-interface", "AWS ENI"),
-    ProviderResourceTypeDef("aws", "elasticloadbalancing:loadbalancer", "AWS ELB/ALB/NLB"),
-    ProviderResourceTypeDef("aws", "route53:hostedzone", "AWS Route 53 Hosted Zone"),
-    ProviderResourceTypeDef("aws", "cloudfront:distribution", "AWS CloudFront Distribution"),
-    ProviderResourceTypeDef("aws", "ec2:vpn-gateway", "AWS VPN Gateway"),
-    ProviderResourceTypeDef("aws", "ebs:volume", "AWS EBS Volume"),
-    ProviderResourceTypeDef("aws", "s3:bucket", "AWS S3 Bucket"),
-    ProviderResourceTypeDef("aws", "efs:filesystem", "AWS EFS File System"),
-    ProviderResourceTypeDef("aws", "backup:recovery-point", "AWS Backup Recovery Point"),
-    ProviderResourceTypeDef("aws", "rds:db", "AWS RDS Instance"),
-    ProviderResourceTypeDef("aws", "dynamodb:table", "AWS DynamoDB Table"),
-    ProviderResourceTypeDef("aws", "elasticache:cluster", "AWS ElastiCache Cluster"),
-    ProviderResourceTypeDef("aws", "redshift:cluster", "AWS Redshift Cluster"),
-    ProviderResourceTypeDef("aws", "ec2:security-group", "AWS Security Group"),
-    ProviderResourceTypeDef("aws", "ec2:network-acl", "AWS Network ACL"),
-    ProviderResourceTypeDef("aws", "iam:role", "AWS IAM Role"),
-    ProviderResourceTypeDef("aws", "iam:policy", "AWS IAM Policy"),
-    ProviderResourceTypeDef("aws", "acm:certificate", "AWS ACM Certificate"),
-    ProviderResourceTypeDef("aws", "secretsmanager:secret", "AWS Secrets Manager"),
-    ProviderResourceTypeDef("aws", "kms:key", "AWS KMS Key (vault-like)"),
-    ProviderResourceTypeDef("aws", "cloudwatch:alarm", "AWS CloudWatch Alarm"),
-    ProviderResourceTypeDef("aws", "cloudwatch:dashboard", "AWS CloudWatch Dashboard"),
-    ProviderResourceTypeDef("aws", "logs:log-group", "AWS CloudWatch Log Group"),
-    ProviderResourceTypeDef("aws", "cloudwatch:metric", "AWS CloudWatch Metric"),
-    ProviderResourceTypeDef("aws", "elasticbeanstalk:application", "AWS Elastic Beanstalk App"),
-    ProviderResourceTypeDef("aws", "apigateway:restapi", "AWS API Gateway"),
-    ProviderResourceTypeDef("aws", "sqs:queue", "AWS SQS Queue"),
+    ProviderResourceMappingDef("aws", "ec2:instance", "VirtualMachine", "AWS EC2 Instance"),
+    ProviderResourceMappingDef("aws", "ecs:task", "Container", "AWS ECS Task"),
+    ProviderResourceMappingDef("aws", "ecs:service", "Service", "AWS ECS Service"),
+    ProviderResourceMappingDef("aws", "lambda:function", "ServerlessFunction", "AWS Lambda Function"),
+    ProviderResourceMappingDef("aws", "ec2:vpc", "VirtualNetwork", "AWS VPC"),
+    ProviderResourceMappingDef("aws", "ec2:subnet", "Subnet", "AWS VPC Subnet"),
+    ProviderResourceMappingDef("aws", "ec2:network-interface", "NetworkInterface", "AWS ENI"),
+    ProviderResourceMappingDef("aws", "elasticloadbalancing:loadbalancer", "LoadBalancer", "AWS ELB/ALB/NLB"),
+    ProviderResourceMappingDef("aws", "route53:hostedzone", "DNS", "AWS Route 53 Hosted Zone"),
+    ProviderResourceMappingDef("aws", "cloudfront:distribution", "CDN", "AWS CloudFront Distribution"),
+    ProviderResourceMappingDef("aws", "ec2:vpn-gateway", "VPNGateway", "AWS VPN Gateway"),
+    ProviderResourceMappingDef("aws", "ebs:volume", "BlockStorage", "AWS EBS Volume"),
+    ProviderResourceMappingDef("aws", "s3:bucket", "ObjectStorage", "AWS S3 Bucket"),
+    ProviderResourceMappingDef("aws", "efs:filesystem", "FileStorage", "AWS EFS File System"),
+    ProviderResourceMappingDef("aws", "backup:recovery-point", "Backup", "AWS Backup Recovery Point"),
+    ProviderResourceMappingDef("aws", "rds:db", "RelationalDatabase", "AWS RDS Instance"),
+    ProviderResourceMappingDef("aws", "dynamodb:table", "NoSQLDatabase", "AWS DynamoDB Table"),
+    ProviderResourceMappingDef("aws", "elasticache:cluster", "CacheService", "AWS ElastiCache Cluster"),
+    ProviderResourceMappingDef("aws", "redshift:cluster", "DataWarehouse", "AWS Redshift Cluster"),
+    ProviderResourceMappingDef("aws", "ec2:security-group", "SecurityGroup", "AWS Security Group"),
+    ProviderResourceMappingDef("aws", "ec2:network-acl", "NetworkACL", "AWS Network ACL"),
+    ProviderResourceMappingDef("aws", "iam:role", "IAMRole", "AWS IAM Role"),
+    ProviderResourceMappingDef("aws", "iam:policy", "IAMPolicy", "AWS IAM Policy"),
+    ProviderResourceMappingDef("aws", "acm:certificate", "Certificate", "AWS ACM Certificate"),
+    ProviderResourceMappingDef("aws", "secretsmanager:secret", "Secret", "AWS Secrets Manager"),
+    ProviderResourceMappingDef("aws", "kms:key", "KeyVault", "AWS KMS Key"),
+    ProviderResourceMappingDef("aws", "cloudwatch:alarm", "AlertRule", "AWS CloudWatch Alarm"),
+    ProviderResourceMappingDef("aws", "cloudwatch:dashboard", "Dashboard", "AWS CloudWatch Dashboard"),
+    ProviderResourceMappingDef("aws", "logs:log-group", "LogGroup", "AWS CloudWatch Log Group"),
+    ProviderResourceMappingDef("aws", "cloudwatch:metric", "Metric", "AWS CloudWatch Metric"),
+    ProviderResourceMappingDef("aws", "elasticbeanstalk:application", "Application", "AWS Elastic Beanstalk App"),
+    ProviderResourceMappingDef("aws", "apigateway:restapi", "Endpoint", "AWS API Gateway"),
+    ProviderResourceMappingDef("aws", "sqs:queue", "Queue", "AWS SQS Queue"),
     # ── Azure ─────────────────────────────────────────────────────────────
-    ProviderResourceTypeDef("azure", "Microsoft.Compute/virtualMachines", "Azure VM"),
-    ProviderResourceTypeDef("azure", "Microsoft.ContainerInstance/containerGroups", "Azure Container Instance"),
-    ProviderResourceTypeDef("azure", "Microsoft.Web/sites", "Azure Functions (via App Service)"),
-    ProviderResourceTypeDef("azure", "Microsoft.Network/virtualNetworks", "Azure VNet"),
-    ProviderResourceTypeDef("azure", "Microsoft.Network/virtualNetworks/subnets", "Azure Subnet"),
-    ProviderResourceTypeDef("azure", "Microsoft.Network/networkInterfaces", "Azure NIC"),
-    ProviderResourceTypeDef("azure", "Microsoft.Network/loadBalancers", "Azure Load Balancer"),
-    ProviderResourceTypeDef("azure", "Microsoft.Network/dnszones", "Azure DNS Zone"),
-    ProviderResourceTypeDef("azure", "Microsoft.Cdn/profiles", "Azure CDN Profile"),
-    ProviderResourceTypeDef("azure", "Microsoft.Network/vpnGateways", "Azure VPN Gateway"),
-    ProviderResourceTypeDef("azure", "Microsoft.Compute/disks", "Azure Managed Disk"),
-    ProviderResourceTypeDef("azure", "Microsoft.Storage/storageAccounts", "Azure Storage Account (Blob)"),
-    ProviderResourceTypeDef("azure", "Microsoft.Storage/storageAccounts/fileServices", "Azure Files"),
-    ProviderResourceTypeDef("azure", "Microsoft.RecoveryServices/vaults", "Azure Recovery Services Vault"),
-    ProviderResourceTypeDef("azure", "Microsoft.Sql/servers/databases", "Azure SQL Database"),
-    ProviderResourceTypeDef("azure", "Microsoft.DocumentDB/databaseAccounts", "Azure Cosmos DB"),
-    ProviderResourceTypeDef("azure", "Microsoft.Cache/redis", "Azure Cache for Redis"),
-    ProviderResourceTypeDef("azure", "Microsoft.Synapse/workspaces", "Azure Synapse Analytics"),
-    ProviderResourceTypeDef("azure", "Microsoft.Network/networkSecurityGroups", "Azure NSG"),
-    ProviderResourceTypeDef("azure", "Microsoft.Authorization/roleDefinitions", "Azure Role Definition"),
-    ProviderResourceTypeDef("azure", "Microsoft.Authorization/policyDefinitions", "Azure Policy Definition"),
-    ProviderResourceTypeDef("azure", "Microsoft.KeyVault/vaults", "Azure Key Vault"),
-    ProviderResourceTypeDef("azure", "Microsoft.Insights/metricAlerts", "Azure Monitor Alert"),
-    ProviderResourceTypeDef("azure", "Microsoft.Portal/dashboards", "Azure Dashboard"),
-    ProviderResourceTypeDef("azure", "Microsoft.Insights/components", "Azure App Insights"),
-    ProviderResourceTypeDef("azure", "Microsoft.ApiManagement/service", "Azure API Management"),
-    ProviderResourceTypeDef("azure", "Microsoft.ServiceBus/namespaces/queues", "Azure Service Bus Queue"),
+    ProviderResourceMappingDef("azure", "Microsoft.Compute/virtualMachines", "VirtualMachine", "Azure VM"),
+    ProviderResourceMappingDef("azure", "Microsoft.ContainerInstance/containerGroups", "Container", "Azure Container Instance"),
+    ProviderResourceMappingDef("azure", "Microsoft.Web/sites", "ServerlessFunction", "Azure Functions"),
+    ProviderResourceMappingDef("azure", "Microsoft.Network/virtualNetworks", "VirtualNetwork", "Azure VNet"),
+    ProviderResourceMappingDef("azure", "Microsoft.Network/virtualNetworks/subnets", "Subnet", "Azure Subnet"),
+    ProviderResourceMappingDef("azure", "Microsoft.Network/networkInterfaces", "NetworkInterface", "Azure NIC"),
+    ProviderResourceMappingDef("azure", "Microsoft.Network/loadBalancers", "LoadBalancer", "Azure Load Balancer"),
+    ProviderResourceMappingDef("azure", "Microsoft.Network/dnszones", "DNS", "Azure DNS Zone"),
+    ProviderResourceMappingDef("azure", "Microsoft.Cdn/profiles", "CDN", "Azure CDN Profile"),
+    ProviderResourceMappingDef("azure", "Microsoft.Network/vpnGateways", "VPNGateway", "Azure VPN Gateway"),
+    ProviderResourceMappingDef("azure", "Microsoft.Compute/disks", "BlockStorage", "Azure Managed Disk"),
+    ProviderResourceMappingDef("azure", "Microsoft.Storage/storageAccounts", "ObjectStorage", "Azure Blob Storage"),
+    ProviderResourceMappingDef("azure", "Microsoft.Storage/storageAccounts/fileServices", "FileStorage", "Azure Files"),
+    ProviderResourceMappingDef("azure", "Microsoft.RecoveryServices/vaults", "Backup", "Azure Recovery Services"),
+    ProviderResourceMappingDef("azure", "Microsoft.Sql/servers/databases", "RelationalDatabase", "Azure SQL Database"),
+    ProviderResourceMappingDef("azure", "Microsoft.DocumentDB/databaseAccounts", "NoSQLDatabase", "Azure Cosmos DB"),
+    ProviderResourceMappingDef("azure", "Microsoft.Cache/redis", "CacheService", "Azure Cache for Redis"),
+    ProviderResourceMappingDef("azure", "Microsoft.Synapse/workspaces", "DataWarehouse", "Azure Synapse Analytics"),
+    ProviderResourceMappingDef("azure", "Microsoft.Network/networkSecurityGroups", "SecurityGroup", "Azure NSG"),
+    ProviderResourceMappingDef("azure", "Microsoft.Authorization/roleDefinitions", "IAMRole", "Azure Role Definition"),
+    ProviderResourceMappingDef("azure", "Microsoft.Authorization/policyDefinitions", "IAMPolicy", "Azure Policy"),
+    ProviderResourceMappingDef("azure", "Microsoft.KeyVault/vaults", "KeyVault", "Azure Key Vault"),
+    ProviderResourceMappingDef("azure", "Microsoft.Insights/metricAlerts", "AlertRule", "Azure Monitor Alert"),
+    ProviderResourceMappingDef("azure", "Microsoft.Portal/dashboards", "Dashboard", "Azure Dashboard"),
+    ProviderResourceMappingDef("azure", "Microsoft.Insights/components", "LogGroup", "Azure App Insights"),
+    ProviderResourceMappingDef("azure", "Microsoft.ApiManagement/service", "Endpoint", "Azure API Management"),
+    ProviderResourceMappingDef("azure", "Microsoft.ServiceBus/namespaces/queues", "Queue", "Azure Service Bus Queue"),
     # ── GCP ───────────────────────────────────────────────────────────────
-    ProviderResourceTypeDef("gcp", "compute.googleapis.com/Instance", "GCP Compute Engine Instance"),
-    ProviderResourceTypeDef("gcp", "run.googleapis.com/Service", "GCP Cloud Run Service"),
-    ProviderResourceTypeDef("gcp", "cloudfunctions.googleapis.com/Function", "GCP Cloud Function"),
-    ProviderResourceTypeDef("gcp", "compute.googleapis.com/Network", "GCP VPC Network"),
-    ProviderResourceTypeDef("gcp", "compute.googleapis.com/Subnetwork", "GCP Subnetwork"),
-    ProviderResourceTypeDef("gcp", "compute.googleapis.com/ForwardingRule", "GCP Load Balancer"),
-    ProviderResourceTypeDef("gcp", "dns.googleapis.com/ManagedZone", "GCP Cloud DNS"),
-    ProviderResourceTypeDef("gcp", "compute.googleapis.com/VpnGateway", "GCP VPN Gateway"),
-    ProviderResourceTypeDef("gcp", "compute.googleapis.com/Disk", "GCP Persistent Disk"),
-    ProviderResourceTypeDef("gcp", "storage.googleapis.com/Bucket", "GCP Cloud Storage Bucket"),
-    ProviderResourceTypeDef("gcp", "file.googleapis.com/Instance", "GCP Filestore Instance"),
-    ProviderResourceTypeDef("gcp", "sqladmin.googleapis.com/Instance", "GCP Cloud SQL Instance"),
-    ProviderResourceTypeDef("gcp", "firestore.googleapis.com/Database", "GCP Firestore Database"),
-    ProviderResourceTypeDef("gcp", "redis.googleapis.com/Instance", "GCP Memorystore Redis"),
-    ProviderResourceTypeDef("gcp", "bigquery.googleapis.com/Dataset", "GCP BigQuery Dataset"),
-    ProviderResourceTypeDef("gcp", "compute.googleapis.com/Firewall", "GCP Firewall Rule"),
-    ProviderResourceTypeDef("gcp", "iam.googleapis.com/Role", "GCP IAM Role"),
-    ProviderResourceTypeDef("gcp", "cloudkms.googleapis.com/KeyRing", "GCP Cloud KMS Key Ring"),
-    ProviderResourceTypeDef("gcp", "monitoring.googleapis.com/AlertPolicy", "GCP Cloud Monitoring Alert"),
-    ProviderResourceTypeDef("gcp", "monitoring.googleapis.com/Dashboard", "GCP Cloud Monitoring Dashboard"),
-    ProviderResourceTypeDef("gcp", "logging.googleapis.com/LogBucket", "GCP Cloud Logging Bucket"),
-    ProviderResourceTypeDef("gcp", "appengine.googleapis.com/Application", "GCP App Engine Application"),
-    ProviderResourceTypeDef("gcp", "pubsub.googleapis.com/Topic", "GCP Pub/Sub Topic"),
-    # ── OCI (Oracle Cloud Infrastructure) ─────────────────────────────────
-    ProviderResourceTypeDef("oci", "core/instance", "OCI Compute Instance"),
-    ProviderResourceTypeDef("oci", "containerinstances/containerInstance", "OCI Container Instance"),
-    ProviderResourceTypeDef("oci", "functions/function", "OCI Functions"),
-    ProviderResourceTypeDef("oci", "computebaremetal/instance", "OCI Bare Metal Instance"),
-    ProviderResourceTypeDef("oci", "core/vcn", "OCI VCN"),
-    ProviderResourceTypeDef("oci", "core/subnet", "OCI Subnet"),
-    ProviderResourceTypeDef("oci", "core/vnic", "OCI VNIC"),
-    ProviderResourceTypeDef("oci", "loadbalancer/loadbalancer", "OCI Load Balancer"),
-    ProviderResourceTypeDef("oci", "dns/zone", "OCI DNS Zone"),
-    ProviderResourceTypeDef("oci", "core/ipsecconnection", "OCI IPSec Connection"),
-    ProviderResourceTypeDef("oci", "core/volume", "OCI Block Volume"),
-    ProviderResourceTypeDef("oci", "objectstorage/bucket", "OCI Object Storage Bucket"),
-    ProviderResourceTypeDef("oci", "filestorage/filesystem", "OCI File Storage"),
-    ProviderResourceTypeDef("oci", "database/dbsystem", "OCI DB System"),
-    ProviderResourceTypeDef("oci", "nosql/table", "OCI NoSQL Table"),
-    ProviderResourceTypeDef("oci", "redis/redisCluster", "OCI Cache with Redis"),
-    ProviderResourceTypeDef("oci", "core/securitylist", "OCI Security List"),
-    ProviderResourceTypeDef("oci", "core/networksecuritygroup", "OCI Network Security Group"),
-    ProviderResourceTypeDef("oci", "identity/policy", "OCI IAM Policy"),
-    ProviderResourceTypeDef("oci", "vault/vault", "OCI Vault"),
-    ProviderResourceTypeDef("oci", "monitoring/alarm", "OCI Monitoring Alarm"),
-    ProviderResourceTypeDef("oci", "logging/loggroup", "OCI Logging Log Group"),
-    ProviderResourceTypeDef("oci", "streaming/stream", "OCI Streaming"),
-]
-
-
-# ---------------------------------------------------------------------------
-# Type mappings
-# ---------------------------------------------------------------------------
-
-TYPE_MAPPINGS: list[TypeMappingDef] = [
-    # ── Proxmox ───────────────────────────────────────────────────────────
-    TypeMappingDef("proxmox", "qemu", "VirtualMachine"),
-    TypeMappingDef("proxmox", "lxc", "Container"),
-    TypeMappingDef("proxmox", "node", "BareMetalServer"),
-    TypeMappingDef("proxmox", "linux-bridge", "VirtualNetwork"),
-    TypeMappingDef("proxmox", "ovs-bridge", "VirtualNetwork"),
-    TypeMappingDef("proxmox", "sdn-vnet", "VirtualNetwork"),
-    TypeMappingDef("proxmox", "sdn-subnet", "Subnet"),
-    TypeMappingDef("proxmox", "storage-lvm", "BlockStorage"),
-    TypeMappingDef("proxmox", "storage-lvmthin", "BlockStorage"),
-    TypeMappingDef("proxmox", "storage-zfs", "BlockStorage"),
-    TypeMappingDef("proxmox", "storage-ceph", "BlockStorage"),
-    TypeMappingDef("proxmox", "storage-nfs", "FileStorage"),
-    TypeMappingDef("proxmox", "storage-cephfs", "FileStorage"),
-    TypeMappingDef("proxmox", "storage-pbs", "Backup"),
-    TypeMappingDef("proxmox", "firewall-group", "SecurityGroup"),
-    TypeMappingDef("proxmox", "ha-group", "Application"),
-    # ── AWS ───────────────────────────────────────────────────────────────
-    TypeMappingDef("aws", "ec2:instance", "VirtualMachine"),
-    TypeMappingDef("aws", "ecs:task", "Container"),
-    TypeMappingDef("aws", "ecs:service", "Service"),
-    TypeMappingDef("aws", "lambda:function", "ServerlessFunction"),
-    TypeMappingDef("aws", "ec2:vpc", "VirtualNetwork"),
-    TypeMappingDef("aws", "ec2:subnet", "Subnet"),
-    TypeMappingDef("aws", "ec2:network-interface", "NetworkInterface"),
-    TypeMappingDef("aws", "elasticloadbalancing:loadbalancer", "LoadBalancer"),
-    TypeMappingDef("aws", "route53:hostedzone", "DNS"),
-    TypeMappingDef("aws", "cloudfront:distribution", "CDN"),
-    TypeMappingDef("aws", "ec2:vpn-gateway", "VPNGateway"),
-    TypeMappingDef("aws", "ebs:volume", "BlockStorage"),
-    TypeMappingDef("aws", "s3:bucket", "ObjectStorage"),
-    TypeMappingDef("aws", "efs:filesystem", "FileStorage"),
-    TypeMappingDef("aws", "backup:recovery-point", "Backup"),
-    TypeMappingDef("aws", "rds:db", "RelationalDatabase"),
-    TypeMappingDef("aws", "dynamodb:table", "NoSQLDatabase"),
-    TypeMappingDef("aws", "elasticache:cluster", "CacheService"),
-    TypeMappingDef("aws", "redshift:cluster", "DataWarehouse"),
-    TypeMappingDef("aws", "ec2:security-group", "SecurityGroup"),
-    TypeMappingDef("aws", "ec2:network-acl", "NetworkACL"),
-    TypeMappingDef("aws", "iam:role", "IAMRole"),
-    TypeMappingDef("aws", "iam:policy", "IAMPolicy"),
-    TypeMappingDef("aws", "acm:certificate", "Certificate"),
-    TypeMappingDef("aws", "secretsmanager:secret", "Secret"),
-    TypeMappingDef("aws", "kms:key", "KeyVault"),
-    TypeMappingDef("aws", "cloudwatch:alarm", "AlertRule"),
-    TypeMappingDef("aws", "cloudwatch:dashboard", "Dashboard"),
-    TypeMappingDef("aws", "logs:log-group", "LogGroup"),
-    TypeMappingDef("aws", "cloudwatch:metric", "Metric"),
-    TypeMappingDef("aws", "elasticbeanstalk:application", "Application"),
-    TypeMappingDef("aws", "apigateway:restapi", "Endpoint"),
-    TypeMappingDef("aws", "sqs:queue", "Queue"),
-    # ── Azure ─────────────────────────────────────────────────────────────
-    TypeMappingDef("azure", "Microsoft.Compute/virtualMachines", "VirtualMachine"),
-    TypeMappingDef("azure", "Microsoft.ContainerInstance/containerGroups", "Container"),
-    TypeMappingDef("azure", "Microsoft.Web/sites", "ServerlessFunction"),
-    TypeMappingDef("azure", "Microsoft.Network/virtualNetworks", "VirtualNetwork"),
-    TypeMappingDef("azure", "Microsoft.Network/virtualNetworks/subnets", "Subnet"),
-    TypeMappingDef("azure", "Microsoft.Network/networkInterfaces", "NetworkInterface"),
-    TypeMappingDef("azure", "Microsoft.Network/loadBalancers", "LoadBalancer"),
-    TypeMappingDef("azure", "Microsoft.Network/dnszones", "DNS"),
-    TypeMappingDef("azure", "Microsoft.Cdn/profiles", "CDN"),
-    TypeMappingDef("azure", "Microsoft.Network/vpnGateways", "VPNGateway"),
-    TypeMappingDef("azure", "Microsoft.Compute/disks", "BlockStorage"),
-    TypeMappingDef("azure", "Microsoft.Storage/storageAccounts", "ObjectStorage"),
-    TypeMappingDef("azure", "Microsoft.Storage/storageAccounts/fileServices", "FileStorage"),
-    TypeMappingDef("azure", "Microsoft.RecoveryServices/vaults", "Backup"),
-    TypeMappingDef("azure", "Microsoft.Sql/servers/databases", "RelationalDatabase"),
-    TypeMappingDef("azure", "Microsoft.DocumentDB/databaseAccounts", "NoSQLDatabase"),
-    TypeMappingDef("azure", "Microsoft.Cache/redis", "CacheService"),
-    TypeMappingDef("azure", "Microsoft.Synapse/workspaces", "DataWarehouse"),
-    TypeMappingDef("azure", "Microsoft.Network/networkSecurityGroups", "SecurityGroup"),
-    TypeMappingDef("azure", "Microsoft.Authorization/roleDefinitions", "IAMRole"),
-    TypeMappingDef("azure", "Microsoft.Authorization/policyDefinitions", "IAMPolicy"),
-    TypeMappingDef("azure", "Microsoft.KeyVault/vaults", "KeyVault"),
-    TypeMappingDef("azure", "Microsoft.Insights/metricAlerts", "AlertRule"),
-    TypeMappingDef("azure", "Microsoft.Portal/dashboards", "Dashboard"),
-    TypeMappingDef("azure", "Microsoft.Insights/components", "LogGroup"),
-    TypeMappingDef("azure", "Microsoft.ApiManagement/service", "Endpoint"),
-    TypeMappingDef("azure", "Microsoft.ServiceBus/namespaces/queues", "Queue"),
-    # ── GCP ───────────────────────────────────────────────────────────────
-    TypeMappingDef("gcp", "compute.googleapis.com/Instance", "VirtualMachine"),
-    TypeMappingDef("gcp", "run.googleapis.com/Service", "Container"),
-    TypeMappingDef("gcp", "cloudfunctions.googleapis.com/Function", "ServerlessFunction"),
-    TypeMappingDef("gcp", "compute.googleapis.com/Network", "VirtualNetwork"),
-    TypeMappingDef("gcp", "compute.googleapis.com/Subnetwork", "Subnet"),
-    TypeMappingDef("gcp", "compute.googleapis.com/ForwardingRule", "LoadBalancer"),
-    TypeMappingDef("gcp", "dns.googleapis.com/ManagedZone", "DNS"),
-    TypeMappingDef("gcp", "compute.googleapis.com/VpnGateway", "VPNGateway"),
-    TypeMappingDef("gcp", "compute.googleapis.com/Disk", "BlockStorage"),
-    TypeMappingDef("gcp", "storage.googleapis.com/Bucket", "ObjectStorage"),
-    TypeMappingDef("gcp", "file.googleapis.com/Instance", "FileStorage"),
-    TypeMappingDef("gcp", "sqladmin.googleapis.com/Instance", "RelationalDatabase"),
-    TypeMappingDef("gcp", "firestore.googleapis.com/Database", "NoSQLDatabase"),
-    TypeMappingDef("gcp", "redis.googleapis.com/Instance", "CacheService"),
-    TypeMappingDef("gcp", "bigquery.googleapis.com/Dataset", "DataWarehouse"),
-    TypeMappingDef("gcp", "compute.googleapis.com/Firewall", "SecurityGroup"),
-    TypeMappingDef("gcp", "iam.googleapis.com/Role", "IAMRole"),
-    TypeMappingDef("gcp", "cloudkms.googleapis.com/KeyRing", "KeyVault"),
-    TypeMappingDef("gcp", "monitoring.googleapis.com/AlertPolicy", "AlertRule"),
-    TypeMappingDef("gcp", "monitoring.googleapis.com/Dashboard", "Dashboard"),
-    TypeMappingDef("gcp", "logging.googleapis.com/LogBucket", "LogGroup"),
-    TypeMappingDef("gcp", "appengine.googleapis.com/Application", "Application"),
-    TypeMappingDef("gcp", "pubsub.googleapis.com/Topic", "Queue"),
-    # ── OCI (Oracle Cloud Infrastructure) ─────────────────────────────────
-    TypeMappingDef("oci", "core/instance", "VirtualMachine"),
-    TypeMappingDef("oci", "containerinstances/containerInstance", "Container"),
-    TypeMappingDef("oci", "functions/function", "ServerlessFunction"),
-    TypeMappingDef("oci", "computebaremetal/instance", "BareMetalServer"),
-    TypeMappingDef("oci", "core/vcn", "VirtualNetwork"),
-    TypeMappingDef("oci", "core/subnet", "Subnet"),
-    TypeMappingDef("oci", "core/vnic", "NetworkInterface"),
-    TypeMappingDef("oci", "loadbalancer/loadbalancer", "LoadBalancer"),
-    TypeMappingDef("oci", "dns/zone", "DNS"),
-    TypeMappingDef("oci", "core/ipsecconnection", "VPNGateway"),
-    TypeMappingDef("oci", "core/volume", "BlockStorage"),
-    TypeMappingDef("oci", "objectstorage/bucket", "ObjectStorage"),
-    TypeMappingDef("oci", "filestorage/filesystem", "FileStorage"),
-    TypeMappingDef("oci", "database/dbsystem", "RelationalDatabase"),
-    TypeMappingDef("oci", "nosql/table", "NoSQLDatabase"),
-    TypeMappingDef("oci", "redis/redisCluster", "CacheService"),
-    TypeMappingDef("oci", "core/securitylist", "SecurityGroup"),
-    TypeMappingDef("oci", "core/networksecuritygroup", "SecurityGroup"),
-    TypeMappingDef("oci", "identity/policy", "IAMPolicy"),
-    TypeMappingDef("oci", "vault/vault", "KeyVault"),
-    TypeMappingDef("oci", "monitoring/alarm", "AlertRule"),
-    TypeMappingDef("oci", "logging/loggroup", "LogGroup"),
-    TypeMappingDef("oci", "streaming/stream", "Queue"),
+    ProviderResourceMappingDef("gcp", "compute.googleapis.com/Instance", "VirtualMachine", "GCP Compute Engine"),
+    ProviderResourceMappingDef("gcp", "run.googleapis.com/Service", "Container", "GCP Cloud Run Service"),
+    ProviderResourceMappingDef("gcp", "cloudfunctions.googleapis.com/Function", "ServerlessFunction", "GCP Cloud Function"),
+    ProviderResourceMappingDef("gcp", "compute.googleapis.com/Network", "VirtualNetwork", "GCP VPC Network"),
+    ProviderResourceMappingDef("gcp", "compute.googleapis.com/Subnetwork", "Subnet", "GCP Subnetwork"),
+    ProviderResourceMappingDef("gcp", "compute.googleapis.com/ForwardingRule", "LoadBalancer", "GCP Load Balancer"),
+    ProviderResourceMappingDef("gcp", "dns.googleapis.com/ManagedZone", "DNS", "GCP Cloud DNS"),
+    ProviderResourceMappingDef("gcp", "compute.googleapis.com/VpnGateway", "VPNGateway", "GCP VPN Gateway"),
+    ProviderResourceMappingDef("gcp", "compute.googleapis.com/Disk", "BlockStorage", "GCP Persistent Disk"),
+    ProviderResourceMappingDef("gcp", "storage.googleapis.com/Bucket", "ObjectStorage", "GCP Cloud Storage"),
+    ProviderResourceMappingDef("gcp", "file.googleapis.com/Instance", "FileStorage", "GCP Filestore"),
+    ProviderResourceMappingDef("gcp", "sqladmin.googleapis.com/Instance", "RelationalDatabase", "GCP Cloud SQL"),
+    ProviderResourceMappingDef("gcp", "firestore.googleapis.com/Database", "NoSQLDatabase", "GCP Firestore"),
+    ProviderResourceMappingDef("gcp", "redis.googleapis.com/Instance", "CacheService", "GCP Memorystore Redis"),
+    ProviderResourceMappingDef("gcp", "bigquery.googleapis.com/Dataset", "DataWarehouse", "GCP BigQuery"),
+    ProviderResourceMappingDef("gcp", "compute.googleapis.com/Firewall", "SecurityGroup", "GCP Firewall Rule"),
+    ProviderResourceMappingDef("gcp", "iam.googleapis.com/Role", "IAMRole", "GCP IAM Role"),
+    ProviderResourceMappingDef("gcp", "cloudkms.googleapis.com/KeyRing", "KeyVault", "GCP Cloud KMS"),
+    ProviderResourceMappingDef("gcp", "monitoring.googleapis.com/AlertPolicy", "AlertRule", "GCP Monitoring Alert"),
+    ProviderResourceMappingDef("gcp", "monitoring.googleapis.com/Dashboard", "Dashboard", "GCP Monitoring Dashboard"),
+    ProviderResourceMappingDef("gcp", "logging.googleapis.com/LogBucket", "LogGroup", "GCP Cloud Logging"),
+    ProviderResourceMappingDef("gcp", "appengine.googleapis.com/Application", "Application", "GCP App Engine"),
+    ProviderResourceMappingDef("gcp", "pubsub.googleapis.com/Topic", "Queue", "GCP Pub/Sub Topic"),
+    # ── OCI ───────────────────────────────────────────────────────────────
+    ProviderResourceMappingDef("oci", "core/instance", "VirtualMachine", "OCI Compute Instance"),
+    ProviderResourceMappingDef("oci", "containerinstances/containerInstance", "Container", "OCI Container Instance"),
+    ProviderResourceMappingDef("oci", "functions/function", "ServerlessFunction", "OCI Functions"),
+    ProviderResourceMappingDef("oci", "computebaremetal/instance", "BareMetalServer", "OCI Bare Metal"),
+    ProviderResourceMappingDef("oci", "core/vcn", "VirtualNetwork", "OCI VCN"),
+    ProviderResourceMappingDef("oci", "core/subnet", "Subnet", "OCI Subnet"),
+    ProviderResourceMappingDef("oci", "core/vnic", "NetworkInterface", "OCI VNIC"),
+    ProviderResourceMappingDef("oci", "loadbalancer/loadbalancer", "LoadBalancer", "OCI Load Balancer"),
+    ProviderResourceMappingDef("oci", "dns/zone", "DNS", "OCI DNS Zone"),
+    ProviderResourceMappingDef("oci", "core/ipsecconnection", "VPNGateway", "OCI IPSec Connection"),
+    ProviderResourceMappingDef("oci", "core/volume", "BlockStorage", "OCI Block Volume"),
+    ProviderResourceMappingDef("oci", "objectstorage/bucket", "ObjectStorage", "OCI Object Storage"),
+    ProviderResourceMappingDef("oci", "filestorage/filesystem", "FileStorage", "OCI File Storage"),
+    ProviderResourceMappingDef("oci", "database/dbsystem", "RelationalDatabase", "OCI DB System"),
+    ProviderResourceMappingDef("oci", "nosql/table", "NoSQLDatabase", "OCI NoSQL Table"),
+    ProviderResourceMappingDef("oci", "redis/redisCluster", "CacheService", "OCI Cache with Redis"),
+    ProviderResourceMappingDef("oci", "core/securitylist", "SecurityGroup", "OCI Security List"),
+    ProviderResourceMappingDef("oci", "core/networksecuritygroup", "SecurityGroup", "OCI Network Security Group"),
+    ProviderResourceMappingDef("oci", "identity/policy", "IAMPolicy", "OCI IAM Policy"),
+    ProviderResourceMappingDef("oci", "vault/vault", "KeyVault", "OCI Vault"),
+    ProviderResourceMappingDef("oci", "monitoring/alarm", "AlertRule", "OCI Monitoring Alarm"),
+    ProviderResourceMappingDef("oci", "logging/loggroup", "LogGroup", "OCI Logging Log Group"),
+    ProviderResourceMappingDef("oci", "streaming/stream", "Queue", "OCI Streaming"),
 ]
 
 
@@ -1375,11 +1485,6 @@ def get_provider(name: str) -> ProviderDef | None:
     return _PROVIDER_MAP.get(name)
 
 
-def get_provider_resource_types(provider_name: str) -> list[ProviderResourceTypeDef]:
-    """Get all resource types for a given provider."""
-    return [prt for prt in PROVIDER_RESOURCE_TYPES if prt.provider_name == provider_name]
-
-
-def get_type_mappings_for_provider(provider_name: str) -> list[TypeMappingDef]:
-    """Get all type mappings for a given provider."""
-    return [tm for tm in TYPE_MAPPINGS if tm.provider_name == provider_name]
+def get_provider_resource_mappings(provider_name: str) -> list[ProviderResourceMappingDef]:
+    """Get all resource mappings for a given provider."""
+    return [m for m in PROVIDER_RESOURCE_MAPPINGS if m.provider_name == provider_name]

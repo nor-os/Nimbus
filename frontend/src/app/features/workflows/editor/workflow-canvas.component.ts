@@ -10,9 +10,11 @@ import {
   EventEmitter,
   Injector,
   Input,
+  OnChanges,
   OnDestroy,
   OnInit,
   Output,
+  SimpleChanges,
   ViewChild,
   inject,
   signal,
@@ -58,7 +60,7 @@ import { WorkflowGraph, NodeTypeInfo } from '@shared/models/workflow.model';
     .toolbar-btn:hover { background: #f8fafc; color: #3b82f6; }
   `],
 })
-export class WorkflowCanvasComponent implements OnInit, OnDestroy {
+export class WorkflowCanvasComponent implements OnInit, OnChanges, OnDestroy {
   @ViewChild('canvasContainer', { static: true }) containerRef!: ElementRef<HTMLElement>;
 
   @Input() graph: WorkflowGraph | null = null;
@@ -71,12 +73,27 @@ export class WorkflowCanvasComponent implements OnInit, OnDestroy {
   private injector = inject(Injector);
   editorService = inject(ReteEditorService);
   showMinimap = signal(true);
+  private initialized = false;
 
   async ngOnInit(): Promise<void> {
     this.editorService.setNodeTypes(this.nodeTypes);
     await this.editorService.initialize(this.containerRef.nativeElement, this.injector);
+    this.initialized = true;
 
     if (this.graph) {
+      await this.editorService.loadGraph(this.graph);
+    }
+  }
+
+  async ngOnChanges(changes: SimpleChanges): Promise<void> {
+    if (!this.initialized) return;
+
+    if (changes['nodeTypes'] && this.nodeTypes) {
+      this.editorService.setNodeTypes(this.nodeTypes);
+    }
+
+    if (changes['graph'] && this.graph) {
+      this.editorService.setNodeTypes(this.nodeTypes);
       await this.editorService.loadGraph(this.graph);
     }
   }

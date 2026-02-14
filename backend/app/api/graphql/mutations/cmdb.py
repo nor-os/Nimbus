@@ -21,6 +21,8 @@ from app.api.graphql.queries.cmdb import (
     _template_to_gql,
 )
 from app.api.graphql.types.cmdb import (
+    CIAttributeDefinitionInput,
+    CIAttributeDefinitionUpdateInput,
     CIClassCreateInput,
     CIClassDetailType,
     CIClassType,
@@ -37,6 +39,8 @@ from app.api.graphql.types.cmdb import (
     CompartmentCreateInput,
     CompartmentNodeType,
     CompartmentUpdateInput,
+    RelationshipTypeConstraintInput,
+    RelationshipTypeType,
     SavedSearchInput,
     SavedSearchType,
 )
@@ -74,6 +78,7 @@ class CMDBMutation:
             }
             ci = await service.create_ci(str(tenant_id), data)
             await db.commit()
+            await db.refresh(ci, ["ci_class"])
             return _ci_to_gql(ci)
 
     @strawberry.mutation
@@ -231,6 +236,68 @@ class CMDBMutation:
             await db.commit()
             return result
 
+    # ── Relationship Type Constraints ────────────────────────────────
+
+    @strawberry.mutation
+    async def update_relationship_type_constraints(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        id: uuid.UUID,
+        input: RelationshipTypeConstraintInput,
+    ) -> RelationshipTypeType:
+        """Update semantic category constraints on a relationship type."""
+        await check_graphql_permission(
+            info, "cmdb:relationship:manage", str(tenant_id)
+        )
+
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.cmdb.relationship_type import RelationshipType
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(RelationshipType).where(
+                    RelationshipType.id == id,
+                    RelationshipType.deleted_at.is_(None),
+                )
+            )
+            rt = result.scalar_one_or_none()
+            if not rt:
+                raise ValueError("Relationship type not found")
+
+            if input.source_semantic_categories is not strawberry.UNSET:
+                rt.source_semantic_categories = (
+                    input.source_semantic_categories or None
+                )
+            if input.target_semantic_categories is not strawberry.UNSET:
+                rt.target_semantic_categories = (
+                    input.target_semantic_categories or None
+                )
+
+            await db.commit()
+            await db.refresh(rt)
+            return RelationshipTypeType(
+                id=rt.id,
+                name=rt.name,
+                display_name=rt.display_name,
+                inverse_name=rt.inverse_name,
+                description=rt.description,
+                source_class_ids=rt.source_class_ids,
+                target_class_ids=rt.target_class_ids,
+                is_system=rt.is_system,
+                domain=rt.domain,
+                source_entity_type=rt.source_entity_type,
+                target_entity_type=rt.target_entity_type,
+                source_semantic_types=rt.source_semantic_types,
+                target_semantic_types=rt.target_semantic_types,
+                source_semantic_categories=rt.source_semantic_categories,
+                target_semantic_categories=rt.target_semantic_categories,
+                created_at=rt.created_at,
+                updated_at=rt.updated_at,
+            )
+
     # ── CI Classes ────────────────────────────────────────────────────
 
     @strawberry.mutation
@@ -291,6 +358,123 @@ class CMDBMutation:
 
             c = await service.update_class(id, str(tenant_id), data)
             await db.commit()
+            return _class_detail_to_gql(c)
+
+    @strawberry.mutation
+    async def delete_ci_class(
+        self, info: Info, tenant_id: uuid.UUID, id: uuid.UUID
+    ) -> bool:
+        """Soft-delete a custom CI class."""
+        await check_graphql_permission(
+            info, "cmdb:class:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.class_service import ClassService
+
+        async with async_session_factory() as db:
+            service = ClassService(db)
+            result = await service.delete_class(id, str(tenant_id))
+            await db.commit()
+            return result
+
+    @strawberry.mutation
+    async def add_attribute_definition(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        input: CIAttributeDefinitionInput,
+    ) -> CIClassDetailType:
+        """Add an attribute definition to a CI class."""
+        await check_graphql_permission(
+            info, "cmdb:class:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.class_service import ClassService
+
+        async with async_session_factory() as db:
+            service = ClassService(db)
+            data = {
+                "name": input.name,
+                "display_name": input.display_name,
+                "data_type": input.data_type,
+                "is_required": input.is_required,
+                "default_value": input.default_value,
+                "validation_rules": input.validation_rules,
+                "sort_order": input.sort_order,
+            }
+            await service.add_attribute_definition(
+                class_id, str(tenant_id), data
+            )
+            await db.commit()
+            c = await service.get_class(class_id)
+            return _class_detail_to_gql(c)
+
+    @strawberry.mutation
+    async def update_attribute_definition(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        attr_id: uuid.UUID,
+        input: CIAttributeDefinitionUpdateInput,
+    ) -> CIClassDetailType:
+        """Update an attribute definition on a CI class."""
+        await check_graphql_permission(
+            info, "cmdb:class:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.class_service import ClassService
+
+        async with async_session_factory() as db:
+            service = ClassService(db)
+            data: dict = {}
+            if input.display_name is not None:
+                data["display_name"] = input.display_name
+            if input.data_type is not None:
+                data["data_type"] = input.data_type
+            if input.is_required is not None:
+                data["is_required"] = input.is_required
+            if input.default_value is not strawberry.UNSET:
+                data["default_value"] = input.default_value
+            if input.validation_rules is not strawberry.UNSET:
+                data["validation_rules"] = input.validation_rules
+            if input.sort_order is not None:
+                data["sort_order"] = input.sort_order
+
+            await service.update_attribute_definition(
+                attr_id, class_id, str(tenant_id), data
+            )
+            await db.commit()
+            c = await service.get_class(class_id)
+            return _class_detail_to_gql(c)
+
+    @strawberry.mutation
+    async def remove_attribute_definition(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        attr_id: uuid.UUID,
+    ) -> CIClassDetailType:
+        """Remove (soft-delete) an attribute definition from a CI class."""
+        await check_graphql_permission(
+            info, "cmdb:class:manage", str(tenant_id)
+        )
+
+        from app.db.session import async_session_factory
+        from app.services.cmdb.class_service import ClassService
+
+        async with async_session_factory() as db:
+            service = ClassService(db)
+            await service.remove_attribute_definition(
+                attr_id, class_id, str(tenant_id)
+            )
+            await db.commit()
+            c = await service.get_class(class_id)
             return _class_detail_to_gql(c)
 
     # ── Templates ─────────────────────────────────────────────────────
@@ -418,6 +602,7 @@ class CMDBMutation:
             )
             ci = await ci_service.create_ci(str(tenant_id), data)
             await db.commit()
+            await db.refresh(ci, ["ci_class"])
             return _ci_to_gql(ci)
 
     # ── Compartments ──────────────────────────────────────────────────

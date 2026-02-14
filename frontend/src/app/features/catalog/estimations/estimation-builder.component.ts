@@ -26,7 +26,11 @@ import {
   ServiceProcessAssignment,
   ServiceProcess,
 } from '@shared/models/delivery.model';
-import { ServiceOffering } from '@shared/models/cmdb.model';
+import {
+  ServiceOffering,
+  PriceList,
+  OfferingCostBreakdown,
+} from '@shared/models/cmdb.model';
 import { Tenant } from '@core/models/tenant.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { SearchableSelectComponent } from '@shared/components/searchable-select/searchable-select.component';
@@ -92,6 +96,15 @@ const COVERAGE_MODELS: { value: string; label: string }[] = [
                 </select>
               </div>
               <div class="form-group">
+                <label class="form-label">Price List</label>
+                <select class="form-input" [(ngModel)]="formPriceListId" (ngModelChange)="onPriceListChange()">
+                  <option value="">(Default cascade)</option>
+                  @for (pl of priceLists(); track pl.id) {
+                    <option [value]="pl.id">{{ pl.name }} {{ pl.versionLabel }} ({{ pl.status }})</option>
+                  }
+                </select>
+              </div>
+              <div class="form-group">
                 <label class="form-label">Quantity</label>
                 <input
                   class="form-input"
@@ -101,17 +114,38 @@ const COVERAGE_MODELS: { value: string; label: string }[] = [
                   step="1"
                   placeholder="1"
                 />
+                @if (ciCountHint()) {
+                  <span class="form-hint">(from {{ ciCountHint() }} CIs)</span>
+                }
               </div>
               <div class="form-group">
                 <label class="form-label">Sell Price per Unit</label>
-                <input
-                  class="form-input"
-                  type="number"
-                  [(ngModel)]="formSellPricePerUnit"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                />
+                @if (!sellPriceOverride()) {
+                  <div class="resolved-price-display">
+                    <span class="resolved-price mono">{{ resolvedSellPrice() !== null ? (resolvedSellPrice()! | number: '1.2-2') : 'Resolving...' }}</span>
+                    <label class="override-toggle">
+                      <input type="checkbox" [checked]="sellPriceOverride()" (change)="toggleSellPriceOverride()" />
+                      Override
+                    </label>
+                  </div>
+                  <span class="price-source-hint">from price list</span>
+                } @else {
+                  <div class="resolved-price-display">
+                    <input
+                      class="form-input"
+                      type="number"
+                      [(ngModel)]="formSellPricePerUnit"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                    <label class="override-toggle">
+                      <input type="checkbox" [checked]="sellPriceOverride()" (change)="toggleSellPriceOverride()" />
+                      Override
+                    </label>
+                  </div>
+                  <span class="price-source-hint">manual override</span>
+                }
               </div>
             </div>
           </div>
@@ -136,6 +170,7 @@ const COVERAGE_MODELS: { value: string; label: string }[] = [
                 }
                 @if (isEditMode()) {
                   <button class="btn btn-sm" (click)="refreshRates()">Refresh Rates</button>
+                  <button class="btn btn-sm" (click)="refreshPrices()">Refresh Prices</button>
                 }
                 <button class="btn btn-sm" (click)="addLineItem()">+ Add Line Item</button>
               </div>
@@ -216,6 +251,43 @@ const COVERAGE_MODELS: { value: string; label: string }[] = [
               <div class="empty-lines">No line items added yet. Click "Add Line Item" to begin.</div>
             }
           </div>
+
+          <!-- Infrastructure Cost Breakdown -->
+          @if (costBreakdown().length > 0) {
+            <div class="form-card">
+              <h2 class="section-title">Infrastructure Cost Breakdown</h2>
+              <div class="table-container">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Component</th>
+                      <th>Type</th>
+                      <th class="th-right">Qty</th>
+                      <th class="th-right">Price/Unit</th>
+                      <th>Required</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (item of costBreakdown(); track item.sourceId) {
+                      <tr>
+                        <td>{{ item.sourceName }}</td>
+                        <td><span class="breakdown-type-badge">{{ item.sourceType }}</span></td>
+                        <td class="td-right mono">{{ item.quantity }}</td>
+                        <td class="td-right mono">{{ item.pricePerUnit | number: '1.2-2' }} {{ item.currency }}</td>
+                        <td>
+                          @if (item.isRequired) {
+                            <span class="badge-required">Yes</span>
+                          } @else {
+                            <span class="badge-optional">No</span>
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
 
           <!-- Bottom section: Summary -->
           <div class="summary-card">
@@ -430,6 +502,47 @@ const COVERAGE_MODELS: { value: string; label: string }[] = [
     .btn-icon:hover { background: #f1f5f9; color: #1e293b; }
     .btn-danger { color: #dc2626; }
     .btn-danger:hover { background: #fef2f2; color: #dc2626; }
+
+    /* ── Price list & override ──────────────────────────────────────── */
+    .resolved-price-display {
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    .resolved-price {
+      padding: 0.5rem 0.75rem; background: #f8fafc; color: #1e293b;
+      border: 1px solid #e2e8f0; border-radius: 6px;
+      font-size: 0.875rem; font-weight: 600; flex: 1;
+    }
+    .override-toggle {
+      display: flex; align-items: center; gap: 0.375rem;
+      font-size: 0.75rem; color: #64748b; font-weight: 500;
+      cursor: pointer; white-space: nowrap;
+    }
+    .override-toggle input[type="checkbox"] { cursor: pointer; }
+    .price-source-hint {
+      font-size: 0.6875rem; color: #94a3b8; margin-top: 0.25rem;
+      font-style: italic;
+    }
+    .form-hint {
+      font-size: 0.6875rem; color: #64748b; margin-top: 0.25rem;
+    }
+
+    /* ── Breakdown badges ───────────────────────────────────────────── */
+    .breakdown-type-badge {
+      display: inline-block; padding: 0.125rem 0.5rem;
+      border-radius: 4px; font-size: 0.6875rem; font-weight: 600;
+      background: #eff6ff; color: #3b82f6; text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-required {
+      display: inline-block; padding: 0.125rem 0.375rem;
+      border-radius: 4px; font-size: 0.6875rem; font-weight: 600;
+      background: #f0fdf4; color: #16a34a;
+    }
+    .badge-optional {
+      display: inline-block; padding: 0.125rem 0.375rem;
+      border-radius: 4px; font-size: 0.6875rem; font-weight: 600;
+      background: #f8fafc; color: #94a3b8;
+    }
   `],
 })
 export class EstimationBuilderComponent implements OnInit {
@@ -452,6 +565,11 @@ export class EstimationBuilderComponent implements OnInit {
   lineItems = signal<LineItemForm[]>([]);
   assignedProcesses = signal<ServiceProcessAssignment[]>([]);
   availableProcesses = signal<ServiceProcess[]>([]);
+  priceLists = signal<PriceList[]>([]);
+  costBreakdown = signal<OfferingCostBreakdown[]>([]);
+  sellPriceOverride = signal(false);
+  resolvedSellPrice = signal<number | null>(null);
+  ciCountHint = signal<number | null>(null);
 
   readonly coverageModels = COVERAGE_MODELS;
 
@@ -464,6 +582,7 @@ export class EstimationBuilderComponent implements OnInit {
   formServiceOfferingId = '';
   formDeliveryRegionId = '';
   formCoverageModel = '';
+  formPriceListId = '';
   formQuantity = 1;
   formSellPricePerUnit = 0;
   importProcessId = '';
@@ -577,12 +696,91 @@ export class EstimationBuilderComponent implements OnInit {
     });
   }
 
+  onPriceListChange(): void {
+    this.resolveSellPrice();
+    this.loadCostBreakdown();
+  }
+
+  toggleSellPriceOverride(): void {
+    const toggled = !this.sellPriceOverride();
+    this.sellPriceOverride.set(toggled);
+    if (!toggled && this.resolvedSellPrice() !== null) {
+      this.formSellPricePerUnit = this.resolvedSellPrice()!;
+    }
+  }
+
+  refreshPrices(): void {
+    if (!this.estimationId) return;
+    this.submitting.set(true);
+    this.deliveryService.refreshEstimationPrices(this.estimationId).subscribe({
+      next: (estimation) => {
+        this.mapEstimationToForm(estimation);
+        this.submitting.set(false);
+        this.toastService.success('Prices refreshed from pricing engine');
+      },
+      error: (err) => {
+        this.submitting.set(false);
+        this.toastService.error(err.message || 'Failed to refresh prices');
+      },
+    });
+  }
+
   processNameForId(processId: string): string {
     const p = this.availableProcesses().find((proc) => proc.id === processId);
     return p ? p.name : processId.substring(0, 8) + '...';
   }
 
   // ── Private helpers ─────────────────────────────────────────────
+
+  private resolveSellPrice(): void {
+    if (!this.formServiceOfferingId) return;
+    this.resolvedSellPrice.set(null);
+
+    this.catalogService.getEffectivePrice(this.formServiceOfferingId, {
+      tenantId: this.formClientTenantId || undefined,
+      deliveryRegionId: this.formDeliveryRegionId || undefined,
+      coverageModel: this.formCoverageModel || undefined,
+      priceListId: this.formPriceListId || undefined,
+    }).subscribe({
+      next: (result) => {
+        if (result) {
+          this.resolvedSellPrice.set(result.pricePerUnit);
+          if (!this.sellPriceOverride()) {
+            this.formSellPricePerUnit = result.pricePerUnit;
+          }
+        }
+      },
+    });
+  }
+
+  private loadCICount(): void {
+    if (!this.formClientTenantId || !this.formServiceOfferingId) return;
+    this.catalogService.getCICountForOffering(this.formClientTenantId, this.formServiceOfferingId).subscribe({
+      next: (count) => {
+        this.ciCountHint.set(count > 0 ? count : null);
+        if (count > 0 && this.formQuantity <= 1) {
+          this.formQuantity = count;
+        }
+      },
+    });
+  }
+
+  private loadCostBreakdown(): void {
+    if (!this.formServiceOfferingId) {
+      this.costBreakdown.set([]);
+      return;
+    }
+
+    this.catalogService.getOfferingCostBreakdown(this.formServiceOfferingId, {
+      deliveryRegionId: this.formDeliveryRegionId || undefined,
+      coverageModel: this.formCoverageModel || undefined,
+      priceListId: this.formPriceListId || undefined,
+      tenantId: this.formClientTenantId || undefined,
+    }).subscribe({
+      next: (breakdown) => this.costBreakdown.set(breakdown),
+      error: () => this.costBreakdown.set([]),
+    });
+  }
 
   private save(submitAfterSave: boolean): void {
     this.submitting.set(true);
@@ -594,6 +792,7 @@ export class EstimationBuilderComponent implements OnInit {
         sellPricePerUnit: this.formSellPricePerUnit,
         deliveryRegionId: this.formDeliveryRegionId || null,
         coverageModel: this.formCoverageModel || null,
+        priceListId: this.formPriceListId || null,
       }).subscribe({
         next: (estimation) => {
           this.syncLineItems(estimation.id, submitAfterSave);
@@ -613,6 +812,7 @@ export class EstimationBuilderComponent implements OnInit {
         coverageModel: this.formCoverageModel || null,
         quantity: this.formQuantity,
         sellPricePerUnit: this.formSellPricePerUnit,
+        priceListId: this.formPriceListId || undefined,
       }).subscribe({
         next: (estimation) => {
           this.syncLineItems(estimation.id, submitAfterSave);
@@ -710,6 +910,7 @@ export class EstimationBuilderComponent implements OnInit {
     this.formServiceOfferingId = estimation.serviceOfferingId;
     this.formDeliveryRegionId = estimation.deliveryRegionId || '';
     this.formCoverageModel = estimation.coverageModel || '';
+    this.formPriceListId = estimation.priceListId || '';
     this.formQuantity = estimation.quantity;
     this.formSellPricePerUnit = estimation.sellPricePerUnit;
 
@@ -745,6 +946,10 @@ export class EstimationBuilderComponent implements OnInit {
     this.deliveryService.listProcesses({ limit: 500 }).subscribe({
       next: (response) => this.availableProcesses.set(response.items),
     });
+
+    this.catalogService.listPriceLists(0, 500).subscribe({
+      next: (response) => this.priceLists.set(response.items),
+    });
   }
 
   private loadExistingEstimation(id: string): void {
@@ -762,8 +967,14 @@ export class EstimationBuilderComponent implements OnInit {
         this.formServiceOfferingId = estimation.serviceOfferingId;
         this.formDeliveryRegionId = estimation.deliveryRegionId || '';
         this.formCoverageModel = estimation.coverageModel || '';
+        this.formPriceListId = estimation.priceListId || '';
         this.formQuantity = estimation.quantity;
         this.formSellPricePerUnit = estimation.sellPricePerUnit;
+
+        // Resolve sell price, CI count, and cost breakdown
+        this.resolveSellPrice();
+        this.loadCICount();
+        this.loadCostBreakdown();
 
         // Load process assignments for this offering
         this.deliveryService.listAssignments(estimation.serviceOfferingId).subscribe({

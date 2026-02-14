@@ -1,6 +1,6 @@
 """
-Overview: Mapping engine — resolves provider resources to semantic types. Providers call this
-    engine rather than implementing mapping logic individually.
+Overview: Mapping engine — resolves provider resources to semantic types using the merged
+    provider resource mapping registry.
 Architecture: Core mapping resolution layer between providers and the semantic model (Section 5)
 Dependencies: app.services.semantic.registry, app.services.semantic.data_classes
 Concepts: Resolution strategy: exact match → pattern match → unmapped. The engine loads
@@ -18,14 +18,11 @@ from app.services.semantic.data_classes import (
     SemanticResource,
 )
 from app.services.semantic.registry import (
-    PROVIDER_RESOURCE_TYPES,
-    TYPE_MAPPINGS,
-    ProviderResourceTypeDef,
+    PROVIDER_RESOURCE_MAPPINGS,
+    ProviderResourceMappingDef,
     SemanticTypeDef,
-    TypeMappingDef,
-    get_provider_resource_types,
+    get_provider_resource_mappings,
     get_type,
-    get_type_mappings_for_provider,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,9 +35,9 @@ class MappingEngine:
     """Resolves provider-specific resources to semantic types."""
 
     def __init__(self) -> None:
-        # Build lookup index: (provider_name, api_type) -> TypeMappingDef
-        self._exact_index: dict[tuple[str, str], TypeMappingDef] = {}
-        for mapping in TYPE_MAPPINGS:
+        # Build lookup index: (provider_name, api_type) -> ProviderResourceMappingDef
+        self._exact_index: dict[tuple[str, str], ProviderResourceMappingDef] = {}
+        for mapping in PROVIDER_RESOURCE_MAPPINGS:
             key = (mapping.provider_name.lower(), mapping.api_type.lower())
             self._exact_index[key] = mapping
 
@@ -93,26 +90,22 @@ class MappingEngine:
             attributes=attributes,
         )
 
-    def get_provider_resource_types(
+    def get_provider_resource_mappings(
         self, provider_name: str
-    ) -> list[ProviderResourceTypeDef]:
-        """Get all resource type definitions for a given provider."""
-        return get_provider_resource_types(provider_name)
-
-    def get_mappings_for_provider(self, provider_name: str) -> list[TypeMappingDef]:
-        """Get all type mappings for a given provider."""
-        return get_type_mappings_for_provider(provider_name)
+    ) -> list[ProviderResourceMappingDef]:
+        """Get all resource mappings for a given provider."""
+        return get_provider_resource_mappings(provider_name)
 
     def _exact_match(
         self, provider_name: str, provider_resource_type: str
-    ) -> TypeMappingDef | None:
+    ) -> ProviderResourceMappingDef | None:
         """Try an exact case-insensitive match."""
         key = (provider_name.lower(), provider_resource_type.lower())
         return self._exact_index.get(key)
 
     def _pattern_match(
         self, provider_name: str, provider_resource_type: str
-    ) -> TypeMappingDef | None:
+    ) -> ProviderResourceMappingDef | None:
         """Try partial matching on the provider resource type.
 
         Checks if any registered mapping's resource type is a substring of the
@@ -121,7 +114,7 @@ class MappingEngine:
         provider_lower = provider_name.lower()
         resource_lower = provider_resource_type.lower()
 
-        for mapping in TYPE_MAPPINGS:
+        for mapping in PROVIDER_RESOURCE_MAPPINGS:
             if mapping.provider_name.lower() != provider_lower:
                 continue
             registered = mapping.api_type.lower()

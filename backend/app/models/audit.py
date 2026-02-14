@@ -8,6 +8,7 @@ Concepts: Immutable audit logs, hash chain, retention policies, redaction rules,
 import enum
 import uuid
 
+import sqlalchemy as sa
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -143,6 +144,32 @@ class RetentionPolicy(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     hot_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default="30")
     cold_days: Mapped[int] = mapped_column(Integer, nullable=False, server_default="365")
     archive_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+
+class CategoryRetentionOverride(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
+    """Per-category retention override — falls back to global RetentionPolicy when absent."""
+
+    __tablename__ = "category_retention_overrides"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    event_category: Mapped[EventCategory] = mapped_column(
+        Enum(EventCategory, name="audit_event_category", create_constraint=False),
+        nullable=False,
+    )
+    hot_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    cold_days: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "uq_category_retention_tenant_cat",
+            "tenant_id",
+            "event_category",
+            unique=True,
+            postgresql_where=sa.text("deleted_at IS NULL"),
+        ),
+    )
 
 
 class RedactionRule(Base, IDMixin, TimestampMixin, SoftDeleteMixin):

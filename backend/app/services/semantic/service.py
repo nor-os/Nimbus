@@ -1,6 +1,6 @@
 """
 Overview: Semantic layer service — queries and manages semantic types, categories, relationship
-    kinds, providers, provider resource types, and type mappings.
+    kinds, and providers.
 Architecture: Service layer for semantic catalog operations (Section 5)
 Dependencies: sqlalchemy, app.models.semantic_type
 Concepts: CRUD operations with is_system protection. System records cannot be deleted or renamed.
@@ -18,10 +18,8 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.models.semantic_type import (
     SemanticCategory,
     SemanticProvider,
-    SemanticProviderResourceType,
     SemanticRelationshipKind,
     SemanticResourceType,
-    SemanticTypeMapping,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,14 +59,8 @@ class SemanticService:
             .options(
                 types_path.joinedload(SemanticResourceType.category_rel),
                 types_path.joinedload(SemanticResourceType.parent_type),
-                types_path.selectinload(SemanticResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.provider_resource_type_rel)
-                    .joinedload(SemanticProviderResourceType.provider_rel),
                 children_path.joinedload(SemanticResourceType.category_rel),
                 children_path.joinedload(SemanticResourceType.parent_type),
-                children_path.selectinload(SemanticResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.provider_resource_type_rel)
-                    .joinedload(SemanticProviderResourceType.provider_rel),
                 children_path.selectinload(SemanticResourceType.children),
             )
             .order_by(SemanticCategory.sort_order)
@@ -206,14 +198,8 @@ class SemanticService:
             .options(
                 joinedload(SemanticResourceType.category_rel),
                 joinedload(SemanticResourceType.parent_type),
-                selectinload(SemanticResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.provider_resource_type_rel)
-                    .joinedload(SemanticProviderResourceType.provider_rel),
                 children_path.joinedload(SemanticResourceType.category_rel),
                 children_path.joinedload(SemanticResourceType.parent_type),
-                children_path.selectinload(SemanticResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.provider_resource_type_rel)
-                    .joinedload(SemanticProviderResourceType.provider_rel),
                 children_path.selectinload(SemanticResourceType.children),
             )
         )
@@ -243,7 +229,7 @@ class SemanticService:
     async def get_type_with_mappings(
         self, type_id: uuid.UUID
     ) -> SemanticResourceType | None:
-        """Get a type with its type mappings eagerly loaded."""
+        """Get a type with its children eagerly loaded."""
         children_path = selectinload(SemanticResourceType.children)
         result = await self.db.execute(
             select(SemanticResourceType)
@@ -254,14 +240,8 @@ class SemanticService:
             .options(
                 joinedload(SemanticResourceType.category_rel),
                 joinedload(SemanticResourceType.parent_type),
-                selectinload(SemanticResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.provider_resource_type_rel)
-                    .joinedload(SemanticProviderResourceType.provider_rel),
                 children_path.joinedload(SemanticResourceType.category_rel),
                 children_path.joinedload(SemanticResourceType.parent_type),
-                children_path.selectinload(SemanticResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.provider_resource_type_rel)
-                    .joinedload(SemanticProviderResourceType.provider_rel),
                 children_path.selectinload(SemanticResourceType.children),
             )
         )
@@ -471,16 +451,10 @@ class SemanticService:
     # -- Providers (read) --------------------------------------------------
 
     async def list_providers(self) -> list[SemanticProvider]:
-        """List all providers with their resource types."""
+        """List all providers."""
         result = await self.db.execute(
             select(SemanticProvider)
             .where(SemanticProvider.deleted_at.is_(None))
-            .options(
-                selectinload(SemanticProvider.resource_types)
-                    .selectinload(SemanticProviderResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.semantic_type_rel)
-                    .joinedload(SemanticResourceType.category_rel),
-            )
             .order_by(SemanticProvider.name)
         )
         return list(result.scalars().unique().all())
@@ -492,12 +466,6 @@ class SemanticService:
             .where(
                 SemanticProvider.id == provider_id,
                 SemanticProvider.deleted_at.is_(None),
-            )
-            .options(
-                selectinload(SemanticProvider.resource_types)
-                    .selectinload(SemanticProviderResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.semantic_type_rel)
-                    .joinedload(SemanticResourceType.category_rel),
             )
         )
         return result.scalar_one_or_none()
@@ -572,276 +540,3 @@ class SemanticService:
         provider.deleted_at = datetime.now(timezone.utc)
         await self.db.flush()
         return True
-
-    # -- Provider Resource Types (read) ------------------------------------
-
-    async def list_provider_resource_types(
-        self,
-        provider_id: uuid.UUID | None = None,
-        status: str | None = None,
-    ) -> list[SemanticProviderResourceType]:
-        """List provider resource types with optional filtering."""
-        conditions = [SemanticProviderResourceType.deleted_at.is_(None)]
-
-        if provider_id:
-            conditions.append(SemanticProviderResourceType.provider_id == provider_id)
-        if status:
-            conditions.append(SemanticProviderResourceType.status == status)
-
-        result = await self.db.execute(
-            select(SemanticProviderResourceType)
-            .where(*conditions)
-            .options(
-                joinedload(SemanticProviderResourceType.provider_rel),
-                selectinload(SemanticProviderResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.semantic_type_rel)
-                    .joinedload(SemanticResourceType.category_rel),
-            )
-            .order_by(
-                SemanticProviderResourceType.api_type,
-            )
-        )
-        return list(result.scalars().unique().all())
-
-    async def get_provider_resource_type(
-        self, prt_id: uuid.UUID
-    ) -> SemanticProviderResourceType | None:
-        """Get a single provider resource type by ID."""
-        result = await self.db.execute(
-            select(SemanticProviderResourceType)
-            .where(
-                SemanticProviderResourceType.id == prt_id,
-                SemanticProviderResourceType.deleted_at.is_(None),
-            )
-            .options(
-                joinedload(SemanticProviderResourceType.provider_rel),
-                selectinload(SemanticProviderResourceType.type_mappings)
-                    .joinedload(SemanticTypeMapping.semantic_type_rel)
-                    .joinedload(SemanticResourceType.category_rel),
-            )
-        )
-        return result.scalar_one_or_none()
-
-    # -- Provider Resource Types (write) -----------------------------------
-
-    async def create_provider_resource_type(
-        self,
-        provider_id: uuid.UUID,
-        api_type: str,
-        display_name: str,
-        description: str | None = None,
-        documentation_url: str | None = None,
-        parameter_schema: dict | None = None,
-        status: str = "available",
-    ) -> SemanticProviderResourceType:
-        """Create a new provider resource type."""
-        # Validate provider
-        provider = await self.get_provider(provider_id)
-        if not provider:
-            raise ForeignKeyError(f"Provider '{provider_id}' does not exist")
-
-        # Check unique
-        existing = await self._get_prt_by_provider_and_type(provider_id, api_type)
-        if existing:
-            raise DuplicateNameError(
-                f"Resource type '{api_type}' already exists for this provider"
-            )
-
-        prt = SemanticProviderResourceType(
-            provider_id=provider_id,
-            api_type=api_type,
-            display_name=display_name,
-            description=description,
-            documentation_url=documentation_url,
-            parameter_schema=parameter_schema,
-            status=status,
-            is_system=False,
-        )
-        self.db.add(prt)
-        await self.db.flush()
-        return prt
-
-    async def update_provider_resource_type(
-        self, prt_id: uuid.UUID, **kwargs: object
-    ) -> SemanticProviderResourceType | None:
-        """Update a provider resource type."""
-        prt = await self.get_provider_resource_type(prt_id)
-        if not prt:
-            return None
-
-        if prt.is_system and "api_type" in kwargs:
-            raise SystemRecordError("Cannot change api_type of a system resource type")
-
-        for key, value in kwargs.items():
-            if hasattr(prt, key):
-                setattr(prt, key, value)
-        await self.db.flush()
-        return prt
-
-    async def delete_provider_resource_type(self, prt_id: uuid.UUID) -> bool:
-        """Soft-delete a provider resource type. System records cannot be deleted."""
-        prt = await self.get_provider_resource_type(prt_id)
-        if not prt:
-            return False
-
-        if prt.is_system:
-            raise SystemRecordError("Cannot delete a system resource type")
-
-        prt.deleted_at = datetime.now(timezone.utc)
-        await self.db.flush()
-        return True
-
-    async def _get_prt_by_provider_and_type(
-        self, provider_id: uuid.UUID, api_type: str
-    ) -> SemanticProviderResourceType | None:
-        result = await self.db.execute(
-            select(SemanticProviderResourceType).where(
-                SemanticProviderResourceType.provider_id == provider_id,
-                SemanticProviderResourceType.api_type == api_type,
-                SemanticProviderResourceType.deleted_at.is_(None),
-            )
-        )
-        return result.scalar_one_or_none()
-
-    # -- Type Mappings (read) ----------------------------------------------
-
-    async def list_type_mappings(
-        self,
-        provider_resource_type_id: uuid.UUID | None = None,
-        semantic_type_id: uuid.UUID | None = None,
-        provider_id: uuid.UUID | None = None,
-    ) -> list[SemanticTypeMapping]:
-        """List type mappings with optional filtering."""
-        conditions = [SemanticTypeMapping.deleted_at.is_(None)]
-
-        if provider_resource_type_id:
-            conditions.append(
-                SemanticTypeMapping.provider_resource_type_id == provider_resource_type_id
-            )
-        if semantic_type_id:
-            conditions.append(
-                SemanticTypeMapping.semantic_type_id == semantic_type_id
-            )
-
-        stmt = select(SemanticTypeMapping).where(*conditions)
-
-        if provider_id:
-            stmt = stmt.join(SemanticProviderResourceType).where(
-                SemanticProviderResourceType.provider_id == provider_id
-            )
-
-        result = await self.db.execute(
-            stmt.options(
-                joinedload(SemanticTypeMapping.provider_resource_type_rel)
-                    .joinedload(SemanticProviderResourceType.provider_rel),
-                joinedload(SemanticTypeMapping.semantic_type_rel)
-                    .joinedload(SemanticResourceType.category_rel),
-            )
-        )
-        return list(result.scalars().unique().all())
-
-    async def get_type_mapping(
-        self, mapping_id: uuid.UUID
-    ) -> SemanticTypeMapping | None:
-        """Get a single type mapping by ID."""
-        result = await self.db.execute(
-            select(SemanticTypeMapping)
-            .where(
-                SemanticTypeMapping.id == mapping_id,
-                SemanticTypeMapping.deleted_at.is_(None),
-            )
-            .options(
-                joinedload(SemanticTypeMapping.provider_resource_type_rel)
-                    .joinedload(SemanticProviderResourceType.provider_rel),
-                joinedload(SemanticTypeMapping.semantic_type_rel)
-                    .joinedload(SemanticResourceType.category_rel),
-            )
-        )
-        return result.scalar_one_or_none()
-
-    # -- Type Mappings (write) ---------------------------------------------
-
-    async def create_type_mapping(
-        self,
-        provider_resource_type_id: uuid.UUID,
-        semantic_type_id: uuid.UUID,
-        parameter_mapping: dict | None = None,
-        notes: str | None = None,
-    ) -> SemanticTypeMapping:
-        """Create a new type mapping."""
-        # Validate FKs
-        prt = await self.get_provider_resource_type(provider_resource_type_id)
-        if not prt:
-            raise ForeignKeyError(
-                f"Provider resource type '{provider_resource_type_id}' does not exist"
-            )
-
-        stype = await self.get_type(semantic_type_id)
-        if not stype:
-            raise ForeignKeyError(f"Semantic type '{semantic_type_id}' does not exist")
-
-        # Check unique
-        existing = await self._get_type_mapping_by_prt_and_type(
-            provider_resource_type_id, semantic_type_id
-        )
-        if existing:
-            raise DuplicateNameError(
-                "Type mapping already exists for this PRT and semantic type"
-            )
-
-        mapping = SemanticTypeMapping(
-            provider_resource_type_id=provider_resource_type_id,
-            semantic_type_id=semantic_type_id,
-            parameter_mapping=parameter_mapping,
-            notes=notes,
-            is_system=False,
-        )
-        self.db.add(mapping)
-        await self.db.flush()
-        return mapping
-
-    async def update_type_mapping(
-        self, mapping_id: uuid.UUID, **kwargs: object
-    ) -> SemanticTypeMapping | None:
-        """Update a type mapping."""
-        mapping = await self.get_type_mapping(mapping_id)
-        if not mapping:
-            return None
-
-        if mapping.is_system and (
-            "provider_resource_type_id" in kwargs or "semantic_type_id" in kwargs
-        ):
-            raise SystemRecordError("Cannot change FK keys of a system mapping")
-
-        for key, value in kwargs.items():
-            if hasattr(mapping, key):
-                setattr(mapping, key, value)
-        await self.db.flush()
-        return mapping
-
-    async def delete_type_mapping(self, mapping_id: uuid.UUID) -> bool:
-        """Soft-delete a type mapping. System records cannot be deleted."""
-        mapping = await self.get_type_mapping(mapping_id)
-        if not mapping:
-            return False
-
-        if mapping.is_system:
-            raise SystemRecordError("Cannot delete a system mapping")
-
-        mapping.deleted_at = datetime.now(timezone.utc)
-        await self.db.flush()
-        return True
-
-    async def _get_type_mapping_by_prt_and_type(
-        self,
-        provider_resource_type_id: uuid.UUID,
-        semantic_type_id: uuid.UUID,
-    ) -> SemanticTypeMapping | None:
-        result = await self.db.execute(
-            select(SemanticTypeMapping).where(
-                SemanticTypeMapping.provider_resource_type_id == provider_resource_type_id,
-                SemanticTypeMapping.semantic_type_id == semantic_type_id,
-                SemanticTypeMapping.deleted_at.is_(None),
-            )
-        )
-        return result.scalar_one_or_none()

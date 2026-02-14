@@ -88,12 +88,29 @@ export interface AuditSearchParams {
   limit?: number;
 }
 
+export interface CategoryRetentionOverride {
+  id: string;
+  tenant_id: string;
+  event_category: EventCategory;
+  hot_days: number;
+  cold_days: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CategoryRetentionOverrideUpsert {
+  event_category: EventCategory;
+  hot_days: number;
+  cold_days: number;
+}
+
 export interface RetentionPolicy {
   id: string;
   tenant_id: string;
   hot_days: number;
   cold_days: number;
   archive_enabled: boolean;
+  category_overrides: CategoryRetentionOverride[];
   created_at: string;
   updated_at: string;
 }

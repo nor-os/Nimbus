@@ -5,6 +5,7 @@
  * Concepts: Notifications, GraphQL queries, signals, polling, unread count
  */
 import { Injectable, inject, signal, OnDestroy } from '@angular/core';
+import { Router } from '@angular/router';
 import { Observable, map, tap } from 'rxjs';
 import { ApiService } from './api.service';
 import { TenantContextService } from './tenant-context.service';
@@ -31,6 +32,7 @@ const POLL_INTERVAL = 30_000; // 30 seconds
 @Injectable({ providedIn: 'root' })
 export class NotificationService implements OnDestroy {
   private api = inject(ApiService);
+  private router = inject(Router);
   private tenantContext = inject(TenantContextService);
   private gqlUrl = environment.graphqlUrl;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -366,10 +368,22 @@ export class NotificationService implements OnDestroy {
       .pipe(
         map((response) => {
           if (response.errors?.length) {
-            throw new Error(response.errors[0].message);
+            const msg = response.errors[0].message;
+            if (msg.includes('expired') || msg.includes('Not authenticated')) {
+              this.handleSessionExpired();
+            }
+            throw new Error(msg);
           }
           return response.data;
         }),
       );
+  }
+
+  private handleSessionExpired(): void {
+    this.stopPolling();
+    localStorage.removeItem('nimbus_access_token');
+    localStorage.removeItem('nimbus_refresh_token');
+    localStorage.removeItem('nimbus_current_tenant_id');
+    this.router.navigate(['/login']);
   }
 }

@@ -30,10 +30,16 @@ class ActivityTemplate(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    semantic_activity_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("semantic_activity_types.id"),
+        nullable=True,
+    )
 
     definitions: Mapped[list["ActivityDefinition"]] = relationship(
         back_populates="template", lazy="selectin", order_by="ActivityDefinition.sort_order"
     )
+    semantic_activity_type = relationship("SemanticActivityType", lazy="joined")
 
 
 class ActivityDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
@@ -60,6 +66,7 @@ class ActivityDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     is_optional: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    step_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     template: Mapped["ActivityTemplate"] = relationship(back_populates="definitions")
 

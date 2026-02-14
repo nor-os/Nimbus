@@ -271,7 +271,6 @@ import { ConfirmService } from '@shared/services/confirm.service';
                       class="btn-action btn-edit"
                       (click)="openEditForm(profile)"
                       title="Edit"
-                      [disabled]="profile.isSystem"
                     >
                       Edit
                     </button>

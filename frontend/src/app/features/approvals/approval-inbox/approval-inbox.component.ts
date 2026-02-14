@@ -176,9 +176,9 @@ import {
     </nimbus-layout>
   `,
   styles: [`
-    .page { padding: 24px; max-width: 960px; }
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    .page-title { font-size: 22px; font-weight: 600; margin: 0; }
+    .page { padding: 0; max-width: 960px; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
     .header-actions { display: flex; gap: 8px; }
     .filter-select { padding: 6px 10px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 13px; }
     .loading { padding: 40px; text-align: center; color: #667; }

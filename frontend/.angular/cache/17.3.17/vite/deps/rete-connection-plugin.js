@@ -1,9 +1,9 @@
 import {
-  _get
-} from "./chunk-K5PC3ORH.js";
-import {
   _slicedToArray
 } from "./chunk-MTISOBFE.js";
+import {
+  _get
+} from "./chunk-K5PC3ORH.js";
 import {
   BaseAreaPlugin,
   _toConsumableArray

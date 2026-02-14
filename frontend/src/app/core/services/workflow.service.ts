@@ -17,11 +17,14 @@ import {
   WorkflowDefinitionCreateInput,
   WorkflowDefinitionUpdateInput,
   WorkflowExecutionStartInput,
+  GenerateDeploymentWorkflowInput,
+  WorkflowType,
 } from '@shared/models/workflow.model';
 
 const DEFINITION_FIELDS = `
   id tenantId name description version graph status createdBy
-  timeoutSeconds maxConcurrent createdAt updatedAt
+  timeoutSeconds maxConcurrent workflowType sourceTopologyId isSystem
+  createdAt updatedAt
 `;
 
 const NODE_EXECUTION_FIELDS = `
@@ -45,13 +48,14 @@ export class WorkflowService {
 
   listDefinitions(params: {
     status?: string;
+    workflowType?: WorkflowType;
     offset?: number;
     limit?: number;
   } = {}): Observable<WorkflowDefinition[]> {
     const tenantId = this.tenantContext.currentTenantId();
     return this.gql<{ workflowDefinitions: WorkflowDefinition[] }>(`
-      query WorkflowDefinitions($tenantId: UUID!, $status: String, $offset: Int, $limit: Int) {
-        workflowDefinitions(tenantId: $tenantId, status: $status, offset: $offset, limit: $limit) {
+      query WorkflowDefinitions($tenantId: UUID!, $status: String, $workflowType: String, $offset: Int, $limit: Int) {
+        workflowDefinitions(tenantId: $tenantId, status: $status, workflowType: $workflowType, offset: $offset, limit: $limit) {
           ${DEFINITION_FIELDS}
         }
       }
@@ -161,6 +165,47 @@ export class WorkflowService {
       }
     `, { tenantId, definitionId }).pipe(
       map(data => data.deleteWorkflowDefinition),
+    );
+  }
+
+  // ── Deployment & System ─────────────────────────────
+
+  generateDeploymentWorkflow(input: GenerateDeploymentWorkflowInput): Observable<WorkflowDefinition> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ generateDeploymentWorkflow: WorkflowDefinition }>(`
+      mutation GenerateDeploymentWorkflow($tenantId: UUID!, $input: GenerateDeploymentWorkflowInput!) {
+        generateDeploymentWorkflow(tenantId: $tenantId, input: $input) {
+          ${DEFINITION_FIELDS}
+        }
+      }
+    `, { tenantId, input }).pipe(
+      map(data => data.generateDeploymentWorkflow),
+    );
+  }
+
+  seedSystemWorkflows(): Observable<WorkflowDefinition[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ seedSystemWorkflows: WorkflowDefinition[] }>(`
+      mutation SeedSystemWorkflows($tenantId: UUID!) {
+        seedSystemWorkflows(tenantId: $tenantId) {
+          ${DEFINITION_FIELDS}
+        }
+      }
+    `, { tenantId }).pipe(
+      map(data => data.seedSystemWorkflows),
+    );
+  }
+
+  getDeploymentWorkflowsForTopology(topologyId: string): Observable<WorkflowDefinition[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ deploymentWorkflowsForTopology: WorkflowDefinition[] }>(`
+      query DeploymentWorkflowsForTopology($tenantId: UUID!, $topologyId: UUID!) {
+        deploymentWorkflowsForTopology(tenantId: $tenantId, topologyId: $topologyId) {
+          ${DEFINITION_FIELDS}
+        }
+      }
+    `, { tenantId, topologyId }).pipe(
+      map(data => data.deploymentWorkflowsForTopology),
     );
   }
 

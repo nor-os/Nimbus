@@ -126,6 +126,7 @@ class TenantService:
         contact_email: str | None = None,
         billing_info: dict | None = None,
         description: str | None = None,
+        **kwargs,
     ) -> Tenant:
         """Update tenant properties."""
         tenant = await self.get_tenant(tenant_id)
@@ -140,6 +141,10 @@ class TenantService:
             tenant.billing_info = billing_info
         if description is not None:
             tenant.description = description
+        if "invoice_currency" in kwargs:
+            tenant.invoice_currency = kwargs["invoice_currency"]
+        if "primary_region_id" in kwargs:
+            tenant.primary_region_id = kwargs["primary_region_id"]
         return tenant
 
     async def delete_tenant(self, tenant_id: str) -> Tenant:
