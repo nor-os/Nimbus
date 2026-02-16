@@ -20,4 +20,3 @@ class Provider(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
 
     users: Mapped[list["User"]] = relationship(back_populates="provider")  # noqa: F821
     tenants: Mapped[list["Tenant"]] = relationship(back_populates="provider")  # noqa: F821
-    exchange_rates: Mapped[list["CurrencyExchangeRate"]] = relationship(back_populates="provider")  # noqa: F821

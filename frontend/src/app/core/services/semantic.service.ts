@@ -38,7 +38,7 @@ import {
 } from '@shared/models/semantic.model';
 
 const CATEGORY_FIELDS = `
-  id name displayName description icon sortOrder isSystem createdAt updatedAt
+  id name displayName description icon sortOrder isSystem isInfrastructure createdAt updatedAt
 `;
 
 const TYPE_FIELDS = `
@@ -114,6 +114,7 @@ export class SemanticService {
   listTypes(filters?: {
     category?: string;
     isAbstract?: boolean;
+    infrastructureOnly?: boolean;
     search?: string;
     offset?: number;
     limit?: number;
@@ -124,6 +125,7 @@ export class SemanticService {
         $tenantId: UUID!
         $category: String
         $isAbstract: Boolean
+        $infrastructureOnly: Boolean
         $search: String
         $offset: Int
         $limit: Int
@@ -132,6 +134,7 @@ export class SemanticService {
           tenantId: $tenantId
           category: $category
           isAbstract: $isAbstract
+          infrastructureOnly: $infrastructureOnly
           search: $search
           offset: $offset
           limit: $limit

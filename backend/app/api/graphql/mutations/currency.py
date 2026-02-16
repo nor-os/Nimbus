@@ -1,9 +1,9 @@
 """
 Overview: GraphQL mutations for currency management — update provider/tenant currency,
-    CRUD exchange rates.
+    CRUD exchange rates with global defaults + tenant overrides.
 Architecture: GraphQL mutation resolvers for currency management (Section 7.2)
 Dependencies: strawberry, app.services.currency.currency_service
-Concepts: Currency settings mutations with permission enforcement
+Concepts: Currency settings mutations with permission enforcement, global + tenant overrides
 """
 
 import uuid
@@ -24,7 +24,7 @@ from app.api.graphql.types.currency import (
 def _rate_to_type(r) -> CurrencyExchangeRateType:
     return CurrencyExchangeRateType(
         id=r.id,
-        provider_id=r.provider_id,
+        tenant_id=r.tenant_id,
         source_currency=r.source_currency,
         target_currency=r.target_currency,
         rate=r.rate,
@@ -84,7 +84,6 @@ class CurrencyMutation:
     async def create_exchange_rate(
         self,
         info: Info,
-        provider_id: uuid.UUID,
         tenant_id: uuid.UUID,
         input: ExchangeRateCreateInput,
     ) -> CurrencyExchangeRateType:
@@ -92,15 +91,18 @@ class CurrencyMutation:
         from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
+        # Determine scope: input.tenant_id for override, None for global
+        rate_tenant_id = str(input.tenant_id) if input.tenant_id else None
+
         async with async_session_factory() as db:
             service = CurrencyService(db)
-            rate = await service.create_exchange_rate(str(provider_id), {
+            rate = await service.create_exchange_rate({
                 "source_currency": input.source_currency,
                 "target_currency": input.target_currency,
                 "rate": input.rate,
                 "effective_from": input.effective_from,
                 "effective_to": input.effective_to,
-            })
+            }, tenant_id=rate_tenant_id)
             await db.commit()
             return _rate_to_type(rate)
 
@@ -108,7 +110,6 @@ class CurrencyMutation:
     async def update_exchange_rate(
         self,
         info: Info,
-        provider_id: uuid.UUID,
         tenant_id: uuid.UUID,
         rate_id: uuid.UUID,
         input: ExchangeRateUpdateInput,
@@ -127,7 +128,7 @@ class CurrencyMutation:
 
         async with async_session_factory() as db:
             service = CurrencyService(db)
-            rate = await service.update_exchange_rate(str(rate_id), str(provider_id), data)
+            rate = await service.update_exchange_rate(str(rate_id), data)
             await db.commit()
             return _rate_to_type(rate)
 
@@ -135,7 +136,6 @@ class CurrencyMutation:
     async def delete_exchange_rate(
         self,
         info: Info,
-        provider_id: uuid.UUID,
         tenant_id: uuid.UUID,
         rate_id: uuid.UUID,
     ) -> bool:
@@ -145,6 +145,6 @@ class CurrencyMutation:
 
         async with async_session_factory() as db:
             service = CurrencyService(db)
-            result = await service.delete_exchange_rate(str(rate_id), str(provider_id))
+            result = await service.delete_exchange_rate(str(rate_id))
             await db.commit()
             return result

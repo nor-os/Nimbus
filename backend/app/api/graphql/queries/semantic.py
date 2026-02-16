@@ -33,6 +33,7 @@ def _category_to_type(c) -> SemanticCategoryType:
         icon=c.icon,
         sort_order=c.sort_order,
         is_system=c.is_system,
+        is_infrastructure=c.is_infrastructure,
         created_at=c.created_at,
         updated_at=c.updated_at,
     )
@@ -120,6 +121,7 @@ class SemanticQuery:
                     icon=c.icon,
                     sort_order=c.sort_order,
                     is_system=c.is_system,
+                    is_infrastructure=c.is_infrastructure,
                     types=[
                         _type_to_gql(t)
                         for t in sorted(c.types, key=lambda x: x.sort_order)
@@ -138,6 +140,7 @@ class SemanticQuery:
         tenant_id: uuid.UUID,
         category: str | None = None,
         is_abstract: bool | None = None,
+        infrastructure_only: bool | None = None,
         search: str | None = None,
         offset: int = 0,
         limit: int = 50,
@@ -153,6 +156,7 @@ class SemanticQuery:
             items, total = await service.list_types(
                 category=category,
                 is_abstract=is_abstract,
+                infrastructure_only=infrastructure_only,
                 search=search,
                 offset=offset,
                 limit=limit,

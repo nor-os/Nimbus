@@ -788,7 +788,27 @@ class CatalogMutation:
                 effective_to=effective_to,
             )
             await db.commit()
-            await db.refresh(pin, ["price_list"])
+
+            # Re-query with eager loading to avoid lazy-load greenlet errors
+            from sqlalchemy import select
+            from sqlalchemy.orm import selectinload
+
+            from app.models.cmdb.price_list import (
+                PriceList,
+                TenantPriceListPin,
+            )
+
+            result = await db.execute(
+                select(TenantPriceListPin)
+                .where(TenantPriceListPin.id == pin.id)
+                .options(
+                    selectinload(TenantPriceListPin.price_list).selectinload(PriceList.items),
+                    selectinload(TenantPriceListPin.price_list).selectinload(PriceList.region_constraints),
+                    selectinload(TenantPriceListPin.overlay_items),
+                    selectinload(TenantPriceListPin.minimum_charges),
+                )
+            )
+            pin = result.scalar_one()
             return _pin_to_gql(pin)
 
     @strawberry.mutation

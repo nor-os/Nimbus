@@ -29,6 +29,15 @@ from app.workflows.activities.approval import (
     resolve_approval_request,
     send_approval_notification,
 )
+from app.workflows.activities.deployment import (
+    create_deployment_ci,
+    delete_deployment_ci,
+    finalize_deployment,
+    release_all_allocations,
+    resolve_deployment_parameters,
+    resolve_parameters_via_rm,
+    update_deployment_status,
+)
 from app.workflows.activities.audit import (
     archive_tenant_audit_logs,
     execute_audit_export,
@@ -60,6 +69,7 @@ from app.workflows.activities.workflow_nodes import (
     update_node_status,
 )
 from app.workflows.approval import ApprovalChainWorkflow
+from app.workflows.deployment_workflow import DeploymentExecutionWorkflow, DeploymentSagaWorkflow
 from app.workflows.audit_archive import AuditArchiveWorkflow
 from app.workflows.audit_export import AuditExportWorkflow
 from app.workflows.example import ExampleWorkflow
@@ -120,6 +130,8 @@ async def run_worker() -> None:
             SendEmailWorkflow,
             SendWebhookBatchWorkflow,
             DynamicWorkflowExecutor,
+            DeploymentExecutionWorkflow,
+            DeploymentSagaWorkflow,
         ],
         activities=[
             create_approval_request_activity,
@@ -147,6 +159,13 @@ async def run_worker() -> None:
             update_execution_status,
             compile_subworkflow,
             create_workflow_approval,
+            resolve_deployment_parameters,
+            resolve_parameters_via_rm,
+            release_all_allocations,
+            create_deployment_ci,
+            delete_deployment_ci,
+            finalize_deployment,
+            update_deployment_status,
         ],
     )
 

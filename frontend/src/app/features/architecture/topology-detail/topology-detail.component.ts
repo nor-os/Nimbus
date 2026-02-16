@@ -24,16 +24,25 @@ import { ToastService } from '@shared/services/toast.service';
   imports: [CommonModule, RouterLink, LayoutComponent, ArchitectureCanvasComponent, FormsModule],
   template: `
     <nimbus-layout>
-      <div class="detail-page">
+      <div class="page-container">
         @if (topology()) {
           <div class="page-header">
-            <div class="header-left">
-              <a routerLink="/architecture" class="back-link">&larr; Topologies</a>
-              <h1>{{ topology()!.name }}</h1>
-              <span class="status-badge" [class]="'badge-' + topology()!.status.toLowerCase()">
-                {{ topology()!.status }}
-              </span>
-              <span class="version-badge">v{{ topology()!.version }}</span>
+            <div>
+              <div class="breadcrumb">
+                <a routerLink="/architecture" class="breadcrumb-link">Architecture Topologies</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>{{ topology()!.name }}</span>
+              </div>
+              <h1 class="page-title">
+                {{ topology()!.name }}
+                <span class="status-badge" [class]="'badge-' + topology()!.status.toLowerCase()">
+                  {{ topology()!.status }}
+                </span>
+                <span class="version-badge">v{{ topology()!.version }}</span>
+              </h1>
+              @if (topology()?.description) {
+                <p class="page-subtitle">{{ topology()!.description }}</p>
+              }
             </div>
             <div class="header-actions">
               <button class="btn btn-secondary" (click)="onClone()">Clone</button>
@@ -226,27 +235,14 @@ import { ToastService } from '@shared/services/toast.service';
     </nimbus-layout>
   `,
   styles: [`
-    .detail-page { padding: 0; }
-    .page-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 1.5rem;
-    }
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .back-link {
-      font-size: 0.8125rem;
-      color: #64748b;
-      text-decoration: none;
-      margin-right: 4px;
-    }
-    .back-link:hover { color: #3b82f6; }
-    .page-header h1 { margin: 0; font-size: 1.375rem; font-weight: 700; color: #1e293b; }
+    .page-container { padding: 0; max-width: 1200px; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .page-subtitle { font-size: 0.875rem; color: #64748b; margin: 4px 0 0; }
+    .breadcrumb { font-size: 0.8rem; color: #64748b; margin-bottom: 2px; }
+    .breadcrumb-link { color: #3b82f6; text-decoration: none; }
+    .breadcrumb-link:hover { text-decoration: underline; }
+    .breadcrumb-sep { margin: 0 4px; }
     .header-actions { display: flex; gap: 8px; }
     .status-badge {
       padding: 2px 8px;

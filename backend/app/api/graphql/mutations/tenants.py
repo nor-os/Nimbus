@@ -43,7 +43,22 @@ class TenantMutation:
                 parent_id=str(input.parent_id) if input.parent_id else None,
                 contact_email=input.contact_email,
                 description=input.description,
+                invoice_currency=input.invoice_currency,
+                primary_region_id=str(input.primary_region_id) if input.primary_region_id else None,
             )
+
+            # Auto-create skeleton cloud backend if provider selected
+            if input.provider_id_for_backend:
+                from app.models.cloud_backend import CloudBackend
+
+                skeleton_backend = CloudBackend(
+                    tenant_id=tenant.id,
+                    provider_id=input.provider_id_for_backend,
+                    name=f"{input.name} Backend",
+                    status="disabled",
+                )
+                db.add(skeleton_backend)
+
             await db.commit()
             return TenantType(
                 id=tenant.id,

@@ -26,7 +26,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   template: `
     <div class="node-card" [style.border-left-color]="accentColor">
       <div class="node-header">
-        <span class="node-icon">{{ nodeIcon }}</span>
+        <span class="node-icon" [innerHTML]="nodeIcon"></span>
         <span class="node-label">{{ data.label }}</span>
         <span class="category-badge" [style.background]="badgeBg" [style.color]="accentColor">{{ nodeCategory }}</span>
       </div>

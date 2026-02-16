@@ -81,32 +81,6 @@ import { SemanticResourceType } from '@shared/models/semantic.model';
           </section>
         }
 
-        <!-- Provider Mappings -->
-        @if (t.mappings.length) {
-          <section class="section">
-            <h2>Provider Mappings ({{ t.mappings.length }})</h2>
-            <div class="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Provider</th>
-                    <th>Resource Type</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (m of t.mappings; track m.id) {
-                    <tr>
-                      <td class="provider-name">{{ m.providerName }}</td>
-                      <td class="mono">{{ m.providerDisplayName || m.providerApiType }}</td>
-                      <td class="muted">{{ m.notes || '—' }}</td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-          </section>
-        }
 
         <!-- Allowed Relationships -->
         @if (t.allowedRelationshipKinds?.length) {
@@ -259,11 +233,6 @@ import { SemanticResourceType } from '@shared/models/semantic.model';
     }
     .muted { color: #94a3b8; }
     .required-dot { color: #dc2626; }
-
-    .provider-name {
-      text-transform: capitalize;
-      font-weight: 500;
-    }
 
     .relationship-chips, .hierarchy-item {
       display: flex;

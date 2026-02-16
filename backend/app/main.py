@@ -30,6 +30,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     register_audit_hooks(db_engine)
 
+    from app.services.resolver.setup import setup_resolvers
+
+    setup_resolvers()
+
     yield
     # Shutdown
     from app.db.session import engine

@@ -34,6 +34,7 @@ class SemanticCategoryType:
     icon: str | None
     sort_order: int
     is_system: bool
+    is_infrastructure: bool
     created_at: datetime
     updated_at: datetime
 
@@ -88,6 +89,7 @@ class SemanticCategoryWithTypesType:
     icon: str | None
     sort_order: int
     is_system: bool
+    is_infrastructure: bool
     types: list[SemanticResourceTypeType]
     created_at: datetime
     updated_at: datetime

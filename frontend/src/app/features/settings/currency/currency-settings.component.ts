@@ -1,9 +1,10 @@
 /**
- * Overview: Currency settings page — manage provider default currency and exchange rates.
+ * Overview: Currency settings page — manage provider default currency, global exchange rates,
+ *     and per-tenant rate overrides.
  * Architecture: Settings feature component (Section 4)
  * Dependencies: @angular/core, @angular/common, @angular/forms,
  *     app/core/services/currency.service, app/core/services/tenant-context.service
- * Concepts: Multi-currency, exchange rates, provider-scoped billing, ISO 4217
+ * Concepts: Multi-currency, exchange rates, global defaults + tenant overrides, ISO 4217
  */
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -62,21 +63,21 @@ const COMMON_CURRENCIES = [
           </div>
         </div>
 
-        <!-- ── Exchange Rates ───────────────────────────────── -->
+        <!-- ── Global Default Rates ──────────────────────────── -->
         <div class="section">
           <div class="section-header">
-            <h2>Exchange Rates</h2>
-            <span class="section-count">{{ rates().length }}</span>
+            <h2>Global Default Rates</h2>
+            <span class="section-count">{{ globalRates().length }}</span>
             <button
               *nimbusHasPermission="'settings:exchange_rate:manage'"
               class="btn btn-primary btn-sm"
-              (click)="showAddForm()"
+              (click)="showAddForm(false)"
             >
               + Add Rate
             </button>
           </div>
           <p class="section-hint">
-            Define conversion rates between currencies. Each provider manages its own rates.
+            Default exchange rates applied to all tenants. Tenants can override specific rates below.
           </p>
 
           <!-- Filter -->
@@ -95,99 +96,18 @@ const COMMON_CURRENCIES = [
             </select>
           </div>
 
-          <!-- Add form -->
-          @if (addingRate()) {
-            <div class="form-card">
-              <h3 class="form-title">New Exchange Rate</h3>
-              <div class="form-row">
-                <div class="form-group third">
-                  <label class="form-label">Source Currency *</label>
-                  <select class="form-input" [(ngModel)]="newRate.sourceCurrency">
-                    @for (c of currencies; track c) {
-                      <option [value]="c">{{ c }}</option>
-                    }
-                  </select>
-                </div>
-                <div class="form-group third">
-                  <label class="form-label">Target Currency *</label>
-                  <select class="form-input" [(ngModel)]="newRate.targetCurrency">
-                    @for (c of currencies; track c) {
-                      <option [value]="c">{{ c }}</option>
-                    }
-                  </select>
-                </div>
-                <div class="form-group third">
-                  <label class="form-label">Rate *</label>
-                  <input
-                    class="form-input"
-                    type="number"
-                    [(ngModel)]="newRate.rate"
-                    min="0.00000001"
-                    step="0.0001"
-                    placeholder="1.00000000"
-                  />
-                </div>
-              </div>
-              <div class="form-row">
-                <div class="form-group half">
-                  <label class="form-label">Effective From *</label>
-                  <input class="form-input" type="date" [(ngModel)]="newRate.effectiveFrom" />
-                </div>
-                <div class="form-group half">
-                  <label class="form-label">Effective To</label>
-                  <input class="form-input" type="date" [(ngModel)]="newRate.effectiveTo" />
-                </div>
-              </div>
-              <div class="form-actions">
-                <button class="btn btn-secondary" (click)="cancelAdd()">Cancel</button>
-                <button
-                  class="btn btn-primary"
-                  (click)="createRate()"
-                  [disabled]="!isNewRateValid()"
-                >Create</button>
-              </div>
-            </div>
+          <!-- Add form (global) -->
+          @if (addingRate() && !addingOverride()) {
+            <ng-container *ngTemplateOutlet="addFormTpl"></ng-container>
           }
 
           <!-- Edit form -->
           @if (editingRate()) {
-            <div class="form-card">
-              <h3 class="form-title">
-                Edit Rate: {{ editData.sourceCurrency }} &rarr; {{ editData.targetCurrency }}
-              </h3>
-              <div class="form-row">
-                <div class="form-group third">
-                  <label class="form-label">Rate *</label>
-                  <input
-                    class="form-input"
-                    type="number"
-                    [(ngModel)]="editData.rate"
-                    min="0.00000001"
-                    step="0.0001"
-                  />
-                </div>
-                <div class="form-group third">
-                  <label class="form-label">Effective From *</label>
-                  <input class="form-input" type="date" [(ngModel)]="editData.effectiveFrom" />
-                </div>
-                <div class="form-group third">
-                  <label class="form-label">Effective To</label>
-                  <input class="form-input" type="date" [(ngModel)]="editData.effectiveTo" />
-                </div>
-              </div>
-              <div class="form-actions">
-                <button class="btn btn-secondary" (click)="cancelEdit()">Cancel</button>
-                <button
-                  class="btn btn-primary"
-                  (click)="saveEdit()"
-                  [disabled]="editData.rate <= 0 || !editData.effectiveFrom"
-                >Save</button>
-              </div>
-            </div>
+            <ng-container *ngTemplateOutlet="editFormTpl"></ng-container>
           }
 
-          <!-- Rates table -->
-          @if (rates().length > 0) {
+          <!-- Global rates table -->
+          @if (globalRates().length > 0) {
             <div class="table-container">
               <table class="data-table">
                 <thead>
@@ -202,7 +122,7 @@ const COMMON_CURRENCIES = [
                   </tr>
                 </thead>
                 <tbody>
-                  @for (rate of rates(); track rate.id) {
+                  @for (rate of globalRates(); track rate.id) {
                     <tr>
                       <td><span class="currency-badge">{{ rate.sourceCurrency }}</span></td>
                       <td><span class="currency-badge">{{ rate.targetCurrency }}</span></td>
@@ -236,10 +156,176 @@ const COMMON_CURRENCIES = [
               </table>
             </div>
           } @else if (!addingRate()) {
-            <div class="empty-hint">No exchange rates configured yet.</div>
+            <div class="empty-hint">No global exchange rates configured yet.</div>
+          }
+        </div>
+
+        <!-- ── Tenant Overrides ──────────────────────────────── -->
+        <div class="section">
+          <div class="section-header">
+            <h2>Tenant Overrides</h2>
+            <span class="section-count">{{ tenantOverrides().length }}</span>
+            <button
+              *nimbusHasPermission="'settings:exchange_rate:manage'"
+              class="btn btn-primary btn-sm"
+              (click)="showAddForm(true)"
+            >
+              + Add Override
+            </button>
+          </div>
+          <p class="section-hint">
+            Tenant-specific rates that override global defaults. Only rates for the current tenant are shown.
+          </p>
+
+          <!-- Add form (override) -->
+          @if (addingRate() && addingOverride()) {
+            <ng-container *ngTemplateOutlet="addFormTpl"></ng-container>
+          }
+
+          @if (tenantOverrides().length > 0) {
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Target</th>
+                    <th>Rate</th>
+                    <th>Global Rate</th>
+                    <th>Effective From</th>
+                    <th>Effective To</th>
+                    <th class="th-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (rate of tenantOverrides(); track rate.id) {
+                    <tr>
+                      <td><span class="currency-badge">{{ rate.sourceCurrency }}</span></td>
+                      <td><span class="currency-badge">{{ rate.targetCurrency }}</span></td>
+                      <td class="mono">{{ rate.rate | number: '1.2-8' }}</td>
+                      <td class="text-muted mono">{{ getGlobalRate(rate.sourceCurrency, rate.targetCurrency) }}</td>
+                      <td>{{ rate.effectiveFrom | date: 'mediumDate' }}</td>
+                      <td>
+                        @if (rate.effectiveTo) {
+                          {{ rate.effectiveTo | date: 'mediumDate' }}
+                        } @else {
+                          <span class="text-muted">No end date</span>
+                        }
+                      </td>
+                      <td class="td-actions">
+                        <button
+                          *nimbusHasPermission="'settings:exchange_rate:manage'"
+                          class="btn-icon"
+                          (click)="startEdit(rate)"
+                          title="Edit"
+                        >&#9998;</button>
+                        <button
+                          *nimbusHasPermission="'settings:exchange_rate:manage'"
+                          class="btn-icon-del"
+                          (click)="deleteRate(rate)"
+                          title="Delete"
+                        >&#10005;</button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else if (!addingRate() || !addingOverride()) {
+            <div class="empty-hint">No tenant-specific overrides. Global rates are used.</div>
           }
         </div>
       </div>
+
+      <!-- ── Shared Add Form Template ──────────────────────── -->
+      <ng-template #addFormTpl>
+        <div class="form-card">
+          <h3 class="form-title">{{ addingOverride() ? 'New Tenant Override' : 'New Global Rate' }}</h3>
+          <div class="form-row">
+            <div class="form-group third">
+              <label class="form-label">Source Currency *</label>
+              <select class="form-input" [(ngModel)]="newRate.sourceCurrency">
+                @for (c of currencies; track c) {
+                  <option [value]="c">{{ c }}</option>
+                }
+              </select>
+            </div>
+            <div class="form-group third">
+              <label class="form-label">Target Currency *</label>
+              <select class="form-input" [(ngModel)]="newRate.targetCurrency">
+                @for (c of currencies; track c) {
+                  <option [value]="c">{{ c }}</option>
+                }
+              </select>
+            </div>
+            <div class="form-group third">
+              <label class="form-label">Rate *</label>
+              <input
+                class="form-input"
+                type="number"
+                [(ngModel)]="newRate.rate"
+                min="0.00000001"
+                step="0.0001"
+                placeholder="1.00000000"
+              />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group half">
+              <label class="form-label">Effective From *</label>
+              <input class="form-input" type="date" [(ngModel)]="newRate.effectiveFrom" />
+            </div>
+            <div class="form-group half">
+              <label class="form-label">Effective To</label>
+              <input class="form-input" type="date" [(ngModel)]="newRate.effectiveTo" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-secondary" (click)="cancelAdd()">Cancel</button>
+            <button
+              class="btn btn-primary"
+              (click)="createRate()"
+              [disabled]="!isNewRateValid()"
+            >Create</button>
+          </div>
+        </div>
+      </ng-template>
+
+      <!-- ── Shared Edit Form Template ─────────────────────── -->
+      <ng-template #editFormTpl>
+        <div class="form-card">
+          <h3 class="form-title">
+            Edit Rate: {{ editData.sourceCurrency }} &rarr; {{ editData.targetCurrency }}
+          </h3>
+          <div class="form-row">
+            <div class="form-group third">
+              <label class="form-label">Rate *</label>
+              <input
+                class="form-input"
+                type="number"
+                [(ngModel)]="editData.rate"
+                min="0.00000001"
+                step="0.0001"
+              />
+            </div>
+            <div class="form-group third">
+              <label class="form-label">Effective From *</label>
+              <input class="form-input" type="date" [(ngModel)]="editData.effectiveFrom" />
+            </div>
+            <div class="form-group third">
+              <label class="form-label">Effective To</label>
+              <input class="form-input" type="date" [(ngModel)]="editData.effectiveTo" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-secondary" (click)="cancelEdit()">Cancel</button>
+            <button
+              class="btn btn-primary"
+              (click)="saveEdit()"
+              [disabled]="editData.rate <= 0 || !editData.effectiveFrom"
+            >Save</button>
+          </div>
+        </div>
+      </ng-template>
     </nimbus-layout>
   `,
   styles: [`
@@ -360,8 +446,12 @@ export class CurrencySettingsComponent implements OnInit {
   selectedCurrency = 'EUR';
   savingCurrency = signal(false);
 
-  rates = signal<ExchangeRate[]>([]);
+  allRates = signal<ExchangeRate[]>([]);
+  globalRates = computed(() => this.allRates().filter((r) => !r.tenantId));
+  tenantOverrides = computed(() => this.allRates().filter((r) => !!r.tenantId));
+
   addingRate = signal(false);
+  addingOverride = signal(false);
   editingRate = signal(false);
   editingRateId = '';
 
@@ -387,10 +477,12 @@ export class CurrencySettingsComponent implements OnInit {
   };
 
   private providerId = '';
+  private currentTenantId = '';
 
   ngOnInit(): void {
     const tenantId = this.tenantContext.currentTenantId();
     if (tenantId) {
+      this.currentTenantId = tenantId;
       this.tenantService.getTenant(tenantId).subscribe({
         next: (tenant) => {
           this.providerId = tenant.provider_id;
@@ -422,15 +514,23 @@ export class CurrencySettingsComponent implements OnInit {
 
   loadRates(): void {
     this.currencyService
-      .listExchangeRates(this.providerId, this.filterSource || undefined, this.filterTarget || undefined)
+      .listExchangeRates(this.filterSource || undefined, this.filterTarget || undefined)
       .subscribe({
-        next: (rates) => this.rates.set(rates),
-        error: () => this.rates.set([]),
+        next: (rates) => this.allRates.set(rates),
+        error: () => this.allRates.set([]),
       });
   }
 
-  showAddForm(): void {
+  getGlobalRate(source: string, target: string): string {
+    const global = this.globalRates().find(
+      (r) => r.sourceCurrency === source && r.targetCurrency === target,
+    );
+    return global ? global.rate.toFixed(4) : '—';
+  }
+
+  showAddForm(isOverride: boolean): void {
     this.cancelEdit();
+    this.addingOverride.set(isOverride);
     this.newRate = {
       sourceCurrency: this.currentCurrency(),
       targetCurrency: this.currentCurrency() === 'USD' ? 'EUR' : 'USD',
@@ -443,6 +543,7 @@ export class CurrencySettingsComponent implements OnInit {
 
   cancelAdd(): void {
     this.addingRate.set(false);
+    this.addingOverride.set(false);
   }
 
   isNewRateValid(): boolean {
@@ -454,19 +555,22 @@ export class CurrencySettingsComponent implements OnInit {
   }
 
   createRate(): void {
+    const isOverride = this.addingOverride();
     this.currencyService
-      .createExchangeRate(this.providerId, {
+      .createExchangeRate({
         sourceCurrency: this.newRate.sourceCurrency,
         targetCurrency: this.newRate.targetCurrency,
         rate: this.newRate.rate,
         effectiveFrom: this.newRate.effectiveFrom,
         effectiveTo: this.newRate.effectiveTo || null,
+        tenantId: isOverride ? this.currentTenantId : null,
       })
       .subscribe({
         next: (created) => {
-          this.rates.update((list) => [created, ...list]);
+          this.allRates.update((list) => [created, ...list]);
           this.addingRate.set(false);
-          this.toastService.success('Exchange rate created');
+          this.addingOverride.set(false);
+          this.toastService.success(isOverride ? 'Tenant override created' : 'Global rate created');
         },
         error: (err) => this.toastService.error(err.message || 'Failed to create rate'),
       });
@@ -492,14 +596,14 @@ export class CurrencySettingsComponent implements OnInit {
 
   saveEdit(): void {
     this.currencyService
-      .updateExchangeRate(this.providerId, this.editingRateId, {
+      .updateExchangeRate(this.editingRateId, {
         rate: this.editData.rate,
         effectiveFrom: this.editData.effectiveFrom,
         effectiveTo: this.editData.effectiveTo || null,
       })
       .subscribe({
         next: (updated) => {
-          this.rates.update((list) =>
+          this.allRates.update((list) =>
             list.map((r) => (r.id === updated.id ? updated : r)),
           );
           this.cancelEdit();
@@ -510,10 +614,10 @@ export class CurrencySettingsComponent implements OnInit {
   }
 
   deleteRate(rate: ExchangeRate): void {
-    this.currencyService.deleteExchangeRate(this.providerId, rate.id).subscribe({
+    this.currencyService.deleteExchangeRate(rate.id).subscribe({
       next: (deleted) => {
         if (deleted) {
-          this.rates.update((list) => list.filter((r) => r.id !== rate.id));
+          this.allRates.update((list) => list.filter((r) => r.id !== rate.id));
           this.toastService.success('Exchange rate deleted');
         }
       },

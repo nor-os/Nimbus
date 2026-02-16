@@ -88,6 +88,25 @@ class CloudBackendQuery:
             return [_backend_to_gql(b) for b in backends]
 
     @strawberry.field
+    async def tenant_backend(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+    ) -> CloudBackendType | None:
+        """Get the single cloud backend for a tenant (1:1 mapping)."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.db.session import async_session_factory
+        from app.services.cloud.backend_service import CloudBackendService
+
+        async with async_session_factory() as db:
+            service = CloudBackendService(db)
+            backend = await service.get_tenant_backend(tenant_id)
+            if not backend:
+                return None
+            return _backend_to_gql(backend)
+
+    @strawberry.field
     async def cloud_backend(
         self,
         info: Info,
@@ -152,3 +171,159 @@ class CloudBackendQuery:
         from app.services.cloud.credential_schemas import get_scope_schema
 
         return get_scope_schema(provider_name)
+
+    @strawberry.field
+    async def backend_network_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the foundation (hub) network config JSON Schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_foundation_network_schema
+
+        return get_foundation_network_schema(provider_name)
+
+    @strawberry.field
+    async def foundation_network_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the foundation (hub) network config JSON Schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_foundation_network_schema
+
+        return get_foundation_network_schema(provider_name)
+
+    @strawberry.field
+    async def backend_iam_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the foundation (org) IAM config JSON Schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_foundation_iam_schema
+
+        return get_foundation_iam_schema(provider_name)
+
+    @strawberry.field
+    async def foundation_iam_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the foundation (org) IAM config JSON Schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_foundation_iam_schema
+
+        return get_foundation_iam_schema(provider_name)
+
+    @strawberry.field
+    async def backend_security_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the foundation (shared services) security config JSON Schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_foundation_security_schema
+
+        return get_foundation_security_schema(provider_name)
+
+    @strawberry.field
+    async def foundation_security_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the foundation (shared services) security config JSON Schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_foundation_security_schema
+
+        return get_foundation_security_schema(provider_name)
+
+    # ── Environment config schemas ────────────────────────────────
+
+    @strawberry.field
+    async def env_network_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the environment (spoke) network config schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_env_network_schema
+
+        return get_env_network_schema(provider_name)
+
+    @strawberry.field
+    async def env_iam_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the environment access control schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_env_iam_schema
+
+        return get_env_iam_schema(provider_name)
+
+    @strawberry.field
+    async def env_security_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the environment security config schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_env_security_schema
+
+        return get_env_security_schema(provider_name)
+
+    @strawberry.field
+    async def env_monitoring_config_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the environment monitoring config schema for a provider."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_env_monitoring_schema
+
+        return get_env_monitoring_schema(provider_name)
+
+    @strawberry.field
+    async def cloud_iam_identity_schema(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+    ) -> JSON | None:
+        """Get the IAM identity schema for a provider (for dynamic forms)."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.cloud.credential_schemas import get_iam_identity_schema
+
+        return get_iam_identity_schema(provider_name)

@@ -50,6 +50,9 @@ class ArchitectureTopology(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     is_system: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    is_landing_zone: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     tags: Mapped[list | None] = mapped_column(ARRAY(String(100)), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 

@@ -13,6 +13,17 @@ html, body {
   box-sizing: border-box;
 }
 
+/* Ensure text cursor is visible in all inputs (prevents white-on-white caret) */
+input, textarea, select, [contenteditable],
+tui-primitive-textfield input,
+tui-input input,
+tui-textarea textarea,
+tui-text-area textarea,
+[tuiTextfield] input {
+  caret-color: #1e293b !important;
+  color: #1e293b;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

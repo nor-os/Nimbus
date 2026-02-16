@@ -53,6 +53,7 @@ class ArchitectureMutation:
             }
             t = await svc.create(str(tenant_id), str(user_id), data)
             await db.commit()
+            await db.refresh(t)
             return _topology_to_type(t)
 
     @strawberry.mutation
@@ -85,6 +86,7 @@ class ArchitectureMutation:
 
             t = await svc.update(str(tenant_id), str(topology_id), data)
             await db.commit()
+            await db.refresh(t)
             return _topology_to_type(t)
 
     @strawberry.mutation
@@ -106,6 +108,7 @@ class ArchitectureMutation:
             svc = TopologyService(db)
             t = await svc.publish(str(tenant_id), str(topology_id), str(user_id))
             await db.commit()
+            await db.refresh(t)
             return _topology_to_type(t)
 
     @strawberry.mutation
@@ -127,6 +130,7 @@ class ArchitectureMutation:
             svc = TopologyService(db)
             t = await svc.archive(str(tenant_id), str(topology_id))
             await db.commit()
+            await db.refresh(t)
             return _topology_to_type(t)
 
     @strawberry.mutation
@@ -148,6 +152,7 @@ class ArchitectureMutation:
             svc = TopologyService(db)
             t = await svc.clone(str(tenant_id), str(topology_id), str(user_id))
             await db.commit()
+            await db.refresh(t)
             return _topology_to_type(t)
 
     @strawberry.mutation
@@ -222,6 +227,7 @@ class ArchitectureMutation:
             }
             t = await svc.import_topology(str(tenant_id), str(user_id), data)
             await db.commit()
+            await db.refresh(t)
             return _topology_to_type(t)
 
     @strawberry.mutation
@@ -245,4 +251,5 @@ class ArchitectureMutation:
                 str(tenant_id), str(topology_id), str(user_id)
             )
             await db.commit()
+            await db.refresh(t)
             return _topology_to_type(t)

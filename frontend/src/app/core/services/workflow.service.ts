@@ -24,6 +24,7 @@ import {
 const DEFINITION_FIELDS = `
   id tenantId name description version graph status createdBy
   timeoutSeconds maxConcurrent workflowType sourceTopologyId isSystem
+  applicableSemanticTypeId applicableProviderId
   createdAt updatedAt
 `;
 
@@ -51,17 +52,40 @@ export class WorkflowService {
     workflowType?: WorkflowType;
     offset?: number;
     limit?: number;
+    applicableSemanticTypeId?: string;
+    applicableProviderId?: string;
   } = {}): Observable<WorkflowDefinition[]> {
     const tenantId = this.tenantContext.currentTenantId();
     return this.gql<{ workflowDefinitions: WorkflowDefinition[] }>(`
-      query WorkflowDefinitions($tenantId: UUID!, $status: String, $workflowType: String, $offset: Int, $limit: Int) {
-        workflowDefinitions(tenantId: $tenantId, status: $status, workflowType: $workflowType, offset: $offset, limit: $limit) {
+      query WorkflowDefinitions(
+        $tenantId: UUID!, $status: String, $workflowType: String,
+        $offset: Int, $limit: Int,
+        $applicableSemanticTypeId: UUID, $applicableProviderId: UUID
+      ) {
+        workflowDefinitions(
+          tenantId: $tenantId, status: $status, workflowType: $workflowType,
+          offset: $offset, limit: $limit,
+          applicableSemanticTypeId: $applicableSemanticTypeId, applicableProviderId: $applicableProviderId
+        ) {
           ${DEFINITION_FIELDS}
         }
       }
     `, { tenantId, ...params }).pipe(
       map(data => data.workflowDefinitions),
     );
+  }
+
+  /**
+   * List workflows applicable to a specific semantic type + provider combination.
+   * Returns ACTIVE workflows where applicability matches or is NULL (applies to all).
+   */
+  listOperationWorkflows(semanticTypeId: string, providerId: string): Observable<WorkflowDefinition[]> {
+    return this.listDefinitions({
+      status: 'ACTIVE',
+      applicableSemanticTypeId: semanticTypeId,
+      applicableProviderId: providerId,
+      limit: 500,
+    });
   }
 
   getDefinition(definitionId: string): Observable<WorkflowDefinition | null> {

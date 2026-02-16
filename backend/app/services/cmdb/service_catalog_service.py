@@ -421,9 +421,11 @@ class ServiceCatalogService:
     async def get_pins(self, tenant_id: str) -> list[TenantCatalogPin]:
         result = await self.db.execute(
             select(TenantCatalogPin)
+            .join(TenantCatalogPin.catalog)
             .where(
                 TenantCatalogPin.tenant_id == tenant_id,
                 TenantCatalogPin.deleted_at.is_(None),
+                ServiceCatalog.deleted_at.is_(None),
             )
             .options(
                 selectinload(TenantCatalogPin.catalog),
@@ -438,9 +440,11 @@ class ServiceCatalogService:
         """List tenants pinned to a specific catalog."""
         result = await self.db.execute(
             select(TenantCatalogPin)
+            .join(TenantCatalogPin.catalog)
             .where(
                 TenantCatalogPin.catalog_id == catalog_id,
                 TenantCatalogPin.deleted_at.is_(None),
+                ServiceCatalog.deleted_at.is_(None),
             )
             .options(
                 selectinload(TenantCatalogPin.catalog),

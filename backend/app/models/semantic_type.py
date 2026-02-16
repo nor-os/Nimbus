@@ -28,6 +28,7 @@ class SemanticCategory(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    is_infrastructure: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
     types: Mapped[list["SemanticResourceType"]] = relationship(
         back_populates="category_rel",

@@ -1,9 +1,9 @@
 """
 Overview: Currency management service — CRUD for provider/tenant currency settings and
-    exchange rates with date-range effective rate lookup and conversion.
+    exchange rates with global defaults + per-tenant overrides, date-range effective rate lookup.
 Architecture: Service layer for currency management (Section 4)
 Dependencies: sqlalchemy, app.models.provider, app.models.tenant, app.models.currency_exchange_rate
-Concepts: Provider default currency, tenant invoice currency inheritance, exchange rate lookup
+Concepts: Provider default currency, tenant invoice currency inheritance, global + tenant override rates
 """
 from __future__ import annotations
 
@@ -111,14 +111,22 @@ class CurrencyService:
 
     async def list_exchange_rates(
         self,
-        provider_id: str,
+        tenant_id: str | None = None,
         source_currency: str | None = None,
         target_currency: str | None = None,
     ) -> list[CurrencyExchangeRate]:
+        """List global rates (tenant_id IS NULL). If tenant_id given, includes tenant overrides."""
         stmt = select(CurrencyExchangeRate).where(
-            CurrencyExchangeRate.provider_id == provider_id,
             CurrencyExchangeRate.deleted_at.is_(None),
         )
+        if tenant_id:
+            stmt = stmt.where(
+                (CurrencyExchangeRate.tenant_id.is_(None))
+                | (CurrencyExchangeRate.tenant_id == tenant_id)
+            )
+        else:
+            stmt = stmt.where(CurrencyExchangeRate.tenant_id.is_(None))
+
         if source_currency:
             stmt = stmt.where(CurrencyExchangeRate.source_currency == source_currency.upper())
         if target_currency:
@@ -131,8 +139,28 @@ class CurrencyService:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_tenant_overrides(
+        self,
+        tenant_id: str,
+    ) -> list[CurrencyExchangeRate]:
+        """List only tenant-specific override rates."""
+        stmt = (
+            select(CurrencyExchangeRate)
+            .where(
+                CurrencyExchangeRate.tenant_id == tenant_id,
+                CurrencyExchangeRate.deleted_at.is_(None),
+            )
+            .order_by(
+                CurrencyExchangeRate.source_currency,
+                CurrencyExchangeRate.target_currency,
+                CurrencyExchangeRate.effective_from.desc(),
+            )
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
     async def create_exchange_rate(
-        self, provider_id: str, data: dict
+        self, data: dict, tenant_id: str | None = None
     ) -> CurrencyExchangeRate:
         source = data["source_currency"].upper().strip()
         target = data["target_currency"].upper().strip()
@@ -149,7 +177,7 @@ class CurrencyService:
             raise CurrencyServiceError("Rate must be positive", "INVALID_RATE")
 
         rate = CurrencyExchangeRate(
-            provider_id=provider_id,
+            tenant_id=tenant_id,
             source_currency=source,
             target_currency=target,
             rate=rate_value,
@@ -161,12 +189,11 @@ class CurrencyService:
         return rate
 
     async def update_exchange_rate(
-        self, rate_id: str, provider_id: str, data: dict
+        self, rate_id: str, data: dict
     ) -> CurrencyExchangeRate:
         result = await self.db.execute(
             select(CurrencyExchangeRate).where(
                 CurrencyExchangeRate.id == rate_id,
-                CurrencyExchangeRate.provider_id == provider_id,
                 CurrencyExchangeRate.deleted_at.is_(None),
             )
         )
@@ -187,11 +214,10 @@ class CurrencyService:
         await self.db.flush()
         return rate
 
-    async def delete_exchange_rate(self, rate_id: str, provider_id: str) -> bool:
+    async def delete_exchange_rate(self, rate_id: str) -> bool:
         result = await self.db.execute(
             select(CurrencyExchangeRate).where(
                 CurrencyExchangeRate.id == rate_id,
-                CurrencyExchangeRate.provider_id == provider_id,
                 CurrencyExchangeRate.deleted_at.is_(None),
             )
         )
@@ -204,30 +230,54 @@ class CurrencyService:
 
     async def get_effective_rate(
         self,
-        provider_id: str,
         source_currency: str,
         target_currency: str,
+        tenant_id: str | None = None,
         as_of: date | None = None,
     ) -> CurrencyExchangeRate | None:
+        """Get effective rate: tenant override first, then global fallback."""
         if as_of is None:
             as_of = date.today()
 
         source = source_currency.upper()
         target = target_currency.upper()
 
+        base_filters = [
+            CurrencyExchangeRate.source_currency == source,
+            CurrencyExchangeRate.target_currency == target,
+            CurrencyExchangeRate.effective_from <= as_of,
+            CurrencyExchangeRate.deleted_at.is_(None),
+        ]
+        date_filter = (
+            (CurrencyExchangeRate.effective_to.is_(None))
+            | (CurrencyExchangeRate.effective_to >= as_of)
+        )
+
+        # Try tenant override first
+        if tenant_id:
+            stmt = (
+                select(CurrencyExchangeRate)
+                .where(
+                    CurrencyExchangeRate.tenant_id == tenant_id,
+                    *base_filters,
+                )
+                .where(date_filter)
+                .order_by(CurrencyExchangeRate.effective_from.desc())
+                .limit(1)
+            )
+            result = await self.db.execute(stmt)
+            rate = result.scalar_one_or_none()
+            if rate:
+                return rate
+
+        # Fall back to global
         stmt = (
             select(CurrencyExchangeRate)
             .where(
-                CurrencyExchangeRate.provider_id == provider_id,
-                CurrencyExchangeRate.source_currency == source,
-                CurrencyExchangeRate.target_currency == target,
-                CurrencyExchangeRate.effective_from <= as_of,
-                CurrencyExchangeRate.deleted_at.is_(None),
+                CurrencyExchangeRate.tenant_id.is_(None),
+                *base_filters,
             )
-            .where(
-                (CurrencyExchangeRate.effective_to.is_(None))
-                | (CurrencyExchangeRate.effective_to >= as_of)
-            )
+            .where(date_filter)
             .order_by(CurrencyExchangeRate.effective_from.desc())
             .limit(1)
         )
@@ -236,10 +286,10 @@ class CurrencyService:
 
     async def convert_amount(
         self,
-        provider_id: str,
         amount: Decimal,
         source_currency: str,
         target_currency: str,
+        tenant_id: str | None = None,
         as_of: date | None = None,
     ) -> tuple[Decimal, Decimal]:
         """Convert amount. Returns (converted_amount, rate_used)."""
@@ -249,7 +299,7 @@ class CurrencyService:
         if source == target:
             return amount, Decimal("1")
 
-        rate = await self.get_effective_rate(provider_id, source, target, as_of)
+        rate = await self.get_effective_rate(source, target, tenant_id, as_of)
         if not rate:
             raise CurrencyServiceError(
                 f"No exchange rate found for {source} -> {target}",

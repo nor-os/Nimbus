@@ -55,6 +55,7 @@ class SemanticCategoryDef:
     description: str
     icon: str
     sort_order: int = 0
+    is_infrastructure: bool = True
 
 
 @dataclass(frozen=True)
@@ -152,6 +153,7 @@ CATEGORIES: list[SemanticCategoryDef] = [
         description="Alert rules, dashboards, log groups, and metrics",
         icon="activity",
         sort_order=6,
+        is_infrastructure=False,
     ),
     SemanticCategoryDef(
         name="application",
@@ -159,6 +161,7 @@ CATEGORIES: list[SemanticCategoryDef] = [
         description="Applications, services, endpoints, and message queues",
         icon="layers",
         sort_order=7,
+        is_infrastructure=False,
     ),
     SemanticCategoryDef(
         name="services",
@@ -166,6 +169,14 @@ CATEGORIES: list[SemanticCategoryDef] = [
         description="Business and managed services — the bridge between infrastructure assets and service delivery",
         icon="briefcase",
         sort_order=8,
+        is_infrastructure=False,
+    ),
+    SemanticCategoryDef(
+        name="tenancy",
+        display_name="Tenancy",
+        description="Cloud tenancy constructs — accounts, subscriptions, compartments, regions",
+        icon="building",
+        sort_order=9,
     ),
 ]
 
@@ -222,6 +233,24 @@ RELATIONSHIP_KINDS: list[RelationshipKindDef] = [
         display_name="Backs Up",
         description="Backup resource protects data of another resource",
         inverse_name="backed_up_by",
+    ),
+    RelationshipKindDef(
+        name="hosts_in",
+        display_name="Hosts In",
+        description="Tenancy or region hosts compartments and resources",
+        inverse_name="hosted_by",
+    ),
+    RelationshipKindDef(
+        name="peers_with",
+        display_name="Peers With",
+        description="Cross-region or cross-VCN peering (symmetric)",
+        inverse_name="peers_with",
+    ),
+    RelationshipKindDef(
+        name="allocates_from",
+        display_name="Allocates From",
+        description="Subnet or VCN allocates address space from a pool",
+        inverse_name="allocated_to",
     ),
 ]
 
@@ -1261,6 +1290,110 @@ SERVICES_TYPES: list[SemanticTypeDef] = [
 # Merge services types into the main list
 SEMANTIC_TYPES = SEMANTIC_TYPES + SERVICES_TYPES
 
+# ── Tenancy ──────────────────────────────────────────────────────────────
+
+TENANCY_TYPES: list[SemanticTypeDef] = [
+    SemanticTypeDef(
+        name="CloudTenancy",
+        display_name="Cloud Tenancy",
+        category="tenancy",
+        description="Abstract root tenancy — maps to OCI Tenancy, Azure Subscription, AWS Account, GCP Project",
+        icon="building",
+        is_abstract=True,
+        properties=[
+            PropertyDef("tenancy_name", "Tenancy Name", PropertyDataType.STRING, required=True),
+            PropertyDef("tenancy_id", "External Tenancy ID", PropertyDataType.STRING),
+            PropertyDef(
+                "status",
+                "Status",
+                PropertyDataType.STRING,
+                default_value="active",
+                allowed_values=["active", "suspended", "closed"],
+            ),
+            PropertyDef("home_region", "Home Region", PropertyDataType.STRING),
+        ],
+        allowed_relationship_kinds=["contains", "hosts_in"],
+        sort_order=1,
+    ),
+    SemanticTypeDef(
+        name="CloudCompartment",
+        display_name="Cloud Compartment",
+        category="tenancy",
+        description="Abstract compartment — maps to OCI Compartment, Azure Resource Group, AWS OU, GCP Folder",
+        icon="folder",
+        is_abstract=True,
+        properties=[
+            PropertyDef("compartment_name", "Compartment Name", PropertyDataType.STRING, required=True),
+            PropertyDef("compartment_id", "External Compartment ID", PropertyDataType.STRING),
+            PropertyDef("parent_compartment_id", "Parent Compartment ID", PropertyDataType.STRING),
+            PropertyDef("description", "Description", PropertyDataType.STRING),
+            PropertyDef("tags", "Tags", PropertyDataType.JSON),
+        ],
+        allowed_relationship_kinds=["contains", "contained_by", "hosts_in", "hosted_by"],
+        sort_order=2,
+    ),
+    SemanticTypeDef(
+        name="CloudRegion",
+        display_name="Cloud Region",
+        category="tenancy",
+        description="Cloud provider region — maps to OCI Region, Azure Region, AWS Region, GCP Region",
+        icon="map-pin",
+        properties=[
+            PropertyDef("region_name", "Region Name", PropertyDataType.STRING, required=True),
+            PropertyDef(
+                "region_code",
+                "Region Code",
+                PropertyDataType.STRING,
+                required=True,
+                description="Provider-specific code (e.g., eu-frankfurt-1, westeurope, us-east-1)",
+            ),
+            PropertyDef(
+                "availability_domains",
+                "Availability Domains",
+                PropertyDataType.INTEGER,
+                default_value="3",
+            ),
+            PropertyDef("geographic_area", "Geographic Area", PropertyDataType.STRING),
+        ],
+        allowed_relationship_kinds=["contains", "peers_with", "hosted_by"],
+        sort_order=3,
+    ),
+    SemanticTypeDef(
+        name="AddressPool",
+        display_name="Address Pool",
+        category="tenancy",
+        description="IPAM address pool — a CIDR block reserved for tenant allocation",
+        icon="grid",
+        properties=[
+            PropertyDef(
+                "cidr",
+                "CIDR Block",
+                PropertyDataType.STRING,
+                required=True,
+                description="CIDR notation (e.g., 10.100.0.0/12)",
+            ),
+            PropertyDef(
+                "ip_version",
+                "IP Version",
+                PropertyDataType.INTEGER,
+                default_value="4",
+                allowed_values=["4", "6"],
+            ),
+            PropertyDef(
+                "pool_type",
+                "Pool Type",
+                PropertyDataType.STRING,
+                default_value="tenant",
+                allowed_values=["provider_reserved", "tenant", "shared"],
+            ),
+        ],
+        allowed_relationship_kinds=["contained_by", "allocates_from"],
+        sort_order=4,
+    ),
+]
+
+SEMANTIC_TYPES = SEMANTIC_TYPES + TENANCY_TYPES
+
 
 # ---------------------------------------------------------------------------
 # Providers
@@ -1447,6 +1580,20 @@ PROVIDER_RESOURCE_MAPPINGS: list[ProviderResourceMappingDef] = [
     ProviderResourceMappingDef("oci", "monitoring/alarm", "AlertRule", "OCI Monitoring Alarm"),
     ProviderResourceMappingDef("oci", "logging/loggroup", "LogGroup", "OCI Logging Log Group"),
     ProviderResourceMappingDef("oci", "streaming/stream", "Queue", "OCI Streaming"),
+    # ── Tenancy mappings ──────────────────────────────────────────────────
+    ProviderResourceMappingDef("proxmox", "cluster:datacenter", "CloudTenancy", "Proxmox Datacenter"),
+    ProviderResourceMappingDef("proxmox", "cluster:pool", "CloudCompartment", "Proxmox Pool"),
+    ProviderResourceMappingDef("proxmox", "cluster:node", "CloudRegion", "Proxmox Node"),
+    ProviderResourceMappingDef("aws", "organizations:account", "CloudTenancy", "AWS Account"),
+    ProviderResourceMappingDef("aws", "organizations:organizational-unit", "CloudCompartment", "AWS Organizational Unit"),
+    ProviderResourceMappingDef("azure", "management:subscription", "CloudTenancy", "Azure Subscription"),
+    ProviderResourceMappingDef("azure", "resources:resource-group", "CloudCompartment", "Azure Resource Group"),
+    ProviderResourceMappingDef("azure", "management:management-group", "CloudCompartment", "Azure Management Group"),
+    ProviderResourceMappingDef("gcp", "cloudresourcemanager:project", "CloudTenancy", "GCP Project"),
+    ProviderResourceMappingDef("gcp", "cloudresourcemanager:folder", "CloudCompartment", "GCP Folder"),
+    ProviderResourceMappingDef("oci", "iam:tenancy", "CloudTenancy", "OCI Tenancy"),
+    ProviderResourceMappingDef("oci", "iam:compartment", "CloudCompartment", "OCI Compartment"),
+    ProviderResourceMappingDef("oci", "iam:region-subscription", "CloudRegion", "OCI Region Subscription"),
 ]
 
 

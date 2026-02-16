@@ -1,9 +1,9 @@
 """
-Overview: GraphQL queries for currency settings — provider/tenant currency, exchange rates,
-    and currency conversion.
+Overview: GraphQL queries for currency settings — provider/tenant currency, exchange rates
+    (global + tenant overrides), and currency conversion.
 Architecture: GraphQL query resolvers for currency management (Section 7.2)
 Dependencies: strawberry, app.services.currency.currency_service
-Concepts: Read-only currency queries with permission checks
+Concepts: Read-only currency queries with permission checks, global + tenant override lookup
 """
 
 import uuid
@@ -25,7 +25,7 @@ from app.api.graphql.types.currency import (
 def _rate_to_type(r) -> CurrencyExchangeRateType:
     return CurrencyExchangeRateType(
         id=r.id,
-        provider_id=r.provider_id,
+        tenant_id=r.tenant_id,
         source_currency=r.source_currency,
         target_currency=r.target_currency,
         rate=r.rate,
@@ -75,8 +75,8 @@ class CurrencyQuery:
     async def exchange_rates(
         self,
         info: Info,
-        provider_id: uuid.UUID,
         tenant_id: uuid.UUID,
+        include_global: bool = True,
         source_currency: str | None = None,
         target_currency: str | None = None,
     ) -> list[CurrencyExchangeRateType]:
@@ -86,16 +86,18 @@ class CurrencyQuery:
 
         async with async_session_factory() as db:
             service = CurrencyService(db)
-            rates = await service.list_exchange_rates(
-                str(provider_id), source_currency, target_currency
-            )
+            if include_global:
+                rates = await service.list_exchange_rates(
+                    str(tenant_id), source_currency, target_currency
+                )
+            else:
+                rates = await service.list_tenant_overrides(str(tenant_id))
             return [_rate_to_type(r) for r in rates]
 
     @strawberry.field
     async def convert_currency(
         self,
         info: Info,
-        provider_id: uuid.UUID,
         tenant_id: uuid.UUID,
         amount: Decimal,
         source_currency: str,
@@ -110,7 +112,7 @@ class CurrencyQuery:
         async with async_session_factory() as db:
             service = CurrencyService(db)
             converted, rate = await service.convert_amount(
-                str(provider_id), amount, source_currency, target_currency, as_of
+                amount, source_currency, target_currency, str(tenant_id), as_of
             )
             return CurrencyConversionResultType(
                 source_currency=source_currency.upper(),

@@ -382,7 +382,7 @@ export class DeliveryService {
   listOrgUnits(): Observable<OrganizationalUnit[]> {
     const tenantId = this.tenantContext.currentTenantId();
     return this.gql<{ organizationalUnits: OrganizationalUnit[] }>(`
-      query OrganizationalUnits($tenantId: UUID) {
+      query OrganizationalUnits($tenantId: UUID!) {
         organizationalUnits(tenantId: $tenantId) {
           ${ORG_UNIT_FIELDS}
         }

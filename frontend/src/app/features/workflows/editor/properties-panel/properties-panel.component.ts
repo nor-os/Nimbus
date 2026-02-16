@@ -2,18 +2,30 @@
  * Overview: Properties panel — right sidebar with dynamic form from JSON Schema for selected node.
  * Architecture: Right sidebar panel for workflow editor (Section 3.2)
  * Dependencies: @angular/core, @angular/common, @angular/forms
- * Concepts: Dynamic forms, JSON Schema, node configuration, property editing, x-ui-widget dispatch
+ * Concepts: Dynamic forms, JSON Schema, node configuration, property editing, x-ui-widget dispatch,
+ *   variable context panel showing available expressions from upstream nodes
  */
-import { Component, EventEmitter, Input, Output, computed, signal, effect } from '@angular/core';
+import { Component, EventEmitter, Input, Output, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { NodeTypeInfo } from '@shared/models/workflow.model';
+import { NodeTypeInfo, WorkflowNode, WorkflowConnection } from '@shared/models/workflow.model';
 import { ExpressionEditorComponent } from './expression-editor.component';
 import { StringListEditorComponent } from './editors/string-list-editor.component';
 import { KeyValueListEditorComponent } from './editors/key-value-list-editor.component';
 import { KeyValueMapEditorComponent } from './editors/key-value-map-editor.component';
 import { SwitchCasesEditorComponent } from './editors/switch-cases-editor.component';
 import { WorkflowPickerComponent } from './editors/workflow-picker.component';
+
+interface GraphContext {
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+}
+
+interface VariableGroup {
+  label: string;
+  prefix: string;
+  variables: string[];
+}
 
 @Component({
   selector: 'nimbus-properties-panel',
@@ -47,6 +59,22 @@ import { WorkflowPickerComponent } from './editors/workflow-picker.component';
                     [value]="getConfigValue(field.key)"
                     (valueChange)="setConfigValue(field.key, $event)"
                     [placeholder]="field.description || 'Enter expression...'"
+                  ></nimbus-expression-editor>
+                } @else if (field.widget === 'json-body') {
+                  <nimbus-expression-editor
+                    [value]="getConfigValue(field.key)"
+                    (valueChange)="setConfigValue(field.key, $event)"
+                    [placeholder]="field.description || 'Enter JSON body...'"
+                    language="json"
+                    height="160px"
+                  ></nimbus-expression-editor>
+                } @else if (field.widget === 'command') {
+                  <nimbus-expression-editor
+                    [value]="getConfigValue(field.key)"
+                    (valueChange)="setConfigValue(field.key, $event)"
+                    [placeholder]="field.description || 'Enter command...'"
+                    language="shell"
+                    height="120px"
                   ></nimbus-expression-editor>
                 } @else if (field.widget === 'string-list') {
                   <nimbus-string-list-editor
@@ -129,6 +157,28 @@ import { WorkflowPickerComponent } from './editors/workflow-picker.component';
           } @else {
             <p class="no-config">No configurable properties</p>
           }
+
+          <!-- Variable Context Panel -->
+          @if (variableGroups().length > 0) {
+            <div class="variable-context">
+              <button class="context-toggle" (click)="variablesExpanded = !variablesExpanded">
+                <span class="toggle-icon">{{ variablesExpanded ? '&#9660;' : '&#9654;' }}</span>
+                Available Variables
+              </button>
+              @if (variablesExpanded) {
+                <div class="context-body">
+                  @for (group of variableGroups(); track group.prefix) {
+                    <div class="var-group">
+                      <div class="var-group-label">{{ group.label }}</div>
+                      @for (v of group.variables; track v) {
+                        <code class="var-item" (click)="copyVariable(v)" title="Click to copy">{{ v }}</code>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
         </div>
       } @else {
         <div class="panel-header">
@@ -178,16 +228,45 @@ import { WorkflowPickerComponent } from './editors/workflow-picker.component';
     .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; color: #374151; }
     select.field-input { appearance: auto; }
     .no-config { color: #94a3b8; font-size: 0.8125rem; text-align: center; padding: 1.5rem 0; }
+
+    /* Variable Context Panel */
+    .variable-context {
+      margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 8px;
+    }
+    .context-toggle {
+      display: flex; align-items: center; gap: 6px;
+      background: none; border: none; cursor: pointer;
+      font-size: 0.75rem; font-weight: 600; color: #475569;
+      padding: 4px 0; width: 100%; text-align: left;
+    }
+    .context-toggle:hover { color: #1e293b; }
+    .toggle-icon { font-size: 0.625rem; width: 12px; }
+    .context-body { padding-top: 8px; }
+    .var-group { margin-bottom: 8px; }
+    .var-group-label {
+      font-size: 0.625rem; font-weight: 600; color: #64748b;
+      text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
+    }
+    .var-item {
+      display: block; padding: 2px 6px; margin: 2px 0;
+      font-size: 0.6875rem; font-family: 'JetBrains Mono', monospace;
+      color: #334155; background: #f1f5f9; border-radius: 3px;
+      cursor: pointer; border: 1px solid transparent;
+    }
+    .var-item:hover { border-color: #3b82f6; background: #eff6ff; }
   `],
 })
 export class PropertiesPanelComponent {
   private _nodeTypes = signal<NodeTypeInfo[]>([]);
+  private _graphContext = signal<GraphContext | null>(null);
+
   @Input() set nodeTypes(value: NodeTypeInfo[]) { this._nodeTypes.set(value); }
   @Input() set selectedNode(value: { id: string; type: string; config: Record<string, unknown> } | null) {
     this.selectedNodeId.set(value?.id ?? null);
     this._selectedType.set(value?.type ?? null);
     this._config.set(value?.config ? { ...value.config } : {});
   }
+  @Input() set graphContext(value: GraphContext | null) { this._graphContext.set(value); }
 
   @Input() set workflowProps(value: { name: string; description: string; timeoutSeconds: number } | null) {
     if (value) {
@@ -206,6 +285,7 @@ export class PropertiesPanelComponent {
   workflowName = signal('');
   workflowDescription = signal('');
   timeoutSeconds = signal(3600);
+  variablesExpanded = false;
 
   private _selectedType = signal<string | null>(null);
   private _config = signal<Record<string, unknown>>({});
@@ -235,6 +315,57 @@ export class PropertiesPanelComponent {
     }));
   });
 
+  /** Compute variable groups from graph context for the selected node. */
+  variableGroups = computed((): VariableGroup[] => {
+    const ctx = this._graphContext();
+    const nodeId = this.selectedNodeId();
+    if (!ctx || !nodeId) return [];
+
+    const groups: VariableGroup[] = [];
+
+    // $input.* — always available
+    groups.push({
+      label: 'Workflow Input',
+      prefix: '$input',
+      variables: ['$input.*'],
+    });
+
+    // $nodes.<id>.* — from upstream nodes
+    const upstreamIds = this.getUpstreamNodeIds(nodeId, ctx);
+    if (upstreamIds.length > 0) {
+      const nodeVars: string[] = [];
+      for (const uid of upstreamIds) {
+        const node = ctx.nodes.find(n => n.id === uid);
+        const nodeLabel = node?.label || node?.id || uid;
+        const nodeType = node?.type || '';
+
+        // Provide known output fields for specific node types
+        const outputFields = this.getOutputFieldsForType(nodeType);
+        if (outputFields.length > 0) {
+          for (const field of outputFields) {
+            nodeVars.push(`$nodes.${nodeLabel}.${field}`);
+          }
+        } else {
+          nodeVars.push(`$nodes.${nodeLabel}.*`);
+        }
+      }
+      groups.push({
+        label: 'Previous Nodes',
+        prefix: '$nodes',
+        variables: nodeVars,
+      });
+    }
+
+    // $loop.* — always show for reference
+    groups.push({
+      label: 'Loop (if inside loop)',
+      prefix: '$loop',
+      variables: ['$loop.index', '$loop.item', '$loop.total'],
+    });
+
+    return groups;
+  });
+
   getConfigValue(key: string): any {
     return this._config()[key] ?? '';
   }
@@ -256,6 +387,47 @@ export class PropertiesPanelComponent {
       this.setConfigValue(key, parsed);
     } catch {
       // Ignore invalid JSON while typing
+    }
+  }
+
+  copyVariable(variable: string): void {
+    navigator.clipboard.writeText('${' + variable + '}').catch(() => {
+      // Fallback: just log
+      console.log('Copy to clipboard:', variable);
+    });
+  }
+
+  /** Walk connections backward to find all upstream nodes. */
+  private getUpstreamNodeIds(nodeId: string, ctx: GraphContext): string[] {
+    const visited = new Set<string>();
+    const queue = [nodeId];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const conn of ctx.connections) {
+        if (conn.target === current && !visited.has(conn.source)) {
+          visited.add(conn.source);
+          queue.push(conn.source);
+        }
+      }
+    }
+
+    return Array.from(visited);
+  }
+
+  /** Return known output fields for a given node type. */
+  private getOutputFieldsForType(typeId: string): string[] {
+    switch (typeId) {
+      case 'cloud_api':
+        return ['status_code', 'body', 'headers'];
+      case 'ssh_exec':
+        return ['stdout', 'stderr', 'exit_code'];
+      case 'approval':
+        return ['approved', 'approver', 'comment'];
+      case 'http_request':
+        return ['status_code', 'body', 'headers'];
+      default:
+        return [];
     }
   }
 }

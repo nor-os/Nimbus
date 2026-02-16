@@ -67,6 +67,8 @@ class WorkflowDefinitionType:
     workflow_type: WorkflowTypeGQL
     source_topology_id: uuid.UUID | None
     is_system: bool
+    applicable_semantic_type_id: uuid.UUID | None
+    applicable_provider_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
 
@@ -151,6 +153,8 @@ class WorkflowDefinitionCreateInput:
     timeout_seconds: int = 3600
     max_concurrent: int = 10
     workflow_type: str | None = None
+    applicable_semantic_type_id: uuid.UUID | None = None
+    applicable_provider_id: uuid.UUID | None = None
 
 
 @strawberry.input
@@ -167,6 +171,8 @@ class WorkflowDefinitionUpdateInput:
     graph: strawberry.scalars.JSON | None = None
     timeout_seconds: int | None = None
     max_concurrent: int | None = None
+    applicable_semantic_type_id: uuid.UUID | None = strawberry.UNSET
+    applicable_provider_id: uuid.UUID | None = strawberry.UNSET
 
 
 @strawberry.input

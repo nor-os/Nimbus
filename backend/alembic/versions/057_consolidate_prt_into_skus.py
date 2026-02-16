@@ -59,25 +59,17 @@ def upgrade() -> None:
     op.execute("""
         DELETE FROM role_permissions
         WHERE permission_id IN (
-            SELECT id FROM permissions WHERE key IN (
-                'semantic:provider_resource_type:read',
-                'semantic:provider_resource_type:manage',
-                'semantic:type_mapping:read',
-                'semantic:type_mapping:manage',
-                'semantic:mapping:read',
-                'semantic:mapping:manage'
-            )
+            SELECT id FROM permissions
+            WHERE (domain = 'semantic' AND resource = 'provider_resource_type' AND action IN ('read', 'manage'))
+               OR (domain = 'semantic' AND resource = 'type_mapping' AND action IN ('read', 'manage'))
+               OR (domain = 'semantic' AND resource = 'mapping' AND action IN ('read', 'manage'))
         )
     """)
     op.execute("""
-        DELETE FROM permissions WHERE key IN (
-            'semantic:provider_resource_type:read',
-            'semantic:provider_resource_type:manage',
-            'semantic:type_mapping:read',
-            'semantic:type_mapping:manage',
-            'semantic:mapping:read',
-            'semantic:mapping:manage'
-        )
+        DELETE FROM permissions
+        WHERE (domain = 'semantic' AND resource = 'provider_resource_type' AND action IN ('read', 'manage'))
+           OR (domain = 'semantic' AND resource = 'type_mapping' AND action IN ('read', 'manage'))
+           OR (domain = 'semantic' AND resource = 'mapping' AND action IN ('read', 'manage'))
     """)
 
 

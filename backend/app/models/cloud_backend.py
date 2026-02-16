@@ -74,6 +74,8 @@ class CloudBackend(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     __table_args__ = (
         # Partial unique index (tenant_id, name) WHERE deleted_at IS NULL
         # is created in migration 035 via raw SQL
+        # Partial unique index on tenant_id WHERE deleted_at IS NULL (1:1 tenant→backend)
+        # is created in migration 063 via raw SQL
         Index("ix_cloud_backends_tenant", "tenant_id"),
         Index("ix_cloud_backends_provider", "provider_id"),
         Index("ix_cloud_backends_status", "status"),

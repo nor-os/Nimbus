@@ -54,6 +54,10 @@ class WorkflowMutation:
             }
             if input.workflow_type:
                 data["workflow_type"] = input.workflow_type
+            if input.applicable_semantic_type_id is not None:
+                data["applicable_semantic_type_id"] = str(input.applicable_semantic_type_id)
+            if input.applicable_provider_id is not None:
+                data["applicable_provider_id"] = str(input.applicable_provider_id)
             d = await svc.create(str(tenant_id), str(user_id), data)
             result = _definition_to_type(d)
             await db.commit()
@@ -88,6 +92,15 @@ class WorkflowMutation:
                 data["timeout_seconds"] = input.timeout_seconds
             if input.max_concurrent is not None:
                 data["max_concurrent"] = input.max_concurrent
+            if input.applicable_semantic_type_id is not strawberry.UNSET:
+                val = input.applicable_semantic_type_id
+                data["applicable_semantic_type_id"] = (
+                    str(val) if val else None
+                )
+            if input.applicable_provider_id is not strawberry.UNSET:
+                data["applicable_provider_id"] = (
+                    str(input.applicable_provider_id) if input.applicable_provider_id else None
+                )
 
             d = await svc.update(str(tenant_id), str(definition_id), data)
             result = _definition_to_type(d)

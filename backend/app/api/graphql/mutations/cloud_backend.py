@@ -61,9 +61,128 @@ class CloudBackendMutation:
                 is_shared=input.is_shared,
                 created_by=user_id,
             )
+            await db.flush()
+
+            # Auto-create landing zone + topology for the backend
+            from app.models.architecture_topology import ArchitectureTopology
+            from app.services.landing_zone.zone_service import LandingZoneService
+            from sqlalchemy import func as sa_func
+
+            base_name = f"{input.name} Landing Zone"
+            topo_name = base_name
+            count_stmt = select(sa_func.count()).select_from(ArchitectureTopology).where(
+                ArchitectureTopology.tenant_id == tenant_id,
+                ArchitectureTopology.name.like(f"{base_name}%"),
+            )
+            existing_count = (await db.execute(count_stmt)).scalar() or 0
+            if existing_count > 0:
+                topo_name = f"{base_name} ({existing_count + 1})"
+
+            topology = ArchitectureTopology(
+                tenant_id=tenant_id,
+                name=topo_name,
+                description=f"Auto-created landing zone topology for {input.name}",
+                is_landing_zone=True,
+                created_by=user_id or backend.created_by,
+            )
+            db.add(topology)
+            await db.flush()
+
+            zone_svc = LandingZoneService()
+            await zone_svc.create(
+                db,
+                tenant_id=tenant_id,
+                backend_id=backend.id,
+                topology_id=topology.id,
+                name=topo_name,
+                created_by=user_id or backend.created_by,
+            )
+
             await db.commit()
             # Re-fetch with relationships
             backend = await service.get_backend(backend.id, tenant_id)
+            return _backend_to_gql(backend)
+
+    @strawberry.mutation
+    async def initialize_backend_landing_zone(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        backend_id: uuid.UUID,
+    ) -> CloudBackendType:
+        """Create a landing zone + topology for an existing backend that doesn't have one."""
+        user_id = await check_graphql_permission(info, "cloud:backend:update", str(tenant_id))
+
+        from app.db.session import async_session_factory
+        from app.models.architecture_topology import ArchitectureTopology
+        from app.models.cloud_backend import CloudBackend
+        from app.services.cloud.backend_service import CloudBackendService
+        from app.services.landing_zone.zone_service import LandingZoneService
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        import uuid as _uuid
+        created_by = _uuid.UUID(user_id)
+
+        async with async_session_factory() as db:
+            # Fetch backend with explicit eager loading
+            stmt = (
+                select(CloudBackend)
+                .where(
+                    CloudBackend.id == backend_id,
+                    CloudBackend.tenant_id == tenant_id,
+                    CloudBackend.deleted_at.is_(None),
+                )
+                .options(selectinload(CloudBackend.iam_mappings))
+            )
+            result = await db.execute(stmt)
+            backend = result.scalar_one_or_none()
+            if not backend:
+                raise ValueError("Backend not found")
+
+            # Check if landing zone already exists
+            zone_svc = LandingZoneService()
+            existing = await zone_svc.get_by_backend(db, backend_id)
+            if existing:
+                raise ValueError("Landing zone already exists for this backend")
+
+            # Find a unique topology name (constraint includes soft-deleted rows)
+            base_name = f"{backend.name} Landing Zone"
+            topo_name = base_name
+            from sqlalchemy import func as sa_func
+            count_stmt = select(sa_func.count()).select_from(ArchitectureTopology).where(
+                ArchitectureTopology.tenant_id == tenant_id,
+                ArchitectureTopology.name.like(f"{base_name}%"),
+            )
+            existing_count = (await db.execute(count_stmt)).scalar() or 0
+            if existing_count > 0:
+                topo_name = f"{base_name} ({existing_count + 1})"
+
+            topology = ArchitectureTopology(
+                tenant_id=tenant_id,
+                name=topo_name,
+                description=f"Auto-created landing zone topology for {backend.name}",
+                is_landing_zone=True,
+                created_by=created_by,
+            )
+            db.add(topology)
+            await db.flush()
+
+            await zone_svc.create(
+                db,
+                tenant_id=tenant_id,
+                backend_id=backend.id,
+                topology_id=topology.id,
+                name=f"{backend.name} Landing Zone",
+                created_by=created_by,
+            )
+
+            await db.commit()
+
+        # Re-fetch in a clean session to avoid greenlet issues
+        async with async_session_factory() as db:
+            service = CloudBackendService(db)
+            backend = await service.get_backend(backend_id, tenant_id)
             return _backend_to_gql(backend)
 
     @strawberry.mutation

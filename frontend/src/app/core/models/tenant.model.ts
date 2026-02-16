@@ -68,6 +68,9 @@ export interface TenantCreateRequest {
   contact_email?: string | null;
   billing_info?: Record<string, unknown> | null;
   description?: string | null;
+  invoice_currency?: string | null;
+  primary_region_id?: string | null;
+  provider_id_for_backend?: string | null;
 }
 
 export interface TenantUpdateRequest {

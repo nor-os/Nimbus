@@ -41,6 +41,8 @@ def _definition_to_type(d) -> WorkflowDefinitionType:
         workflow_type=WorkflowTypeGQL(d.workflow_type.value),
         source_topology_id=d.source_topology_id,
         is_system=d.is_system,
+        applicable_semantic_type_id=d.applicable_semantic_type_id,
+        applicable_provider_id=d.applicable_provider_id,
         created_at=d.created_at,
         updated_at=d.updated_at,
     )
@@ -95,6 +97,8 @@ class WorkflowQuery:
         workflow_type: str | None = None,
         offset: int = 0,
         limit: int = 50,
+        applicable_semantic_type_id: uuid.UUID | None = None,
+        applicable_provider_id: uuid.UUID | None = None,
     ) -> list[WorkflowDefinitionType]:
         """List workflow definitions for a tenant."""
         await check_graphql_permission(info, "workflow:definition:read", str(tenant_id))
@@ -104,7 +108,17 @@ class WorkflowQuery:
 
         async with async_session_factory() as db:
             svc = WorkflowDefinitionService(db)
-            definitions = await svc.list(str(tenant_id), status, workflow_type, offset, limit)
+            st_id = str(applicable_semantic_type_id) if applicable_semantic_type_id else None
+            p_id = str(applicable_provider_id) if applicable_provider_id else None
+            definitions = await svc.list(
+                str(tenant_id),
+                status,
+                workflow_type,
+                offset,
+                limit,
+                applicable_semantic_type_id=st_id,
+                applicable_provider_id=p_id,
+            )
             return [_definition_to_type(d) for d in definitions]
 
     @strawberry.field

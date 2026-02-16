@@ -99,6 +99,21 @@ class CloudBackendService:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_tenant_backend(
+        self, tenant_id: uuid.UUID
+    ) -> CloudBackend | None:
+        """Get the single active backend for a tenant (1:1 mapping)."""
+        stmt = (
+            select(CloudBackend)
+            .where(
+                CloudBackend.tenant_id == tenant_id,
+                CloudBackend.deleted_at.is_(None),
+            )
+            .options(selectinload(CloudBackend.iam_mappings))
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def create_backend(
         self,
         tenant_id: uuid.UUID,
@@ -114,6 +129,14 @@ class CloudBackendService:
         created_by: uuid.UUID | None = None,
     ) -> CloudBackend:
         """Create a new cloud backend, encrypting credentials if provided."""
+        # Enforce 1:1 tenant→backend constraint
+        existing = await self.get_tenant_backend(tenant_id)
+        if existing:
+            raise ValueError(
+                f"Tenant already has an active cloud backend '{existing.name}'. "
+                "Each tenant can only have one cloud backend."
+            )
+
         encrypted = None
         if credentials:
             encrypted = encrypt_credentials(credentials)

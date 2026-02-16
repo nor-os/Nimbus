@@ -12,11 +12,14 @@ from app.api.graphql.mutations.approval import ApprovalMutation
 from app.api.graphql.mutations.audit import AuditMutation
 from app.api.graphql.mutations.catalog import CatalogMutation
 from app.api.graphql.mutations.cloud_backend import CloudBackendMutation
+from app.api.graphql.mutations.component import ComponentMutation
 from app.api.graphql.mutations.cluster import ClusterMutation
 from app.api.graphql.mutations.currency import CurrencyMutation
+from app.api.graphql.mutations.deployment import DeploymentMutation
 from app.api.graphql.mutations.cmdb import CMDBMutation
 from app.api.graphql.mutations.delivery import DeliveryMutation
 from app.api.graphql.mutations.impersonation import ImpersonationMutation
+from app.api.graphql.mutations.landing_zone import LandingZoneMutation
 from app.api.graphql.mutations.notification import NotificationMutation
 from app.api.graphql.mutations.os_image import OsImageMutation
 from app.api.graphql.mutations.permissions import PermissionMutation
@@ -32,12 +35,15 @@ from app.api.graphql.queries.approval import ApprovalQuery
 from app.api.graphql.queries.audit import AuditQuery
 from app.api.graphql.queries.catalog import CatalogQuery
 from app.api.graphql.queries.cloud_backend import CloudBackendQuery
+from app.api.graphql.queries.component import ComponentQuery
 from app.api.graphql.queries.cluster import ClusterQuery
 from app.api.graphql.queries.currency import CurrencyQuery
+from app.api.graphql.queries.deployment import DeploymentQuery
 from app.api.graphql.queries.cmdb import CMDBQuery
 from app.api.graphql.queries.delivery import DeliveryQuery
 from app.api.graphql.queries.health import HealthQuery
 from app.api.graphql.queries.impersonation import ImpersonationQuery
+from app.api.graphql.queries.landing_zone import LandingZoneQuery
 from app.api.graphql.queries.notification import NotificationQuery
 from app.api.graphql.queries.os_image import OsImageQuery
 from app.api.graphql.queries.permissions import PermissionQuery
@@ -55,8 +61,8 @@ class Query(
     HealthQuery, TenantQuery, TenantTagQuery, PermissionQuery, UserQuery,
     AuditQuery, ImpersonationQuery, NotificationQuery, ApprovalQuery,
     SemanticQuery, WorkflowQuery, CMDBQuery, ClusterQuery, CatalogQuery, DeliveryQuery,
-    ArchitectureQuery, ServiceCatalogQuery, CloudBackendQuery, CurrencyQuery,
-    PolicyQuery, OsImageQuery,
+    ArchitectureQuery, ServiceCatalogQuery, CloudBackendQuery, CurrencyQuery, DeploymentQuery,
+    LandingZoneQuery, PolicyQuery, OsImageQuery, ComponentQuery,
 ):
     pass
 
@@ -66,8 +72,8 @@ class Mutation(
     TenantMutation, TenantTagMutation, PermissionMutation, UserMutation, AuditMutation,
     ImpersonationMutation, NotificationMutation, ApprovalMutation,
     SemanticMutation, WorkflowMutation, CMDBMutation, ClusterMutation, CatalogMutation,
-    DeliveryMutation, ArchitectureMutation, ServiceCatalogMutation, CloudBackendMutation,
-    CurrencyMutation, PolicyMutation, OsImageMutation,
+    DeliveryMutation, ArchitectureMutation, ServiceCatalogMutation, CloudBackendMutation, DeploymentMutation,
+    LandingZoneMutation, CurrencyMutation, PolicyMutation, OsImageMutation, ComponentMutation,
 ):
     pass
 

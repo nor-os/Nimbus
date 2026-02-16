@@ -1,9 +1,9 @@
 """
-Overview: Strawberry GraphQL types for currency management — exchange rates, conversion results,
-    provider/tenant currency info, and input types.
+Overview: Strawberry GraphQL types for currency management — exchange rates with global defaults
+    + tenant overrides, conversion results, provider/tenant currency info, and input types.
 Architecture: GraphQL type definitions for currency (Section 7.2)
 Dependencies: strawberry
-Concepts: Multi-currency, exchange rates, ISO 4217
+Concepts: Multi-currency, exchange rates, ISO 4217, global + tenant overrides
 """
 
 import uuid
@@ -16,7 +16,7 @@ import strawberry
 @strawberry.type
 class CurrencyExchangeRateType:
     id: uuid.UUID
-    provider_id: uuid.UUID
+    tenant_id: uuid.UUID | None
     source_currency: str
     target_currency: str
     rate: Decimal
@@ -56,6 +56,7 @@ class ExchangeRateCreateInput:
     rate: Decimal
     effective_from: date
     effective_to: date | None = None
+    tenant_id: uuid.UUID | None = None
 
 
 @strawberry.input

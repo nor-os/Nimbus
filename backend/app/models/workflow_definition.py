@@ -69,6 +69,16 @@ class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     is_system: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    applicable_semantic_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("semantic_resource_types.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    applicable_provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("semantic_providers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -80,4 +90,9 @@ class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         Index("ix_workflow_definitions_created_by", "created_by"),
         Index("ix_workflow_definitions_type", "tenant_id", "workflow_type"),
         Index("ix_workflow_definitions_source_topology", "source_topology_id"),
+        Index(
+            "ix_workflow_definitions_applicability",
+            "applicable_semantic_type_id",
+            "applicable_provider_id",
+        ),
     )

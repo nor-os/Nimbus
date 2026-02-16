@@ -4,12 +4,12 @@
  * Dependencies: @angular/core, @angular/common, @angular/router, workflow.service
  * Concepts: Visual workflow editor, graph editing, save/validate/publish/test
  */
-import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
+import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { switchMap, of, tap } from 'rxjs';
 import { WorkflowService } from '@core/services/workflow.service';
-import { WorkflowDefinition, NodeTypeInfo, ValidationResult, WorkflowType } from '@shared/models/workflow.model';
+import { WorkflowDefinition, NodeTypeInfo, ValidationResult, WorkflowType, WorkflowGraph } from '@shared/models/workflow.model';
 import { WorkflowCanvasComponent } from './workflow-canvas.component';
 import { NodePaletteComponent } from './node-palette/node-palette.component';
 import { PropertiesPanelComponent } from './properties-panel/properties-panel.component';
@@ -82,6 +82,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
         <nimbus-properties-panel
           [nodeTypes]="nodeTypes()"
           [selectedNode]="selectedNode()"
+          [graphContext]="graphContext()"
           [workflowProps]="workflowProps()"
           (configChange)="onConfigChange($event)"
           (workflowNameChange)="onNameChange($event)"
@@ -138,6 +139,15 @@ export class WorkflowEditorComponent implements OnInit {
   selectedNode = signal<{ id: string; type: string; config: Record<string, unknown> } | null>(null);
 
   workflowProps = signal<{ name: string; description: string; timeoutSeconds: number } | null>(null);
+  private _graphVersion = signal(0);
+
+  graphContext = computed(() => {
+    // Re-compute when graph version changes (node selection, graph edits)
+    this._graphVersion();
+    if (!this.canvasRef) return null;
+    const graph = this.canvasRef.getGraph();
+    return { nodes: graph.nodes, connections: graph.connections };
+  });
 
   private workflowName = '';
   private workflowDescription = '';
@@ -175,6 +185,7 @@ export class WorkflowEditorComponent implements OnInit {
       const type = this.canvasRef.editorService.getNodeType(nodeId);
       const config = this.canvasRef.editorService.getNodeConfig(nodeId);
       this.selectedNode.set(type ? { id: nodeId, type, config: config || {} } : null);
+      this._graphVersion.update(v => v + 1);
     } else {
       this.selectedNode.set(null);
     }

@@ -15,6 +15,7 @@ async def check_graphql_permission(info: Info, permission_key: str, tenant_id: s
     """Check permission for the authenticated user in GraphQL context.
 
     Returns the user_id if authorized. Raises PermissionError if not.
+    If tenant_id is empty, falls back to the user's current_tenant_id from the JWT.
     """
     request = info.context["request"]
     auth_header = request.headers.get("authorization", "")
@@ -30,13 +31,16 @@ async def check_graphql_permission(info: Info, permission_key: str, tenant_id: s
         raise PermissionError("Not authenticated")
     user_id = payload["sub"]
 
+    # Fall back to JWT's current_tenant_id for provider-mode (no explicit tenant)
+    effective_tenant_id = tenant_id or payload.get("current_tenant_id", "")
+
     from app.db.session import async_session_factory
     from app.services.permission.engine import PermissionEngine
 
     async with async_session_factory() as db:
         engine = PermissionEngine(db)
         allowed, _source = await engine.check_permission(
-            user_id, permission_key, tenant_id
+            user_id, permission_key, effective_tenant_id
         )
         if not allowed:
             raise PermissionError(f"Missing permission: {permission_key}")

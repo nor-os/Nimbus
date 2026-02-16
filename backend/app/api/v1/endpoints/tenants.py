@@ -49,10 +49,27 @@ async def create_tenant(
             contact_email=body.contact_email,
             billing_info=body.billing_info,
             description=body.description,
+            invoice_currency=body.invoice_currency,
+            primary_region_id=str(body.primary_region_id) if body.primary_region_id else None,
         )
         # Give the creating user access to the new tenant
         db.add(UserTenant(user_id=current_user.id, tenant_id=tenant.id))
         await db.flush()
+
+        # Auto-create skeleton cloud backend if provider selected
+        if body.provider_id_for_backend:
+            from app.models.cloud_backend import CloudBackend
+
+            skeleton_backend = CloudBackend(
+                tenant_id=tenant.id,
+                provider_id=body.provider_id_for_backend,
+                name=f"{body.name} Backend",
+                status="disabled",
+                created_by=current_user.id,
+            )
+            db.add(skeleton_backend)
+            await db.flush()
+
         return TenantResponse.model_validate(tenant)
     except (TenantError, QuotaExceededError) as e:
         raise HTTPException(

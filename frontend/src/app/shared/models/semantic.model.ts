@@ -17,6 +17,7 @@ export interface SemanticCategory {
   icon: string | null;
   sortOrder: number;
   isSystem: boolean;
+  isInfrastructure: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -24,6 +24,8 @@ export interface WorkflowDefinition {
   workflowType: WorkflowType;
   sourceTopologyId: string | null;
   isSystem: boolean;
+  applicableSemanticTypeId: string | null;
+  applicableProviderId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -118,6 +120,8 @@ export interface WorkflowDefinitionCreateInput {
   timeoutSeconds?: number;
   maxConcurrent?: number;
   workflowType?: WorkflowType;
+  applicableSemanticTypeId?: string;
+  applicableProviderId?: string;
 }
 
 export interface GenerateDeploymentWorkflowInput {
@@ -132,6 +136,8 @@ export interface WorkflowDefinitionUpdateInput {
   graph?: WorkflowGraph;
   timeoutSeconds?: number;
   maxConcurrent?: number;
+  applicableSemanticTypeId?: string | null;
+  applicableProviderId?: string | null;
 }
 
 export interface WorkflowExecutionStartInput {

@@ -22,6 +22,7 @@ export class ReteEditorService {
   private editor: NodeEditor<Schemes> | null = null;
   private area: AreaPlugin<Schemes, any> | null = null;
   private nodeTypeMap = new Map<string, NodeTypeInfo>();
+  private socketRegistry = new Map<string, ClassicPreset.Socket>();
 
   readonly selectedNodeId = signal<string | null>(null);
   readonly graphChanged = signal<number>(0);
@@ -102,14 +103,31 @@ export class ReteEditorService {
     for (const conn of graph.connections) {
       const sourceNode = nodeMap.get(conn.source);
       const targetNode = nodeMap.get(conn.target);
-      if (sourceNode && targetNode) {
-        const sourceOutput = sourceNode.outputs[conn.sourcePort];
-        const targetInput = targetNode.inputs[conn.targetPort];
-        if (sourceOutput && targetInput) {
-          const connection = new ClassicPreset.Connection(sourceNode, conn.sourcePort, targetNode, conn.targetPort);
-          await this.editor.addConnection(connection);
-        }
+      if (!sourceNode) {
+        console.warn(`[loadGraph] Connection skipped: source node "${conn.source}" not found`);
+        continue;
       }
+      if (!targetNode) {
+        console.warn(`[loadGraph] Connection skipped: target node "${conn.target}" not found`);
+        continue;
+      }
+
+      const srcPort = conn.sourcePort || 'out';
+      const tgtPort = conn.targetPort || 'in';
+      const sourceOutput = sourceNode.outputs[srcPort];
+      const targetInput = targetNode.inputs[tgtPort];
+
+      if (!sourceOutput) {
+        console.warn(`[loadGraph] Connection skipped: source port "${srcPort}" not found on "${conn.source}" (available: ${Object.keys(sourceNode.outputs || {})})`);
+        continue;
+      }
+      if (!targetInput) {
+        console.warn(`[loadGraph] Connection skipped: target port "${tgtPort}" not found on "${conn.target}" (available: ${Object.keys(targetNode.inputs || {})})`);
+        continue;
+      }
+
+      const connection = new ClassicPreset.Connection(sourceNode, srcPort, targetNode, tgtPort);
+      await this.editor.addConnection(connection);
     }
 
     AreaExtensions.zoomAt(this.area, this.editor.getNodes());
@@ -205,6 +223,16 @@ export class ReteEditorService {
     this.area?.destroy();
     this.editor = null;
     this.area = null;
+    this.socketRegistry.clear();
+  }
+
+  private getSocket(portType: string): ClassicPreset.Socket {
+    let socket = this.socketRegistry.get(portType);
+    if (!socket) {
+      socket = new ClassicPreset.Socket(portType);
+      this.socketRegistry.set(portType, socket);
+    }
+    return socket;
   }
 
   private createReteNode(wfNode: WorkflowNode): ClassicPreset.Node | null {
@@ -222,7 +250,7 @@ export class ReteEditorService {
 
     if (typeDef) {
       for (const port of typeDef.ports) {
-        const socket = new ClassicPreset.Socket(port.portType);
+        const socket = this.getSocket(port.portType);
         if (port.direction === 'INPUT') {
           node.addInput(port.name, new ClassicPreset.Input(socket, port.label, port.multiple));
         } else {
@@ -231,7 +259,7 @@ export class ReteEditorService {
       }
     } else {
       // Fallback: generic in/out
-      const socket = new ClassicPreset.Socket('FLOW');
+      const socket = this.getSocket('FLOW');
       node.addInput('in', new ClassicPreset.Input(socket, 'Input'));
       node.addOutput('out', new ClassicPreset.Output(socket, 'Output'));
     }

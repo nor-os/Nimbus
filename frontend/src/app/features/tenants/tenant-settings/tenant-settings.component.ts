@@ -11,24 +11,31 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { TenantService } from '@core/services/tenant.service';
 import { CatalogService } from '@core/services/catalog.service';
+import { CloudBackendService } from '@core/services/cloud-backend.service';
+import { DeliveryService } from '@core/services/delivery.service';
 import { TenantDetail, TenantQuota } from '@core/models/tenant.model';
+import { CloudBackend } from '@shared/models/cloud-backend.model';
+import { DeliveryRegion } from '@shared/models/delivery.model';
 import { TenantTag, TenantTagCreateInput } from '@shared/models/tenant-tag.model';
 import { DomainMapping, DomainMappingService } from '@core/services/domain-mapping.service';
 import {
   TenantCatalogPin,
   TenantPriceListPin,
   ServiceCatalog,
+  ServiceCatalogItem,
   PriceList,
   PriceListItem,
   ServiceOffering,
+  ServiceGroup,
   PriceListOverlayItem,
   PriceListOverlayItemCreateInput,
   PinMinimumCharge,
   PinMinimumChargeCreateInput,
   CatalogOverlayItem,
+  CatalogOverlayItemCreateInput,
 } from '@shared/models/cmdb.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import {
@@ -40,13 +47,15 @@ import { SearchableSelectComponent } from '@shared/components/searchable-select/
 import { HasPermissionDirective } from '@shared/directives/has-permission.directive';
 import { ConfirmService } from '@shared/services/confirm.service';
 import { ToastService } from '@shared/services/toast.service';
+import { ComponentService } from '@core/services/component.service';
+import { Component as ComponentModel, ComponentGovernance } from '@shared/models/component.model';
 
-type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'priceLists' | 'tags';
+type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'priceLists' | 'tags' | 'governance';
 
 @Component({
   selector: 'nimbus-tenant-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, LayoutComponent, PropertyTableComponent, SearchableSelectComponent, HasPermissionDirective],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterLink, LayoutComponent, PropertyTableComponent, SearchableSelectComponent, HasPermissionDirective],
   template: `
     <nimbus-layout>
       <div class="settings-page">
@@ -60,6 +69,7 @@ type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'price
           <button class="tab" [class.active]="activeTab() === 'catalogs'" (click)="setTab('catalogs')">Catalogs</button>
           <button class="tab" [class.active]="activeTab() === 'priceLists'" (click)="setTab('priceLists')">Price Lists</button>
           <button class="tab" [class.active]="activeTab() === 'tags'" (click)="setTab('tags')">Tags</button>
+          <button class="tab" [class.active]="activeTab() === 'governance'" (click)="setTab('governance')">Governance</button>
         </div>
 
         <div class="tab-content">
@@ -76,6 +86,41 @@ type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'price
                   (save)="onGeneralSave($event)"
                 />
               }
+
+              <!-- Cloud Backend Info -->
+              <div class="backend-card">
+                <h3>Cloud Backend</h3>
+                @if (tenantBackend(); as b) {
+                  <div class="backend-info">
+                    <div class="backend-row">
+                      <span class="backend-label">Provider</span>
+                      <span class="backend-value">
+                        {{ b.providerDisplayName }}
+                      </span>
+                    </div>
+                    <div class="backend-row">
+                      <span class="backend-label">Backend</span>
+                      <a class="backend-link" [routerLink]="['/backends', b.id]">{{ b.name }}</a>
+                    </div>
+                    <div class="backend-row">
+                      <span class="backend-label">Status</span>
+                      <span class="status-pill" [class]="'status-' + b.status">{{ b.status }}</span>
+                    </div>
+                    <div class="backend-row">
+                      <span class="backend-label">Credentials</span>
+                      <span>{{ b.hasCredentials ? 'Configured' : 'Not set' }}</span>
+                    </div>
+                    @if (b.endpointUrl) {
+                      <div class="backend-row">
+                        <span class="backend-label">Endpoint</span>
+                        <span class="backend-value mono">{{ b.endpointUrl }}</span>
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <p class="backend-empty">No cloud backend configured. <a routerLink="/backends">Set up a backend</a> to enable infrastructure management.</p>
+                }
+              </div>
 
               <div class="danger-zone">
                 <h3>Danger Zone</h3>
@@ -241,10 +286,18 @@ type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'price
                           <tr class="expand-row">
                             <td colspan="7">
                               <div class="expand-content">
-                                <h4>Overlay Items</h4>
-                                @if (pin.overlayItems.length === 0) {
+                                <div class="expand-section-header">
+                                  <h4>Overlay Items</h4>
+                                  <button
+                                    *nimbusHasPermission="'cmdb:catalog:manage'"
+                                    class="btn btn-primary btn-xs"
+                                    (click)="showCatalogOverlayForm(pin.id); $event.stopPropagation()"
+                                  >+ Add Overlay</button>
+                                </div>
+                                @if (pin.overlayItems.length === 0 && catalogOverlayFormPinId() !== pin.id) {
                                   <p class="empty-hint">No overlay items.</p>
-                                } @else {
+                                }
+                                @if (pin.overlayItems.length > 0) {
                                   <table class="sub-table">
                                     <thead>
                                       <tr>
@@ -264,7 +317,7 @@ type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'price
                                               {{ overlay.overlayAction | titlecase }}
                                             </span>
                                           </td>
-                                          <td>{{ overlay.serviceOfferingId ? serviceNameForId(overlay.serviceOfferingId) : (overlay.serviceGroupId || 'N/A') }}</td>
+                                          <td>{{ overlay.serviceOfferingId ? serviceNameForId(overlay.serviceOfferingId) : (overlay.serviceGroupId ? groupNameForId(overlay.serviceGroupId) : 'N/A') }}</td>
                                           <td>{{ overlay.sortOrder }}</td>
                                           <td>
                                             <button class="btn-icon-del" (click)="deleteCatalogOverlay(pin, overlay); $event.stopPropagation()" title="Remove">&times;</button>
@@ -273,6 +326,75 @@ type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'price
                                       }
                                     </tbody>
                                   </table>
+                                }
+
+                                @if (catalogOverlayFormPinId() === pin.id) {
+                                  <div class="inline-form" (click)="$event.stopPropagation()">
+                                    <div class="form-row">
+                                      <div class="form-group third">
+                                        <label class="form-label">Action *</label>
+                                        <select class="form-input" [(ngModel)]="catalogOverlayAction" (ngModelChange)="onCatalogOverlayActionChange()">
+                                          <option value="include">Include</option>
+                                          <option value="exclude">Exclude</option>
+                                        </select>
+                                      </div>
+                                      @if (catalogOverlayAction === 'exclude') {
+                                        <div class="form-group two-thirds">
+                                          <label class="form-label">Base Item *</label>
+                                          <select class="form-input" [(ngModel)]="catalogOverlayBaseItemId">
+                                            <option value="">Select base item...</option>
+                                            @for (item of catalogBaseItems(pin); track item.id) {
+                                              <option [value]="item.id">{{ catalogBaseItemLabel(item) }}</option>
+                                            }
+                                          </select>
+                                        </div>
+                                      }
+                                      @if (catalogOverlayAction === 'include') {
+                                        <div class="form-group two-thirds">
+                                          <label class="form-label">Offering</label>
+                                          <select class="form-input" [(ngModel)]="catalogOverlayOfferingId">
+                                            <option value="">Select offering...</option>
+                                            @for (off of offerings(); track off.id) {
+                                              <option [value]="off.id">{{ off.name }}</option>
+                                            }
+                                          </select>
+                                        </div>
+                                      }
+                                    </div>
+                                    @if (catalogOverlayAction === 'include') {
+                                      <div class="form-row">
+                                        <div class="form-group third">
+                                          <label class="form-label">Service Group</label>
+                                          <select class="form-input" [(ngModel)]="catalogOverlayGroupId">
+                                            <option value="">Select group...</option>
+                                            @for (g of serviceGroups(); track g.id) {
+                                              <option [value]="g.id">{{ g.displayName || g.name }}</option>
+                                            }
+                                          </select>
+                                        </div>
+                                        <div class="form-group third">
+                                          <label class="form-label">Sort Order</label>
+                                          <input class="form-input" type="number" step="1" [(ngModel)]="catalogOverlaySortOrder" placeholder="0" />
+                                        </div>
+                                      </div>
+                                    }
+                                    @if (catalogOverlayAction === 'exclude') {
+                                      <div class="form-row">
+                                        <div class="form-group third">
+                                          <label class="form-label">Sort Order</label>
+                                          <input class="form-input" type="number" step="1" [(ngModel)]="catalogOverlaySortOrder" placeholder="0" />
+                                        </div>
+                                      </div>
+                                    }
+                                    <div class="form-actions">
+                                      <button class="btn btn-secondary btn-sm" (click)="cancelCatalogOverlayForm(); $event.stopPropagation()">Cancel</button>
+                                      <button
+                                        class="btn btn-primary btn-sm"
+                                        [disabled]="!canSaveCatalogOverlay() || catalogOverlaySaving()"
+                                        (click)="saveCatalogOverlay(pin); $event.stopPropagation()"
+                                      >{{ catalogOverlaySaving() ? 'Saving...' : 'Add Overlay' }}</button>
+                                    </div>
+                                  </div>
                                 }
                               </div>
                             </td>
@@ -751,6 +873,110 @@ type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'price
               }
             </div>
           }
+
+          <!-- ── Governance Tab ─────────────────────────────────────── -->
+          @if (activeTab() === 'governance') {
+            <div class="section">
+              <div class="section-header">
+                <h2>Component Governance</h2>
+                <button
+                  *nimbusHasPermission="'component:governance:manage'"
+                  class="btn btn-primary btn-sm"
+                  (click)="showGovernanceForm.set(true)"
+                >
+                  + Add Rule
+                </button>
+              </div>
+              <p class="section-hint">
+                Control which provider components are available to this tenant, enforce parameter constraints, and limit instance counts.
+              </p>
+
+              @if (showGovernanceForm()) {
+                <div class="form-card">
+                  <h3 class="form-title">{{ editingGovernanceId() ? 'Edit Rule' : 'New Governance Rule' }}</h3>
+                  <div class="form-group">
+                    <label class="form-label">Component</label>
+                    <select class="form-input" [(ngModel)]="govFormComponentId" [disabled]="!!editingGovernanceId()">
+                      <option value="">Select a component...</option>
+                      @for (c of providerComponents(); track c.id) {
+                        <option [value]="c.id">{{ c.displayName }} ({{ c.providerName }})</option>
+                      }
+                    </select>
+                  </div>
+                  <div class="form-group form-group-check">
+                    <label class="check-label">
+                      <input type="checkbox" [(ngModel)]="govFormIsAllowed" />
+                      Allow this component for the tenant
+                    </label>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Max Instances (optional)</label>
+                    <input class="form-input" type="number" [(ngModel)]="govFormMaxInstances" min="0" placeholder="Unlimited" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Parameter Constraints (JSON, optional)</label>
+                    <textarea class="form-input" rows="3" [(ngModel)]="govFormConstraints"
+                      placeholder='e.g. {"cpu_count": {"max": 8}}'></textarea>
+                  </div>
+                  <div class="form-actions">
+                    <button class="btn btn-secondary" (click)="cancelGovernanceForm()">Cancel</button>
+                    <button class="btn btn-primary" (click)="saveGovernance()"
+                      [disabled]="!govFormComponentId || govSaving()">
+                      {{ govSaving() ? 'Saving...' : (editingGovernanceId() ? 'Update' : 'Create') }}
+                    </button>
+                  </div>
+                </div>
+              }
+
+              @if (!governanceRules().length && !showGovernanceForm()) {
+                <div class="empty-hint">No governance rules defined. All published provider components are available by default.</div>
+              }
+
+              @if (governanceRules().length > 0) {
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Component</th>
+                        <th>Status</th>
+                        <th>Max Instances</th>
+                        <th>Constraints</th>
+                        <th class="th-actions">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (rule of governanceRules(); track rule.id) {
+                        <tr>
+                          <td>{{ getComponentName(rule.componentId) }}</td>
+                          <td>
+                            <span class="badge" [class.badge-allowed]="rule.isAllowed" [class.badge-denied]="!rule.isAllowed">
+                              {{ rule.isAllowed ? 'Allowed' : 'Denied' }}
+                            </span>
+                          </td>
+                          <td>{{ rule.maxInstances ?? 'Unlimited' }}</td>
+                          <td class="mono">{{ rule.parameterConstraints ? 'Yes' : '-' }}</td>
+                          <td class="td-actions">
+                            <button
+                              *nimbusHasPermission="'component:governance:manage'"
+                              class="btn-icon-edit"
+                              (click)="editGovernance(rule)"
+                              title="Edit"
+                            >&#9998;</button>
+                            <button
+                              *nimbusHasPermission="'component:governance:manage'"
+                              class="btn-icon-del"
+                              (click)="deleteGovernance(rule)"
+                              title="Delete"
+                            >&times;</button>
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </div>
+          }
         </div>
       </div>
     </nimbus-layout>
@@ -819,6 +1045,8 @@ type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'price
     .badge-active { background: #dcfce7; color: #16a34a; }
     .badge-upcoming { background: #eff6ff; color: #3b82f6; }
     .badge-expired { background: #f1f5f9; color: #64748b; }
+    .badge-allowed { background: #dcfce7; color: #166534; }
+    .badge-denied { background: #fef2f2; color: #dc2626; }
 
     .mono {
       font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.75rem;
@@ -884,6 +1112,30 @@ type TabName = 'general' | 'quotas' | 'domains' | 'export' | 'catalogs' | 'price
     .th-actions, .td-actions { width: 60px; text-align: right; }
 
     /* ── Danger zone ────────────────────────────────────────────── */
+    /* ── Cloud Backend Card ──────────────────────────────────── */
+    .backend-card {
+      margin-top: 1.5rem; padding: 1.25rem; border: 1px solid #e2e8f0;
+      border-radius: 8px; background: #fff;
+    }
+    .backend-card h3 { font-size: 0.9375rem; font-weight: 600; color: #1e293b; margin: 0 0 0.75rem; }
+    .backend-info { display: flex; flex-direction: column; gap: 8px; }
+    .backend-row { display: flex; align-items: center; gap: 12px; font-size: 0.8125rem; }
+    .backend-label { font-weight: 600; color: #64748b; min-width: 90px; }
+    .backend-value { color: #374151; }
+    .backend-link { color: #3b82f6; text-decoration: none; font-weight: 500; }
+    .backend-link:hover { text-decoration: underline; }
+    .backend-empty { font-size: 0.8125rem; color: #94a3b8; margin: 0; }
+    .backend-empty a { color: #3b82f6; text-decoration: none; }
+    .backend-empty a:hover { text-decoration: underline; }
+    .mono { font-family: monospace; font-size: 0.75rem; }
+    .status-pill {
+      display: inline-block; padding: 2px 8px; border-radius: 12px;
+      font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+    }
+    .status-active { background: #d1fae5; color: #065f46; }
+    .status-disabled { background: #f1f5f9; color: #64748b; }
+    .status-error { background: #fee2e2; color: #991b1b; }
+
     .danger-zone {
       margin-top: 2rem; padding: 1.25rem; border: 1px solid #fecaca;
       border-radius: 8px; background: #fff;
@@ -984,12 +1236,19 @@ export class TenantSettingsComponent implements OnInit {
   private router = inject(Router);
   private confirmService = inject(ConfirmService);
   private toastService = inject(ToastService);
+  private backendService = inject(CloudBackendService);
+  private deliveryService = inject(DeliveryService);
+  private componentService = inject(ComponentService);
   private datePipe = new DatePipe('en-US');
 
   tenant = signal<TenantDetail | null>(null);
   quotas = signal<TenantQuota[]>([]);
   activeTab = signal<TabName>('general');
   generalSaving = signal(false);
+
+  // Cloud backend & regions for General tab
+  tenantBackend = signal<CloudBackend | null>(null);
+  deliveryRegions = signal<DeliveryRegion[]>([]);
   exporting = signal(false);
   exportJobId = signal('');
 
@@ -1048,6 +1307,17 @@ export class TenantSettingsComponent implements OnInit {
   expandedCatalogPinId = signal<string | null>(null);
   private offeringsLoaded = false;
 
+  // Catalog overlay create form state
+  catalogOverlayFormPinId = signal<string | null>(null);
+  catalogOverlaySaving = signal(false);
+  catalogOverlayAction = 'include';
+  catalogOverlayBaseItemId = '';
+  catalogOverlayOfferingId = '';
+  catalogOverlayGroupId = '';
+  catalogOverlaySortOrder: number | null = null;
+  serviceGroups = signal<ServiceGroup[]>([]);
+  private serviceGroupsLoaded = false;
+
   // Overlay create form state
   overlayFormPinId = signal<string | null>(null);
   overlaySaving = signal(false);
@@ -1091,6 +1361,19 @@ export class TenantSettingsComponent implements OnInit {
   tagFormIsSecret = false;
   private tagsLoaded = false;
 
+  // Governance tab
+  governanceRules = signal<ComponentGovernance[]>([]);
+  providerComponents = signal<ComponentModel[]>([]);
+  showGovernanceForm = signal(false);
+  editingGovernanceId = signal<string | null>(null);
+  govSaving = signal(false);
+  govFormComponentId = '';
+  govFormIsAllowed = true;
+  govFormMaxInstances: number | null = null;
+  govFormConstraints = '';
+  private governanceLoaded = false;
+  private componentNameMap = new Map<string, string>();
+
   private tenantId = '';
 
   private readonly CURRENCY_OPTIONS = [
@@ -1100,6 +1383,17 @@ export class TenantSettingsComponent implements OnInit {
       'BRL', 'INR', 'KRW', 'MXN', 'SGD', 'HKD', 'NZD', 'ZAR',
     ].map(c => ({ label: c, value: c })),
   ];
+
+  regionOptions = computed(() => {
+    const regions = this.deliveryRegions();
+    return [
+      { label: '(None)', value: '' },
+      ...regions.map(r => ({
+        label: `${r.displayName} (${r.code})`,
+        value: r.id,
+      })),
+    ];
+  });
 
   generalFields = computed<PropertyField[]>(() => {
     return [
@@ -1113,7 +1407,13 @@ export class TenantSettingsComponent implements OnInit {
         options: this.CURRENCY_OPTIONS,
         hint: 'Leave empty to inherit from provider default',
       },
-      { key: 'primary_region_id', label: 'Primary Region', controlType: 'text', placeholder: 'Region UUID (optional)' },
+      {
+        key: 'primary_region_id',
+        label: 'Primary Region',
+        controlType: 'select',
+        options: this.regionOptions(),
+        hint: 'Regions are managed in Settings > Delivery Regions',
+      },
       { key: 'level', label: 'Level', controlType: 'readonly' },
       { key: 'created_at', label: 'Created', controlType: 'readonly' },
     ];
@@ -1173,13 +1473,15 @@ export class TenantSettingsComponent implements OnInit {
     this.tenantId = this.route.snapshot.params['id'];
 
     const tabParam = this.route.snapshot.queryParams['tab'] as TabName | undefined;
-    const validTabs: TabName[] = ['general', 'quotas', 'domains', 'export', 'catalogs', 'priceLists', 'tags'];
+    const validTabs: TabName[] = ['general', 'quotas', 'domains', 'export', 'catalogs', 'priceLists', 'tags', 'governance'];
     if (tabParam && validTabs.includes(tabParam)) {
       this.activeTab.set(tabParam);
     }
 
     this.loadTenant();
     this.loadStats();
+    this.loadTenantBackend();
+    this.loadDeliveryRegions();
 
     // Load data for the initially active tab if needed
     this.ensureTabDataLoaded(this.activeTab());
@@ -1555,6 +1857,79 @@ export class TenantSettingsComponent implements OnInit {
     });
   }
 
+  // ── Catalog overlay create form ──────────────────────────────
+
+  showCatalogOverlayForm(pinId: string): void {
+    this.catalogOverlayFormPinId.set(pinId);
+    this.resetCatalogOverlayForm();
+  }
+
+  cancelCatalogOverlayForm(): void {
+    this.catalogOverlayFormPinId.set(null);
+  }
+
+  onCatalogOverlayActionChange(): void {
+    this.catalogOverlayBaseItemId = '';
+    this.catalogOverlayOfferingId = '';
+    this.catalogOverlayGroupId = '';
+  }
+
+  canSaveCatalogOverlay(): boolean {
+    if (this.catalogOverlayAction === 'exclude') {
+      return !!this.catalogOverlayBaseItemId;
+    }
+    // include: need at least an offering or a group
+    return !!this.catalogOverlayOfferingId || !!this.catalogOverlayGroupId;
+  }
+
+  catalogBaseItems(pin: TenantCatalogPin): ServiceCatalogItem[] {
+    return pin.catalog?.items ?? [];
+  }
+
+  catalogBaseItemLabel(item: ServiceCatalogItem): string {
+    if (item.serviceOfferingId) {
+      return this.serviceNameForId(item.serviceOfferingId);
+    }
+    if (item.serviceGroupId) {
+      return this.groupNameForId(item.serviceGroupId);
+    }
+    return item.id.substring(0, 12);
+  }
+
+  groupNameForId(groupId: string): string {
+    const group = this.serviceGroups().find(g => g.id === groupId);
+    return group ? (group.displayName || group.name) : groupId.substring(0, 8) + '...';
+  }
+
+  saveCatalogOverlay(pin: TenantCatalogPin): void {
+    this.catalogOverlaySaving.set(true);
+    const input: CatalogOverlayItemCreateInput = {
+      overlayAction: this.catalogOverlayAction,
+    };
+    if (this.catalogOverlayAction === 'exclude') {
+      input.baseItemId = this.catalogOverlayBaseItemId;
+    }
+    if (this.catalogOverlayAction === 'include') {
+      if (this.catalogOverlayOfferingId) input.serviceOfferingId = this.catalogOverlayOfferingId;
+      if (this.catalogOverlayGroupId) input.serviceGroupId = this.catalogOverlayGroupId;
+    }
+    if (this.catalogOverlaySortOrder != null) input.sortOrder = this.catalogOverlaySortOrder;
+    this.catalogService.createCatalogOverlay(this.tenantId, pin.id, input).subscribe({
+      next: (created) => {
+        this.catalogPins.update(pins => pins.map(p =>
+          p.id === pin.id ? { ...p, overlayItems: [...p.overlayItems, created] } : p
+        ));
+        this.catalogOverlaySaving.set(false);
+        this.catalogOverlayFormPinId.set(null);
+        this.toastService.success('Overlay item added');
+      },
+      error: (err) => {
+        this.catalogOverlaySaving.set(false);
+        this.toastService.error(err.message || 'Failed to create overlay');
+      },
+    });
+  }
+
   serviceNameForId(serviceOfferingId: string): string {
     const offering = this.offerings().find(o => o.id === serviceOfferingId);
     return offering ? offering.name : serviceOfferingId.substring(0, 8) + '...';
@@ -1683,6 +2058,10 @@ export class TenantSettingsComponent implements OnInit {
           this.offeringsLoaded = true;
           this.loadOfferings();
         }
+        if (!this.serviceGroupsLoaded) {
+          this.serviceGroupsLoaded = true;
+          this.loadServiceGroups();
+        }
         break;
       case 'priceLists':
         if (!this.priceListsLoaded) {
@@ -1701,6 +2080,12 @@ export class TenantSettingsComponent implements OnInit {
           this.loadTags();
         }
         break;
+      case 'governance':
+        if (!this.governanceLoaded) {
+          this.governanceLoaded = true;
+          this.loadGovernanceData();
+        }
+        break;
     }
   }
 
@@ -1713,6 +2098,20 @@ export class TenantSettingsComponent implements OnInit {
   private loadStats(): void {
     this.tenantService.getTenantStats(this.tenantId).subscribe({
       next: (s) => this.quotas.set(s.quotas),
+    });
+  }
+
+  private loadTenantBackend(): void {
+    this.backendService.getTenantBackend().subscribe({
+      next: (b) => this.tenantBackend.set(b),
+      error: () => {},
+    });
+  }
+
+  private loadDeliveryRegions(): void {
+    this.deliveryService.listRegions({ limit: 500 }).subscribe({
+      next: (result) => this.deliveryRegions.set(result.items),
+      error: () => {},
     });
   }
 
@@ -1750,6 +2149,13 @@ export class TenantSettingsComponent implements OnInit {
     });
   }
 
+  private loadServiceGroups(): void {
+    this.catalogService.listGroups(0, 500).subscribe({
+      next: (result) => this.serviceGroups.set(result.items),
+      error: () => this.serviceGroups.set([]),
+    });
+  }
+
   private loadTags(): void {
     this.tenantService.listTags(this.tenantId).subscribe({
       next: (result) => this.tags.set(result.items),
@@ -1768,6 +2174,14 @@ export class TenantSettingsComponent implements OnInit {
     this.overlayCoverage = '';
     this.overlayMinQty = null;
     this.overlayMaxQty = null;
+  }
+
+  private resetCatalogOverlayForm(): void {
+    this.catalogOverlayAction = 'include';
+    this.catalogOverlayBaseItemId = '';
+    this.catalogOverlayOfferingId = '';
+    this.catalogOverlayGroupId = '';
+    this.catalogOverlaySortOrder = null;
   }
 
   private resetMinChargeForm(): void {
@@ -1821,5 +2235,93 @@ export class TenantSettingsComponent implements OnInit {
     this.quotas.update((qs) =>
       qs.map((q) => q.quota_type === updated.quota_type ? updated : q),
     );
+  }
+
+  // ── Governance Tab ─────────────────────────────────────────────
+
+  private loadGovernanceData(): void {
+    this.componentService.listGovernance().subscribe({
+      next: rules => this.governanceRules.set(rules),
+      error: () => this.governanceRules.set([]),
+    });
+    this.componentService.listComponents({ providerMode: true, publishedOnly: true }).subscribe({
+      next: components => {
+        this.providerComponents.set(components);
+        this.componentNameMap.clear();
+        for (const c of components) {
+          this.componentNameMap.set(c.id, c.displayName);
+        }
+      },
+    });
+  }
+
+  getComponentName(componentId: string): string {
+    return this.componentNameMap.get(componentId) || componentId.slice(0, 8) + '...';
+  }
+
+  editGovernance(rule: ComponentGovernance): void {
+    this.editingGovernanceId.set(rule.id);
+    this.govFormComponentId = rule.componentId;
+    this.govFormIsAllowed = rule.isAllowed;
+    this.govFormMaxInstances = rule.maxInstances;
+    this.govFormConstraints = rule.parameterConstraints
+      ? JSON.stringify(rule.parameterConstraints, null, 2)
+      : '';
+    this.showGovernanceForm.set(true);
+  }
+
+  cancelGovernanceForm(): void {
+    this.showGovernanceForm.set(false);
+    this.editingGovernanceId.set(null);
+    this.govFormComponentId = '';
+    this.govFormIsAllowed = true;
+    this.govFormMaxInstances = null;
+    this.govFormConstraints = '';
+  }
+
+  saveGovernance(): void {
+    if (!this.govFormComponentId) return;
+    this.govSaving.set(true);
+
+    let constraints: Record<string, unknown> | undefined;
+    if (this.govFormConstraints.trim()) {
+      try {
+        constraints = JSON.parse(this.govFormConstraints);
+      } catch {
+        this.toastService.error('Invalid JSON in parameter constraints');
+        this.govSaving.set(false);
+        return;
+      }
+    }
+
+    this.componentService.setGovernance({
+      componentId: this.govFormComponentId,
+      tenantId: this.tenantId,
+      isAllowed: this.govFormIsAllowed,
+      parameterConstraints: constraints,
+      maxInstances: this.govFormMaxInstances ?? undefined,
+    }).subscribe({
+      next: () => {
+        this.govSaving.set(false);
+        this.cancelGovernanceForm();
+        this.governanceLoaded = false;
+        this.loadGovernanceData();
+        this.toastService.success('Governance rule saved');
+      },
+      error: err => {
+        this.govSaving.set(false);
+        this.toastService.error(err.message || 'Failed to save governance rule');
+      },
+    });
+  }
+
+  deleteGovernance(rule: ComponentGovernance): void {
+    this.componentService.deleteGovernance(rule.componentId, rule.tenantId).subscribe({
+      next: () => {
+        this.governanceRules.update(rules => rules.filter(r => r.id !== rule.id));
+        this.toastService.success('Governance rule deleted');
+      },
+      error: err => this.toastService.error(err.message || 'Failed to delete governance rule'),
+    });
   }
 }

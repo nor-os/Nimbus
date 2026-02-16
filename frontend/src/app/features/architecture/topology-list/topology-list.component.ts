@@ -20,17 +20,20 @@ import { ConfirmService } from '@shared/services/confirm.service';
   imports: [CommonModule, RouterLink, FormsModule, LayoutComponent],
   template: `
     <nimbus-layout>
-      <div class="topology-list-page">
+      <div class="page-container">
         <div class="page-header">
-          <h1>Architecture Topologies</h1>
+          <div>
+            <h1 class="page-title">Architecture Topologies</h1>
+            <p class="page-subtitle">Visual infrastructure topology diagrams with versioning and deployment workflows</p>
+          </div>
           <div class="header-actions">
-            <button class="btn btn-secondary" (click)="onImport()">Import</button>
-            <a routerLink="/architecture/new" class="btn btn-primary">New Topology</a>
+            <button class="btn btn-outline" (click)="onImport()">Import</button>
+            <a routerLink="/architecture/new" class="btn btn-primary">+ New Topology</a>
           </div>
         </div>
 
         <!-- Filters -->
-        <div class="filters">
+        <div class="filters-bar">
           <div class="status-tabs">
             <button
               class="tab-btn"
@@ -67,6 +70,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
             />
           </div>
         </div>
+
 
         <!-- Table -->
         <div class="table-container">
@@ -130,33 +134,21 @@ import { ConfirmService } from '@shared/services/confirm.service';
     </nimbus-layout>
   `,
   styles: [`
-    .topology-list-page { padding: 0; }
-    .page-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 1.5rem;
-    }
-    .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
+    .page-container { padding: 0; max-width: 1200px; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .page-subtitle { font-size: 0.875rem; color: #64748b; margin: 4px 0 0; }
     .header-actions { display: flex; gap: 8px; }
     .btn {
-      display: inline-flex;
-      align-items: center;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-size: 0.8125rem;
-      font-weight: 500;
-      cursor: pointer;
-      text-decoration: none;
-      border: none;
-      font-family: inherit;
-      transition: background 0.15s;
+      padding: 8px 16px; border-radius: 6px; font-size: 0.875rem; font-weight: 500;
+      cursor: pointer; text-decoration: none; border: none; display: inline-flex;
+      align-items: center; font-family: inherit; transition: background 0.15s;
     }
     .btn-primary { background: #3b82f6; color: #fff; }
     .btn-primary:hover { background: #2563eb; }
-    .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
-    .btn-secondary:hover { background: #f8fafc; }
-    .filters {
+    .btn-outline { background: #fff; color: #1e293b; border: 1px solid #e2e8f0; }
+    .btn-outline:hover { background: #f8fafc; }
+    .filters-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;

@@ -39,6 +39,8 @@ class TenantService:
         contact_email: str | None = None,
         billing_info: dict | None = None,
         description: str | None = None,
+        invoice_currency: str | None = None,
+        primary_region_id: str | None = None,
     ) -> Tenant:
         """Create a new tenant with schema, quotas, and RLS policies."""
         level = 0
@@ -65,6 +67,8 @@ class TenantService:
             description=description,
             is_root=parent_id is None,
             level=level,
+            invoice_currency=invoice_currency,
+            primary_region_id=primary_region_id,
         )
         self.db.add(tenant)
         await self.db.flush()

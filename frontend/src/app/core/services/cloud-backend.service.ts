@@ -208,6 +208,36 @@ export class CloudBackendService {
     );
   }
 
+  // -- Tenant backend (1:1) ------------------------------------------------
+
+  getTenantBackend(): Observable<CloudBackend | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ tenantBackend: CloudBackend | null }>(`
+      query TenantBackend($tenantId: UUID!) {
+        tenantBackend(tenantId: $tenantId) {
+          ${BACKEND_FIELDS}
+        }
+      }
+    `, { tenantId }).pipe(
+      map((data) => data.tenantBackend),
+    );
+  }
+
+  // -- Landing Zone initialization -----------------------------------------
+
+  initializeLandingZone(backendId: string): Observable<CloudBackend> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ initializeBackendLandingZone: CloudBackend }>(`
+      mutation InitializeBackendLandingZone($tenantId: UUID!, $backendId: UUID!) {
+        initializeBackendLandingZone(tenantId: $tenantId, backendId: $backendId) {
+          ${BACKEND_FIELDS}
+        }
+      }
+    `, { tenantId, backendId }).pipe(
+      map((data) => data.initializeBackendLandingZone),
+    );
+  }
+
   // -- Schema queries ------------------------------------------------------
 
   getCredentialSchema(providerName: string): Observable<Record<string, unknown> | null> {
@@ -229,6 +259,17 @@ export class CloudBackendService {
       }
     `, { tenantId, providerName }).pipe(
       map((data) => data.cloudScopeSchema),
+    );
+  }
+
+  getIamIdentitySchema(providerName: string): Observable<Record<string, unknown> | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ cloudIamIdentitySchema: Record<string, unknown> | null }>(`
+      query CloudIamIdentitySchema($tenantId: UUID!, $providerName: String!) {
+        cloudIamIdentitySchema(tenantId: $tenantId, providerName: $providerName)
+      }
+    `, { tenantId, providerName }).pipe(
+      map((data) => data.cloudIamIdentitySchema),
     );
   }
 

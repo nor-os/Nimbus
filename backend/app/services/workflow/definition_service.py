@@ -54,6 +54,8 @@ class WorkflowDefinitionService:
             workflow_type=wf_type,
             source_topology_id=data.get("source_topology_id"),
             is_system=data.get("is_system", False),
+            applicable_semantic_type_id=data.get("applicable_semantic_type_id"),
+            applicable_provider_id=data.get("applicable_provider_id"),
         )
         self.db.add(definition)
         await self.db.flush()
@@ -70,7 +72,10 @@ class WorkflowDefinitionService:
                 "Only draft definitions can be updated", "NOT_DRAFT"
             )
 
-        for field in ("name", "description", "graph", "timeout_seconds", "max_concurrent"):
+        for field in (
+            "name", "description", "graph", "timeout_seconds", "max_concurrent",
+            "applicable_semantic_type_id", "applicable_provider_id",
+        ):
             if field in data and data[field] is not None:
                 setattr(definition, field, data[field])
 
@@ -149,8 +154,14 @@ class WorkflowDefinitionService:
         workflow_type: str | None = None,
         offset: int = 0,
         limit: int = 50,
+        applicable_semantic_type_id: str | None = None,
+        applicable_provider_id: str | None = None,
     ) -> list[WorkflowDefinition]:
-        """List definitions for a tenant, optionally filtered by status and/or workflow_type."""
+        """List definitions with optional status, type, and applicability filters.
+
+        When applicability filters are provided, results include workflows
+        that match the filter value OR have NULL (applies to all).
+        """
         query = (
             select(WorkflowDefinition)
             .where(
@@ -171,6 +182,20 @@ class WorkflowDefinitionService:
             query = query.where(
                 WorkflowDefinition.workflow_type == WorkflowType(workflow_type)
             )
+
+        if applicable_semantic_type_id:
+            from sqlalchemy import or_
+            query = query.where(or_(
+                WorkflowDefinition.applicable_semantic_type_id == applicable_semantic_type_id,
+                WorkflowDefinition.applicable_semantic_type_id.is_(None),
+            ))
+
+        if applicable_provider_id:
+            from sqlalchemy import or_
+            query = query.where(or_(
+                WorkflowDefinition.applicable_provider_id == applicable_provider_id,
+                WorkflowDefinition.applicable_provider_id.is_(None),
+            ))
 
         result = await self.db.execute(query)
         return list(result.scalars().all())

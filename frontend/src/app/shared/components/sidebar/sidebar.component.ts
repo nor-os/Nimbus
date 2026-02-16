@@ -38,15 +38,15 @@ interface NavItem {
             @if (item.children) {
               <button
                 class="nav-group-header provider-group-header"
-                [class.active]="isActiveGroup(item.label)"
+                [class.active]="isActiveProviderGroup(item.label)"
                 (click)="toggleProviderGroup(item.label)"
-                [attr.aria-expanded]="isExpanded(item.label)"
+                [attr.aria-expanded]="isProviderExpanded(item.label)"
               >
                 <span class="nav-icon" [innerHTML]="item.icon"></span>
                 <span class="nav-label">{{ item.label }}</span>
-                <span class="nav-chevron" [class.expanded]="isExpanded(item.label)">&#9206;</span>
+                <span class="nav-chevron" [class.expanded]="isProviderExpanded(item.label)">&#9206;</span>
               </button>
-              @if (isExpanded(item.label)) {
+              @if (isProviderExpanded(item.label)) {
                 <div class="nav-children">
                   @for (child of visibleProviderChildren(item); track child.label) {
                     @if (child.route && !child.disabled) {
@@ -173,13 +173,15 @@ interface NavItem {
       color: #60a5fa;
     }
 
-    .provider-section .nav-item {
+    .provider-section .nav-item,
+    .provider-section .nav-group-header {
       padding: 0.4375rem 0.75rem;
       margin: 0;
       border-radius: 4px;
     }
 
-    .provider-section .nav-item:hover:not(.disabled) {
+    .provider-section .nav-item:hover:not(.disabled),
+    .provider-section .nav-group-header:hover:not(.disabled) {
       background: rgba(59, 130, 246, 0.12);
     }
 
@@ -189,30 +191,7 @@ interface NavItem {
       border-right: none;
     }
 
-    .provider-group-header {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      width: 100%;
-      padding: 0.4375rem 0.75rem;
-      margin: 0;
-      border: none;
-      background: none;
-      color: #c8ccd0;
-      font-size: 0.8125rem;
-      font-weight: 500;
-      cursor: pointer;
-      text-align: left;
-      transition: background 0.15s, color 0.15s;
-      font-family: inherit;
-      border-radius: 4px;
-      box-sizing: border-box;
-    }
-    .provider-group-header:hover {
-      background: rgba(59, 130, 246, 0.12);
-      color: #fff;
-    }
-    .provider-group-header.active {
+    .provider-section .nav-group-header.active {
       color: #60a5fa;
     }
 
@@ -391,9 +370,20 @@ export class SidebarComponent {
         { label: 'Estimations', icon: '', route: '/catalog/estimations', permission: 'catalog:estimation:read' },
         { label: 'Roles & Rates', icon: '', route: '/catalog/rate-cards', permission: 'catalog:staff:read' },
         { label: 'Regions', icon: '', route: '/catalog/regions', permission: 'catalog:region:read' },
+        { label: 'Currency & Rates', icon: '', route: '/settings/currency', permission: 'settings:currency:read' },
       ],
     },
     { label: 'Profitability', icon: '&#9733;', route: '/catalog/profitability', permission: 'catalog:profitability:read' },
+    {
+      label: 'Infrastructure',
+      icon: '&#9874;',
+      permission: 'landingzone:zone:read',
+      children: [
+        { label: 'Landing Zones', icon: '', route: '/landing-zones', exact: true, permission: 'landingzone:zone:read' },
+        { label: 'Components', icon: '', route: '/provider/components', exact: true, permission: 'component:definition:create' },
+        { label: 'Resolvers', icon: '', route: '/provider/resolvers', exact: true, permission: 'component:definition:create' },
+      ],
+    },
   ];
 
   private allNavGroups: NavItem[] = [
@@ -430,6 +420,15 @@ export class SidebarComponent {
       children: [
         { label: 'Topologies', icon: '', route: '/architecture', exact: true, permission: 'architecture:topology:read' },
         { label: 'Stack Blueprints', icon: '', route: '/architecture/blueprints', permission: 'cmdb:cluster:read' },
+      ],
+    },
+    {
+      label: 'Infrastructure',
+      icon: '&#9874;',
+      permission: 'landingzone:environment:read',
+      children: [
+        { label: 'Environments', icon: '', route: '/environments', permission: 'landingzone:environment:read' },
+        { label: 'Components', icon: '', route: '/components', permission: 'component:definition:read' },
       ],
     },
     {
@@ -491,7 +490,6 @@ export class SidebarComponent {
         { label: 'Impersonation', icon: '', route: '/settings/impersonation', permission: 'impersonation:config:manage' },
         { label: 'Notifications', icon: '', route: '/settings/notifications', permission: 'notification:preference:manage' },
         { label: 'Webhooks', icon: '', route: '/settings/webhooks', permission: 'notification:webhook:manage' },
-        { label: 'Currency & Rates', icon: '', route: '/settings/currency', permission: 'settings:currency:read' },
       ],
     },
   ];
@@ -529,16 +527,25 @@ export class SidebarComponent {
     return this.permissionCheck.hasPermission(key);
   }
 
+  private providerKey(label: string): string {
+    return `provider:${label}`;
+  }
+
   toggleProviderGroup(label: string): void {
+    const key = this.providerKey(label);
     const current = this.expandedGroups();
     const next = new Set(current);
-    if (next.has(label)) {
-      next.delete(label);
+    if (next.has(key)) {
+      next.delete(key);
     } else {
-      next.add(label);
+      next.add(key);
     }
     this.expandedGroups.set(next);
     this.saveExpandedGroups();
+  }
+
+  isProviderExpanded(label: string): boolean {
+    return this.expandedGroups().has(this.providerKey(label));
   }
 
   toggleGroup(label: string): void {
@@ -560,6 +567,10 @@ export class SidebarComponent {
 
   isActiveGroup(label: string): boolean {
     return this.activeGroup() === label;
+  }
+
+  isActiveProviderGroup(label: string): boolean {
+    return this.activeGroup() === this.providerKey(label);
   }
 
   private loadExpandedGroups(): void {
@@ -587,13 +598,14 @@ export class SidebarComponent {
     // Check provider items first (includes collapsible groups)
     for (const item of this.providerItems) {
       if (item.children) {
+        const key = this.providerKey(item.label);
         for (const child of item.children) {
           if (child.route && this.isRouteMatch(url, child.route, !!child.exact)) {
-            this.activeGroup.set(item.label);
+            this.activeGroup.set(key);
             const current = this.expandedGroups();
-            if (!current.has(item.label)) {
+            if (!current.has(key)) {
               const next = new Set(current);
-              next.add(item.label);
+              next.add(key);
               this.expandedGroups.set(next);
               this.saveExpandedGroups();
             }

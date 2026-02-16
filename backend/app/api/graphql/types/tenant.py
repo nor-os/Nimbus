@@ -92,6 +92,9 @@ class TenantCreateInput:
     parent_id: uuid.UUID | None = None
     contact_email: str | None = None
     description: str | None = None
+    invoice_currency: str | None = None
+    primary_region_id: uuid.UUID | None = None
+    provider_id_for_backend: uuid.UUID | None = None
 
 
 @strawberry.input

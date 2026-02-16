@@ -766,7 +766,7 @@ export class ServiceFormComponent implements OnInit {
       next: (cloned) => {
         this.lifecycleActionInProgress.set(false);
         this.toastService.success(`Cloned as "${cloned.name}"`);
-        this.router.navigate(['/catalog', 'services', cloned.id, 'edit']);
+        this.router.navigate(['/catalog', 'services', cloned.id]);
       },
       error: (err) => {
         this.lifecycleActionInProgress.set(false);

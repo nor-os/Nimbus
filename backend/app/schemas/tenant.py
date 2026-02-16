@@ -17,6 +17,9 @@ class TenantCreate(BaseModel):
     contact_email: EmailStr | None = None
     billing_info: dict | None = None
     description: str | None = None
+    invoice_currency: str | None = Field(None, min_length=3, max_length=3)
+    primary_region_id: uuid.UUID | None = None
+    provider_id_for_backend: uuid.UUID | None = None
 
 
 class TenantUpdate(BaseModel):

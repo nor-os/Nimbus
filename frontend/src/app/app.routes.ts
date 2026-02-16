@@ -785,6 +785,150 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'provider/resolvers',
+    canActivate: [authGuard, permissionGuard('component:definition:create')],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/components/resolver-definitions.component').then(
+            (m) => m.ResolverDefinitionsComponent,
+          ),
+        data: { breadcrumb: [{ label: 'Provider', path: '/tenants' }, 'Resolvers'] },
+      },
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('./features/components/resolver-editor.component').then(
+            (m) => m.ResolverEditorComponent,
+          ),
+        data: { breadcrumb: [{ label: 'Resolvers', path: '/provider/resolvers' }, 'New'] },
+      },
+      {
+        path: ':id/edit',
+        loadComponent: () =>
+          import('./features/components/resolver-editor.component').then(
+            (m) => m.ResolverEditorComponent,
+          ),
+        data: { breadcrumb: [{ label: 'Resolvers', path: '/provider/resolvers' }, 'Edit'] },
+      },
+    ],
+  },
+  {
+    path: 'provider/components',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/components/component-catalog.component').then(
+            (m) => m.ComponentCatalogComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:create')],
+        data: { breadcrumb: [{ label: 'Provider', path: '/tenants' }, 'Components'], mode: 'provider' },
+      },
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('./features/components/component-editor.component').then(
+            (m) => m.ComponentEditorComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:create')],
+        data: { breadcrumb: [{ label: 'Provider Components', path: '/provider/components' }, 'New'], mode: 'provider' },
+      },
+      {
+        path: ':id/edit',
+        loadComponent: () =>
+          import('./features/components/component-editor.component').then(
+            (m) => m.ComponentEditorComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:update')],
+        data: { breadcrumb: [{ label: 'Provider Components', path: '/provider/components' }, 'Edit'], mode: 'provider' },
+      },
+    ],
+  },
+  {
+    path: 'components',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/components/component-catalog.component').then(
+            (m) => m.ComponentCatalogComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:read')],
+        data: { breadcrumb: 'Components', mode: 'tenant' },
+      },
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('./features/components/component-editor.component').then(
+            (m) => m.ComponentEditorComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:create')],
+        data: { breadcrumb: [{ label: 'Components', path: '/components' }, 'New'], mode: 'tenant' },
+      },
+      {
+        path: ':id/edit',
+        loadComponent: () =>
+          import('./features/components/component-editor.component').then(
+            (m) => m.ComponentEditorComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:update')],
+        data: { breadcrumb: [{ label: 'Components', path: '/components' }, 'Edit'], mode: 'tenant' },
+      },
+    ],
+  },
+  {
+    path: 'landing-zones',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/landing-zones/landing-zone-list.component').then(
+            (m) => m.LandingZoneListComponent,
+          ),
+        canActivate: [permissionGuard('landingzone:zone:read')],
+        data: { breadcrumb: 'Landing Zones' },
+      },
+      {
+        path: ':id',
+        loadComponent: () =>
+          import('./features/landing-zones/landing-zone-detail.component').then(
+            (m) => m.LandingZoneDetailComponent,
+          ),
+        canActivate: [permissionGuard('landingzone:zone:read')],
+        data: { breadcrumb: [{ label: 'Landing Zones', path: '/landing-zones' }, 'Designer'] },
+      },
+    ],
+  },
+  {
+    path: 'environments',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/environments/environment-list.component').then(
+            (m) => m.EnvironmentListComponent,
+          ),
+        canActivate: [permissionGuard('landingzone:environment:read')],
+        data: { breadcrumb: 'Environments' },
+      },
+      {
+        path: ':id',
+        loadComponent: () =>
+          import('./features/environments/environment-detail.component').then(
+            (m) => m.EnvironmentDetailComponent,
+          ),
+        canActivate: [permissionGuard('landingzone:environment:read')],
+        data: { breadcrumb: [{ label: 'Environments', path: '/environments' }, 'Details'] },
+      },
+    ],
+  },
+  {
     path: 'architecture',
     canActivate: [authGuard],
     children: [

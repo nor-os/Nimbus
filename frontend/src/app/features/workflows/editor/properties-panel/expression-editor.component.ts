@@ -1,26 +1,25 @@
 /**
- * Overview: Expression editor — text input with variable autocomplete and inline validation.
+ * Overview: Expression editor — Monaco-powered code input with variable hint chips.
  * Architecture: Expression input component for node properties (Section 3.2)
- * Dependencies: @angular/core, @angular/common, @angular/forms
- * Concepts: Expression editing, variable autocomplete, syntax highlighting
+ * Dependencies: @angular/core, @angular/common, MonacoEditorComponent
+ * Concepts: Expression editing, variable autocomplete, Monaco integration
  */
 import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { MonacoEditorComponent } from '@shared/components/monaco-editor/monaco-editor.component';
 
 @Component({
   selector: 'nimbus-expression-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, MonacoEditorComponent],
   template: `
     <div class="expression-editor">
-      <textarea
-        class="expression-input"
-        [ngModel]="value"
-        (ngModelChange)="onValueChange($event)"
-        [placeholder]="placeholder"
-        [rows]="rows"
-      ></textarea>
+      <nimbus-monaco-editor
+        [code]="value"
+        [language]="language"
+        [height]="height"
+        (codeChange)="onValueChange($event)"
+      ></nimbus-monaco-editor>
       <div class="expression-hints">
         <span class="hint-chip" (click)="insertText('$input.')">$input</span>
         <span class="hint-chip" (click)="insertText('$vars.')">$vars</span>
@@ -34,12 +33,6 @@ import { FormsModule } from '@angular/forms';
   `,
   styles: [`
     .expression-editor { display: flex; flex-direction: column; gap: 4px; }
-    .expression-input {
-      width: 100%; padding: 6px 8px; background: #f8fafc; border: 1px solid #e2e8f0;
-      border-radius: 6px; color: #1e293b; font-family: 'JetBrains Mono', monospace;
-      font-size: 0.75rem; outline: none; resize: vertical;
-    }
-    .expression-input:focus { border-color: #3b82f6; }
     .expression-hints { display: flex; gap: 4px; flex-wrap: wrap; }
     .hint-chip {
       padding: 2px 6px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px;
@@ -56,6 +49,8 @@ export class ExpressionEditorComponent {
   @Input() value = '';
   @Input() placeholder = 'Enter expression...';
   @Input() rows = 2;
+  @Input() language: 'typescript' | 'python' | 'json' | 'shell' = 'typescript';
+  @Input() height = '120px';
   @Output() valueChange = new EventEmitter<string>();
 
   error = signal<string | null>(null);
@@ -67,7 +62,7 @@ export class ExpressionEditorComponent {
   }
 
   insertText(text: string): void {
-    this.value += text;
+    this.value = (this.value || '') + text;
     this.valueChange.emit(this.value);
   }
 }

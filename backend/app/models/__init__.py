@@ -11,6 +11,7 @@ from app.models.approval_policy import ApprovalPolicy
 from app.models.approval_request import ApprovalRequest
 from app.models.approval_step import ApprovalStep
 from app.models.audit import AuditLog, CategoryRetentionOverride, RedactionRule, RetentionPolicy, SavedQuery
+from app.models.component import Component, ComponentGovernance, ComponentOperation, ComponentVersion
 from app.models.cmdb import (
     ActivityDefinition,
     ActivityTemplate,
@@ -56,6 +57,10 @@ from app.models.cmdb import (
 from app.models.cloud_backend import CloudBackend, CloudBackendIAMMapping
 from app.models.compartment import Compartment
 from app.models.currency_exchange_rate import CurrencyExchangeRate
+from app.models.deployment import Deployment, DeploymentCI
+from app.models.environment import EnvironmentTemplate, TenantEnvironment
+from app.models.ipam import AddressAllocation, AddressSpace, IpReservation
+from app.models.landing_zone import LandingZone, LandingZoneRegion, LandingZoneTagPolicy
 from app.models.domain_mapping import DomainMapping
 from app.models.group import Group
 from app.models.group_membership import GroupMembership
@@ -63,6 +68,7 @@ from app.models.group_role import GroupRole
 from app.models.identity_provider import IdentityProvider
 from app.models.idp_claim_mapping import IdPClaimMapping
 from app.models.impersonation import ImpersonationSession
+from app.models.naming_sequence import NamingSequence
 from app.models.notification import Notification
 from app.models.notification_preference import NotificationPreference
 from app.models.notification_template import NotificationTemplate
@@ -71,6 +77,7 @@ from app.models.permission import Permission
 from app.models.policy_library import PolicyLibraryEntry
 from app.models.permission_override import PermissionOverride
 from app.models.provider import Provider
+from app.models.resolver import Resolver, ResolverConfiguration, ResolverProviderCompatibility
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.scim_token import SCIMToken
@@ -98,6 +105,8 @@ from app.models.workflow_execution import WorkflowExecution, WorkflowNodeExecuti
 
 __all__ = [
     "ABACPolicy",
+    "AddressAllocation",
+    "AddressSpace",
     "ArchitectureTopology",
     "ActivityDefinition",
     "ActivityTemplate",
@@ -114,12 +123,19 @@ __all__ = [
     "CIRelationship",
     "CISnapshot",
     "CITemplate",
+    "Component",
+    "ComponentGovernance",
+    "ComponentOperation",
+    "ComponentVersion",
     "Compartment",
     "CurrencyExchangeRate",
     "ConfigurationItem",
+    "Deployment",
+    "DeploymentCI",
     "ConsumptionRecord",
     "DeliveryRegion",
     "DomainMapping",
+    "EnvironmentTemplate",
     "EstimationLineItem",
     "Group",
     "GroupMembership",
@@ -128,6 +144,11 @@ __all__ = [
     "IdentityProvider",
     "ImpersonationSession",
     "InternalRateCard",
+    "IpReservation",
+    "LandingZone",
+    "LandingZoneRegion",
+    "LandingZoneTagPolicy",
+    "NamingSequence",
     "Notification",
     "NotificationPreference",
     "NotificationTemplate",
@@ -143,6 +164,9 @@ __all__ = [
     "PriceListTemplateItem",
     "Provider",
     "ProviderSku",
+    "Resolver",
+    "ResolverConfiguration",
+    "ResolverProviderCompatibility",
     "RedactionRule",
     "RegionAcceptanceTemplate",
     "RegionAcceptanceTemplateRule",
@@ -176,6 +200,7 @@ __all__ = [
     "SystemConfig",
     "Tenant",
     "TenantCatalogPin",
+    "TenantEnvironment",
     "TenantPriceListPin",
     "TenantQuota",
     "TenantRegionAcceptance",

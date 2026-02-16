@@ -149,6 +149,7 @@ class SemanticService:
         self,
         category: str | None = None,
         is_abstract: bool | None = None,
+        infrastructure_only: bool | None = None,
         search: str | None = None,
         offset: int = 0,
         limit: int = 50,
@@ -161,6 +162,16 @@ class SemanticService:
                 SemanticResourceType.category_id.in_(
                     select(SemanticCategory.id).where(
                         SemanticCategory.name == category,
+                        SemanticCategory.deleted_at.is_(None),
+                    )
+                )
+            )
+
+        if infrastructure_only:
+            conditions.append(
+                SemanticResourceType.category_id.in_(
+                    select(SemanticCategory.id).where(
+                        SemanticCategory.is_infrastructure.is_(True),
                         SemanticCategory.deleted_at.is_(None),
                     )
                 )

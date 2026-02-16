@@ -32,7 +32,7 @@ import { ProviderDialogComponent } from '../dialogs/provider-dialog.component';
 import { RelationshipKindDialogComponent } from '../dialogs/relationship-kind-dialog.component';
 import { SearchableSelectComponent, SelectOption } from '@shared/components/searchable-select/searchable-select.component';
 
-type ViewMode = 'catalog' | 'relationships' | 'constraints';
+type ViewMode = 'catalog' | 'relationships' | 'constraints' | 'providers';
 
 @Component({
   selector: 'nimbus-semantic-explorer',
@@ -52,6 +52,9 @@ type ViewMode = 'catalog' | 'relationships' | 'constraints';
             }
             @if (activeView() === 'relationships') {
               <button class="btn btn-primary" (click)="openRelationshipKindDialog()">+ Relationship</button>
+            }
+            @if (activeView() === 'providers') {
+              <button class="btn btn-primary" (click)="openProviderDialog()">+ Provider</button>
             }
           </div>
         </div>
@@ -238,6 +241,41 @@ type ViewMode = 'catalog' | 'relationships' | 'constraints';
               </div>
             }
 
+            <!-- PROVIDERS VIEW -->
+            @if (activeView() === 'providers') {
+              @if (providers().length === 0) {
+                <div class="empty-state">No providers configured yet.</div>
+              } @else {
+                <div class="provider-grid">
+                  @for (p of providers(); track p.id) {
+                    <div class="provider-card">
+                      <div class="provider-card-top">
+                        @if (p.icon) {
+                          <span class="provider-icon">{{ p.icon }}</span>
+                        }
+                        <span class="provider-card-name">{{ p.displayName }}</span>
+                        <span class="badge ptype-{{ p.providerType }}">{{ p.providerType }}</span>
+                        @if (p.isSystem) { <span class="badge system">System</span> }
+                      </div>
+                      @if (p.description) {
+                        <p class="card-desc">{{ p.description }}</p>
+                      }
+                      <div class="card-meta">
+                        <span>{{ p.resourceTypeCount }} resource types</span>
+                        <span class="mono">{{ p.name }}</span>
+                      </div>
+                      <div class="card-actions" *nimbusHasPermission="'semantic:type:manage'">
+                        <button class="icon-btn" (click)="editProvider(p)" title="Edit">&#9998;</button>
+                        @if (!p.isSystem) {
+                          <button class="icon-btn danger" (click)="deleteProvider(p)" title="Delete">&#10005;</button>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+            }
+
           </div>
 
           <!-- Side detail panel -->
@@ -373,6 +411,7 @@ type ViewMode = 'catalog' | 'relationships' | 'constraints';
     .breadcrumb-sep { color: #94a3b8; }
     .breadcrumb-current { font-weight: 600; color: #1e293b; }
 
+    .provider-icon { font-size: 1.25rem; }
     .badge.ptype-cloud { background: #dbeafe; color: #1d4ed8; }
     .badge.ptype-on_prem { background: #dcfce7; color: #16a34a; }
     .badge.ptype-saas { background: #f3e8ff; color: #7c3aed; }
@@ -520,6 +559,7 @@ export class SemanticExplorerComponent implements OnInit {
     catalog: 'Semantic Catalog',
     relationships: 'Relationship Kinds',
     constraints: 'Constraints Matrix',
+    providers: 'Providers',
   };
 
   pageTitle = computed(() => this.viewTitles[this.activeView()] || 'Semantic Explorer');
