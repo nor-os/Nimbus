@@ -191,7 +191,7 @@ def _seed_data() -> None:
     """Seed categories, types, relationship kinds, and provider mappings."""
     from app.services.semantic.registry import (
         CATEGORIES,
-        PROVIDER_MAPPINGS,
+        PROVIDER_RESOURCE_MAPPINGS,
         RELATIONSHIP_KINDS,
         SEMANTIC_TYPES,
     )
@@ -292,7 +292,7 @@ def _seed_data() -> None:
         )
 
     # Seed provider mappings
-    for mapping in PROVIDER_MAPPINGS:
+    for mapping in PROVIDER_RESOURCE_MAPPINGS:
         conn.execute(
             sa.text(
                 """
@@ -313,9 +313,9 @@ def _seed_data() -> None:
             ),
             {
                 "provider_name": mapping.provider_name,
-                "provider_resource_type": mapping.provider_resource_type,
+                "provider_resource_type": mapping.api_type,
                 "semantic_type_name": mapping.semantic_type_name,
-                "confidence": mapping.confidence,
+                "confidence": "HIGH",
                 "notes": mapping.display_name,
             },
         )
