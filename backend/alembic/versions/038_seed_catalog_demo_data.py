@@ -387,8 +387,8 @@ def _seed_process_assignments(conn, tid):
 def _insert_group(conn, tid, gid, name, display, desc):
     conn.execute(
         sa.text("""
-            INSERT INTO service_groups (id, tenant_id, name, display_name, description, is_active, created_at, updated_at)
-            VALUES (:id, :tid, :name, :display, :desc, true, now(), now())
+            INSERT INTO service_groups (id, tenant_id, name, display_name, description, status, created_at, updated_at)
+            VALUES (:id, :tid, :name, :display, :desc, 'published', now(), now())
         """),
         {"id": gid, "tid": tid, "name": name, "display": display, "desc": desc},
     )
