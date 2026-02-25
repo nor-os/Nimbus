@@ -58,13 +58,10 @@ if [ -z "$NETWORK" ]; then
 fi
 ok "Using network: $NETWORK"
 
-# ── Resolve backend image ───────────────────────────────────────
-IMAGE=$(docker inspect nimbus-backend --format='{{.Config.Image}}' 2>/dev/null)
-if [ -z "$IMAGE" ]; then
-    error "Cannot determine backend image"
-    exit 1
-fi
-ok "Using image: $IMAGE"
+# ── Build fresh seed image ───────────────────────────────────────
+info "Building seed image from backend source..."
+docker build -t nimbus-seed-img "$SCRIPT_DIR/backend" -f "$SCRIPT_DIR/backend/Dockerfile" -q
+ok "Seed image built"
 
 # ── Run seeder ──────────────────────────────────────────────────
 info "Running demo data seeder..."
@@ -78,7 +75,7 @@ docker run --rm -it \
     -e NIMBUS_ADMIN_EMAIL="${ADMIN_EMAIL:-admin@nimbus.dev}" \
     -e NIMBUS_ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" \
     -e NIMBUS_ORG_NAME="${ORG_NAME:-Nimbus Demo}" \
-    "$IMAGE" \
+    nimbus-seed-img \
     python -m app.seed_demo
 
 echo ""
