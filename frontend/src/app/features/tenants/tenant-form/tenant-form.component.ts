@@ -7,10 +7,11 @@
  * Concepts: Multi-tenancy, reactive forms, 3-level hierarchy limit, wizard pattern
  */
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { forkJoin, map } from 'rxjs';
 import { TenantService } from '@core/services/tenant.service';
 import { TenantContextService } from '@core/services/tenant-context.service';
 import { SemanticService } from '@core/services/semantic.service';
@@ -312,8 +313,13 @@ export class TenantFormComponent implements OnInit {
     primaryRegionId: [''],
   });
 
+  private basicFormValid = toSignal(
+    this.basicForm.statusChanges.pipe(map(() => this.basicForm.valid)),
+    { initialValue: this.basicForm.valid },
+  );
+
   canProceed = computed(() => {
-    if (this.step() === 1) return this.basicForm.valid;
+    if (this.step() === 1) return this.basicFormValid() ?? false;
     return true;
   });
 

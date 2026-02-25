@@ -6,10 +6,12 @@ Concepts: Idempotent seeding, setup wizard automation, demo data population
 """
 
 import asyncio
-import importlib
+import importlib.util
 import logging
 import os
 import sys
+from pathlib import Path
+from types import ModuleType
 
 import httpx
 import sqlalchemy as sa
@@ -78,6 +80,21 @@ async def call_setup_wizard() -> bool:
 # the tenant we replay their seed logic via run_sync (same pattern
 # Alembic uses — asyncpg connection in sync mode, no psycopg2).
 
+# Resolve alembic/versions/ directory (relative to backend root)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent  # backend/
+_VERSIONS_DIR = _BACKEND_DIR / "alembic" / "versions"
+
+
+def _load_migration(filename: str) -> ModuleType:
+    """Load an Alembic migration file by filename (not a package import)."""
+    path = _VERSIONS_DIR / filename
+    spec = importlib.util.spec_from_file_location(filename.removesuffix(".py"), path)
+    if not spec or not spec.loader:
+        raise ImportError(f"Cannot load migration: {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 
 def _get_root_tenant_id(conn) -> str | None:
     row = conn.execute(
@@ -113,7 +130,7 @@ def _replay_025(conn, tid: str) -> None:
         logger.warning("Migration 025: staff profiles missing — skipping")
         return
 
-    m = importlib.import_module("alembic.versions.025_seed_catalog")
+    m = _load_migration("025_seed_catalog.py")
     m._seed_activity_templates(conn, tid, jr, eng, sr, con, sc, arch)
     m._seed_service_processes(conn, tid)
     m._seed_service_offerings(conn, tid)
@@ -131,7 +148,7 @@ def _replay_038(conn, tid: str) -> None:
         logger.info("Migration 038: %d service groups exist — skipping", count)
         return
 
-    m = importlib.import_module("alembic.versions.038_seed_catalog_demo_data")
+    m = _load_migration("038_seed_catalog_demo_data.py")
 
     # Backfill offerings if 025 didn't create them
     existing = conn.execute(
@@ -209,7 +226,7 @@ def _replay_039(conn, tid: str) -> None:
     ):
         ci[r[0]] = str(r[1])
 
-    m = importlib.import_module("alembic.versions.039_seed_cloud_backends_and_skus")
+    m = _load_migration("039_seed_cloud_backends_and_skus.py")
     m._seed_cloud_backends(conn, tid, providers)
     m._seed_provider_skus(conn, providers, ci)
     logger.info("Migration 039: cloud backends and SKUs seeded")
@@ -238,7 +255,7 @@ def _replay_084(conn, tid: str) -> None:
 
     mc = MigrationContext.configure(conn)
     with Operations.context(mc):
-        m = importlib.import_module("alembic.versions.084_seed_enterprise_demo_data")
+        m = _load_migration("084_seed_enterprise_demo_data.py")
         m.upgrade()
 
     logger.info("Migration 084: enterprise demo data seeded")
