@@ -21,48 +21,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "service_offerings",
-        sa.Column("minimum_amount", sa.Numeric(12, 4), nullable=True),
-    )
-    op.add_column(
-        "service_offerings",
-        sa.Column("minimum_currency", sa.String(3), server_default="EUR", nullable=True),
-    )
-    op.add_column(
-        "service_offerings",
-        sa.Column("minimum_period", sa.String(20), nullable=True),
-    )
-
-    # Backfill demo data with realistic minimums
-    op.execute("""
-        UPDATE service_offerings
-        SET minimum_amount = 200.0000, minimum_currency = 'EUR', minimum_period = 'monthly'
-        WHERE name = 'Virtual Machine Hosting' AND deleted_at IS NULL;
-    """)
-    op.execute("""
-        UPDATE service_offerings
-        SET minimum_amount = 300.0000, minimum_currency = 'EUR', minimum_period = 'monthly'
-        WHERE name = 'Managed Database' AND deleted_at IS NULL;
-    """)
-    op.execute("""
-        UPDATE service_offerings
-        SET minimum_amount = 10.0000, minimum_currency = 'EUR', minimum_period = 'monthly'
-        WHERE name = 'Block Storage' AND deleted_at IS NULL;
-    """)
-    op.execute("""
-        UPDATE service_offerings
-        SET minimum_amount = 500.0000, minimum_currency = 'EUR', minimum_period = 'monthly'
-        WHERE name = 'L2 Support' AND deleted_at IS NULL;
-    """)
-    op.execute("""
-        UPDATE service_offerings
-        SET minimum_amount = 25.0000, minimum_currency = 'EUR', minimum_period = 'monthly'
-        WHERE name = 'Network Monitoring' AND deleted_at IS NULL;
-    """)
+    # Columns already added by migration 033 (catalog redesign).
+    pass
 
 
 def downgrade() -> None:
-    op.drop_column("service_offerings", "minimum_period")
-    op.drop_column("service_offerings", "minimum_currency")
-    op.drop_column("service_offerings", "minimum_amount")
+    # Nothing to undo — columns managed by migration 033.
+    pass
