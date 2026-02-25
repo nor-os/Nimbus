@@ -37,7 +37,7 @@ DATABASE_URL = os.environ.get(
     "postgresql+asyncpg://nimbus:nimbus@localhost:5432/nimbus",
 )
 BACKEND_URL = os.environ.get("NIMBUS_BACKEND_URL", "http://localhost:8000")
-ADMIN_EMAIL = os.environ.get("NIMBUS_ADMIN_EMAIL", "admin@nimbus.local")
+ADMIN_EMAIL = os.environ.get("NIMBUS_ADMIN_EMAIL", "admin@nimbus.dev")
 ADMIN_PASSWORD = os.environ.get("NIMBUS_ADMIN_PASSWORD", "admin")
 ORG_NAME = os.environ.get("NIMBUS_ORG_NAME", "Nimbus Demo")
 

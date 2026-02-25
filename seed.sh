@@ -74,7 +74,7 @@ docker run --rm -it \
     --network "$NETWORK" \
     -e NIMBUS_DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER:-nimbus}:${POSTGRES_PASSWORD}@nimbus-postgres:5432/nimbus?ssl=disable" \
     -e NIMBUS_BACKEND_URL="http://nimbus-backend:8000" \
-    -e NIMBUS_ADMIN_EMAIL="${ADMIN_EMAIL:-admin@nimbus.local}" \
+    -e NIMBUS_ADMIN_EMAIL="${ADMIN_EMAIL:-admin@nimbus.dev}" \
     -e NIMBUS_ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" \
     -e NIMBUS_ORG_NAME="${ORG_NAME:-Nimbus Demo}" \
     "$IMAGE" \

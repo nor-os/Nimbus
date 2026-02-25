@@ -210,7 +210,7 @@ services:
     environment:
       NIMBUS_DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-nimbus}:${POSTGRES_PASSWORD}@postgres:5432/nimbus?ssl=disable"
       NIMBUS_BACKEND_URL: http://backend:8000
-      NIMBUS_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@nimbus.local}
+      NIMBUS_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@nimbus.dev}
       NIMBUS_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       NIMBUS_ORG_NAME: ${ORG_NAME:-Nimbus Demo}
     command: ["python", "-m", "app.seed_demo"]
