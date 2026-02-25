@@ -594,14 +594,14 @@ def _insert_price_list(conn, tid, plid, name, is_default, eff_from, region_id, s
     conn.execute(
         sa.text("""
             INSERT INTO price_lists
-                (id, tenant_id, name, is_default, effective_from, group_id,
+                (id, tenant_id, name, is_default, group_id,
                  version_major, version_minor, status, delivery_region_id,
                  created_at, updated_at)
-            VALUES (:id, :tid, :name, :is_default, :eff_from, :id,
+            VALUES (:id, :tid, :name, :is_default, :id,
                     1, 0, :status, :rid, now(), now())
         """),
         {"id": plid, "tid": tid, "name": name, "is_default": is_default,
-         "eff_from": eff_from, "rid": region_id, "status": status},
+         "rid": region_id, "status": status},
     )
 
 
