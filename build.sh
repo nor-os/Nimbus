@@ -101,6 +101,10 @@ deploy() {
     info "Starting application services..."
     docker compose -f "$COMPOSE_FILE" up -d backend worker temporal-ui frontend
     ok "All services started"
+
+    info "Seeding demo data..."
+    docker compose -f "$COMPOSE_FILE" up seed
+    ok "Demo data seeded"
 }
 
 # ── Status ───────────────────────────────────────────────────────

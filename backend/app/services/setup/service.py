@@ -51,6 +51,8 @@ class SetupService:
         if await self.is_setup_complete():
             raise SetupError("Setup has already been completed", "ALREADY_SETUP")
 
+        admin_email = admin_email.lower()
+
         # Create provider (organization)
         provider = Provider(name=organization_name)
         self.db.add(provider)

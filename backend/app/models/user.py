@@ -7,9 +7,9 @@ Concepts: Authentication, multi-tenancy, soft delete, SSO external identity
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy import ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base
 from app.models.base import IDMixin, SoftDeleteMixin, TimestampMixin
@@ -18,7 +18,12 @@ from app.models.base import IDMixin, SoftDeleteMixin, TimestampMixin
 class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "users"
     __table_args__ = (
-        Index("ix_users_email_active", "email", unique=True, postgresql_where="deleted_at IS NULL"),
+        Index(
+            "ix_users_email_active",
+            func.lower("email"),
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
@@ -33,6 +38,10 @@ class User(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         UUID(as_uuid=True), ForeignKey("identity_providers.id"), nullable=True
     )
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    @validates("email")
+    def _lowercase_email(self, _key: str, value: str) -> str:
+        return value.lower() if value else value
 
     provider: Mapped["Provider"] = relationship(back_populates="users")  # noqa: F821
     sessions: Mapped[list["Session"]] = relationship(back_populates="user")  # noqa: F821

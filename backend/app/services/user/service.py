@@ -115,9 +115,13 @@ class UserService:
         provider_id: str | None = None,
     ) -> User:
         """Create a new user and associate with the tenant."""
+        email = email.lower()
+
         # Check for existing user with same email (exclude soft-deleted)
         existing = await self.db.execute(
-            select(User).where(User.email == email, User.deleted_at.is_(None))
+            select(User).where(
+                func.lower(User.email) == email, User.deleted_at.is_(None)
+            )
         )
         if existing.scalar_one_or_none():
             raise UserError("User with this email already exists", "EMAIL_EXISTS")
@@ -276,9 +280,11 @@ class UserService:
                 await self.db.flush()
             return user, False
 
-        # Also check by email
+        # Also check by email (case-insensitive)
         result = await self.db.execute(
-            select(User).where(User.email == email, User.deleted_at.is_(None))
+            select(User).where(
+                func.lower(User.email) == email.lower(), User.deleted_at.is_(None)
+            )
         )
         user = result.scalar_one_or_none()
         if user:

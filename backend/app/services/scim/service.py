@@ -109,12 +109,16 @@ class SCIMService:
         if not email:
             raise SCIMError("userName or emails.value is required", 400, "invalidValue")
 
+        email = email.lower()
+
         # Validate email domain against tenant's configured domains
         await self._check_email_domain(email)
 
         # Check for existing user (exclude soft-deleted)
         existing = await self.db.execute(
-            select(User).where(User.email == email, User.deleted_at.is_(None))
+            select(User).where(
+                func.lower(User.email) == email, User.deleted_at.is_(None)
+            )
         )
         if existing.scalar_one_or_none():
             raise SCIMError("User already exists", 409, "uniqueness")

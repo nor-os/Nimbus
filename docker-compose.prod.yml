@@ -198,6 +198,26 @@ services:
     networks:
       - nimbus
 
+  # ── Demo Data Seeder (run once, then exit) ──────────────────────
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nimbus-seed
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NIMBUS_DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-nimbus}:${POSTGRES_PASSWORD}@postgres:5432/nimbus?ssl=disable"
+      NIMBUS_BACKEND_URL: http://backend:8000
+      NIMBUS_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@nimbus.local}
+      NIMBUS_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      NIMBUS_ORG_NAME: ${ORG_NAME:-Nimbus Demo}
+    command: ["python", "-m", "app.seed_demo"]
+    restart: "no"
+    networks:
+      - nimbus
+
   # ── Frontend (Angular + Nginx) ──────────────────────────────────
   frontend:
     build:
