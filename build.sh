@@ -1,12 +1,12 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Overview: Production build script for Nimbus.
 # Architecture: Validates prerequisites, builds Docker images, runs migrations.
 # Dependencies: Docker, Docker Compose, .env file
 # Concepts: Production deployment, container orchestration
 
-set -euo pipefail
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.prod.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
@@ -17,28 +17,28 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
-ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+info()  { printf "${BLUE}[INFO]${NC}  %s\n" "$*"; }
+ok()    { printf "${GREEN}[OK]${NC}    %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC}  %s\n" "$*"; }
+error() { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 
 # ── Prerequisites ────────────────────────────────────────────────
 check_prereqs() {
     info "Checking prerequisites..."
 
-    if ! command -v docker &>/dev/null; then
+    if ! command -v docker >/dev/null 2>&1; then
         error "Docker is not installed. Install from https://docs.docker.com/get-docker/"
         exit 1
     fi
     ok "Docker found: $(docker --version)"
 
-    if ! docker compose version &>/dev/null; then
+    if ! docker compose version >/dev/null 2>&1; then
         error "Docker Compose V2 is required. Update Docker or install the compose plugin."
         exit 1
     fi
     ok "Docker Compose found: $(docker compose version --short)"
 
-    if ! docker info &>/dev/null 2>&1; then
+    if ! docker info >/dev/null 2>&1; then
         error "Docker daemon is not running. Start Docker and try again."
         exit 1
     fi
@@ -59,12 +59,13 @@ check_env() {
 
     # Source .env to validate required vars
     set -a
-    source "$ENV_FILE"
+    . "$ENV_FILE"
     set +a
 
-    local missing=0
+    missing=0
     for var in POSTGRES_PASSWORD JWT_SECRET_KEY MINIO_ROOT_PASSWORD; do
-        if [ -z "${!var:-}" ]; then
+        eval val="\${$var:-}"
+        if [ -z "$val" ]; then
             error "Required variable $var is not set in .env"
             missing=1
         fi
@@ -129,7 +130,8 @@ main() {
     echo "================================================"
     echo ""
 
-    case "${1:-deploy}" in
+    cmd="${1:-deploy}"
+    case "$cmd" in
         build)
             check_prereqs
             check_env
@@ -151,7 +153,8 @@ main() {
             docker compose -f "$COMPOSE_FILE" ps
             ;;
         logs)
-            docker compose -f "$COMPOSE_FILE" logs -f "${@:2}"
+            shift
+            docker compose -f "$COMPOSE_FILE" logs -f "$@"
             ;;
         *)
             echo "Usage: $0 {build|deploy|down|status|logs [service...]}"
