@@ -555,7 +555,7 @@ def upgrade() -> None:
                      ip_version, status, created_at, updated_at)
                 VALUES (:id, :lz_id, :rid, :name, :desc, :cidr,
                         4, 'ACTIVE', now(), now())
-                ON CONFLICT ON CONSTRAINT uq_addr_space_lz_cidr DO NOTHING
+                ON CONFLICT DO NOTHING
             """),
             {"id": as_id, "lz_id": lz_id, "rid": region_id,
              "name": name, "desc": desc, "cidr": cidr},
