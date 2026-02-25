@@ -407,10 +407,18 @@ def upgrade() -> None:
     # 5. Demo data seeding — realistic MSP catalog
     # ══════════════════════════════════════════════════════════════════
 
+    # Skip seeding if no root tenant exists yet (created at runtime via setup wizard)
+    conn = op.get_bind()
+    _root = conn.execute(
+        sa.text("SELECT id FROM tenants WHERE parent_id IS NULL AND deleted_at IS NULL LIMIT 1")
+    ).fetchone()
+    if not _root:
+        return
+
     # ── 5a. Service Offerings (6 items) ──────────────────────────────
     op.execute("""
         WITH root AS (
-            SELECT id FROM tenants WHERE slug = 'root' LIMIT 1
+            SELECT id FROM tenants WHERE parent_id IS NULL AND deleted_at IS NULL LIMIT 1
         )
         INSERT INTO service_offerings
             (id, tenant_id, name, description, category, measuring_unit,
@@ -719,7 +727,7 @@ def upgrade() -> None:
     # ── 5j. Tenant Minimum Charges (2 items for root tenant) ─────────
     op.execute("""
         WITH root AS (
-            SELECT id FROM tenants WHERE slug = 'root' LIMIT 1
+            SELECT id FROM tenants WHERE parent_id IS NULL AND deleted_at IS NULL LIMIT 1
         )
         INSERT INTO tenant_minimum_charges
             (id, tenant_id, category, minimum_amount, currency,
