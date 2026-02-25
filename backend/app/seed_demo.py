@@ -1,16 +1,18 @@
 """
-Overview: Standalone demo data seeder — runs setup wizard + runtime seeders.
+Overview: Standalone demo data seeder — runs setup wizard + runtime seeders + migration seeds.
 Architecture: Called as a one-shot container after migrations and backend are up.
-Dependencies: httpx, sqlalchemy, app.services (template, cmdb, workflow seeders)
+Dependencies: httpx, sqlalchemy, app.services, alembic.versions (migration seed helpers)
 Concepts: Idempotent seeding, setup wizard automation, demo data population
 """
 
 import asyncio
+import importlib
 import logging
 import os
 import sys
 
 import httpx
+import sqlalchemy as sa
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -70,6 +72,210 @@ async def call_setup_wizard() -> bool:
     sys.exit(1)
 
 
+# ── Migration seed replay ──────────────────────────────────────
+# Migrations 025, 038, 039, 084 silently skip when root tenant
+# doesn't exist at migration time. After the setup wizard creates
+# the tenant we replay their seed logic via run_sync (same pattern
+# Alembic uses — asyncpg connection in sync mode, no psycopg2).
+
+
+def _get_root_tenant_id(conn) -> str | None:
+    row = conn.execute(
+        sa.text("SELECT id FROM tenants WHERE parent_id IS NULL AND deleted_at IS NULL LIMIT 1")
+    ).fetchone()
+    return str(row[0]) if row else None
+
+
+def _replay_025(conn, tid: str) -> None:
+    """Activity templates, service processes, offerings, process assignments."""
+    count = conn.execute(
+        sa.text("SELECT count(*) FROM activity_templates WHERE tenant_id = :tid AND deleted_at IS NULL"),
+        {"tid": tid},
+    ).scalar()
+    if count and count > 0:
+        logger.info("Migration 025: %d activity templates exist — skipping", count)
+        return
+
+    profiles = {}
+    for r in conn.execute(
+        sa.text("SELECT name, id FROM staff_profiles WHERE is_system = true AND deleted_at IS NULL")
+    ):
+        profiles[r[0]] = str(r[1])
+
+    jr = profiles.get("junior_engineer")
+    eng = profiles.get("engineer")
+    sr = profiles.get("senior_engineer")
+    con = profiles.get("consultant")
+    sc = profiles.get("senior_consultant")
+    arch = profiles.get("architect")
+
+    if not all([jr, eng, sr, con, sc, arch]):
+        logger.warning("Migration 025: staff profiles missing — skipping")
+        return
+
+    m = importlib.import_module("alembic.versions.025_seed_catalog")
+    m._seed_activity_templates(conn, tid, jr, eng, sr, con, sc, arch)
+    m._seed_service_processes(conn, tid)
+    m._seed_service_offerings(conn, tid)
+    m._seed_process_assignments(conn, tid)
+    logger.info("Migration 025: activities, processes, offerings seeded")
+
+
+def _replay_038(conn, tid: str) -> None:
+    """Service groups, catalogs, rate cards, price lists."""
+    count = conn.execute(
+        sa.text("SELECT count(*) FROM service_groups WHERE tenant_id = :tid AND deleted_at IS NULL"),
+        {"tid": tid},
+    ).scalar()
+    if count and count > 0:
+        logger.info("Migration 038: %d service groups exist — skipping", count)
+        return
+
+    m = importlib.import_module("alembic.versions.038_seed_catalog_demo_data")
+
+    # Backfill offerings if 025 didn't create them
+    existing = conn.execute(
+        sa.text("SELECT count(*) FROM service_offerings WHERE tenant_id = :tid AND deleted_at IS NULL"),
+        {"tid": tid},
+    ).scalar()
+    if not existing:
+        m._seed_service_offerings(conn, tid)
+        m._seed_process_assignments(conn, tid)
+
+    # Resolve IDs by name
+    offerings = {}
+    for r in conn.execute(
+        sa.text("SELECT name, id FROM service_offerings WHERE tenant_id = :tid AND deleted_at IS NULL"),
+        {"tid": tid},
+    ):
+        offerings[r[0]] = str(r[1])
+    if not offerings:
+        logger.warning("Migration 038: no offerings — skipping")
+        return
+
+    regions = {}
+    for r in conn.execute(
+        sa.text("SELECT code, id FROM delivery_regions WHERE is_system = true AND deleted_at IS NULL")
+    ):
+        regions[r[0]] = str(r[1])
+
+    profiles = {}
+    for r in conn.execute(
+        sa.text("SELECT name, id FROM staff_profiles WHERE is_system = true AND deleted_at IS NULL")
+    ):
+        profiles[r[0]] = str(r[1])
+
+    activity_defs = {}
+    for r in conn.execute(
+        sa.text("""
+            SELECT ad.name, ad.id
+            FROM activity_definitions ad
+            JOIN activity_templates at ON ad.template_id = at.id
+            WHERE at.tenant_id = :tid AND ad.deleted_at IS NULL AND at.deleted_at IS NULL
+        """),
+        {"tid": tid},
+    ):
+        activity_defs[r[0]] = str(r[1])
+
+    m._seed_service_groups(conn, tid, offerings)
+    m._seed_service_catalogs(conn, tid, offerings)
+    m._seed_rate_cards(conn, tid, profiles, regions)
+    m._seed_price_lists(conn, tid, offerings, activity_defs, regions)
+    logger.info("Migration 038: groups, catalogs, rate cards, price lists seeded")
+
+
+def _replay_039(conn, tid: str) -> None:
+    """Cloud backends and provider SKUs."""
+    count = conn.execute(
+        sa.text("SELECT count(*) FROM cloud_backends WHERE tenant_id = :tid AND deleted_at IS NULL"),
+        {"tid": tid},
+    ).scalar()
+    if count and count > 0:
+        logger.info("Migration 039: %d cloud backends exist — skipping", count)
+        return
+
+    providers = {}
+    for r in conn.execute(
+        sa.text("SELECT name, id FROM semantic_providers WHERE deleted_at IS NULL")
+    ):
+        providers[r[0]] = str(r[1])
+    if len(providers) < 5:
+        logger.warning("Migration 039: fewer than 5 providers — skipping")
+        return
+
+    ci = {}
+    for r in conn.execute(
+        sa.text("SELECT name, id FROM ci_classes WHERE is_system = true AND deleted_at IS NULL")
+    ):
+        ci[r[0]] = str(r[1])
+
+    m = importlib.import_module("alembic.versions.039_seed_cloud_backends_and_skus")
+    m._seed_cloud_backends(conn, tid, providers)
+    m._seed_provider_skus(conn, providers, ci)
+    logger.info("Migration 039: cloud backends and SKUs seeded")
+
+
+def _replay_084(conn, tid: str) -> None:
+    """Enterprise demo data (regions, landing zones, environments, address spaces).
+
+    Migration 084 has all logic inline (no helper functions) and uses ON CONFLICT
+    DO NOTHING throughout. We call upgrade() via an Alembic Operations context.
+    """
+    count = conn.execute(
+        sa.text("""
+            SELECT count(*) FROM backend_regions br
+            JOIN cloud_backends cb ON br.backend_id = cb.id
+            WHERE cb.tenant_id = :tid AND br.deleted_at IS NULL
+        """),
+        {"tid": tid},
+    ).scalar()
+    if count and count > 0:
+        logger.info("Migration 084: %d backend regions exist — skipping", count)
+        return
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    mc = MigrationContext.configure(conn)
+    with Operations.context(mc):
+        m = importlib.import_module("alembic.versions.084_seed_enterprise_demo_data")
+        m.upgrade()
+
+    logger.info("Migration 084: enterprise demo data seeded")
+
+
+def _do_replay_seeds(conn) -> None:
+    """Synchronous callback for run_sync — replays all skipped migration seeds."""
+    tid = _get_root_tenant_id(conn)
+    if not tid:
+        logger.warning("No root tenant — skipping migration seed replay")
+        return
+
+    logger.info("Root tenant: %s", tid)
+    _replay_025(conn, tid)
+    _replay_038(conn, tid)
+    _replay_039(conn, tid)
+    _replay_084(conn, tid)
+    logger.info("Migration seed replay done")
+
+
+async def replay_migration_seeds() -> None:
+    """Re-run seed migrations that were skipped because root tenant didn't exist yet.
+
+    Uses run_sync (same pattern as Alembic's env.py) so we can call sync migration
+    code through the asyncpg connection without needing psycopg2.
+    """
+    engine = create_async_engine(DATABASE_URL, echo=False)
+    async with engine.connect() as conn:
+        await conn.run_sync(_do_replay_seeds)
+        await conn.commit()
+    await engine.dispose()
+    logger.info("Migration seed replay committed")
+
+
+# ── Runtime seeders (async) ────────────────────────────────────
+
+
 async def seed_runtime_data() -> None:
     """Connect to the DB and run runtime seeders that need a session."""
     engine = create_async_engine(DATABASE_URL, echo=False)
@@ -79,7 +285,6 @@ async def seed_runtime_data() -> None:
 
     async with session_factory() as db:
         try:
-            # Find root tenant (parent_id IS NULL, not deleted)
             result = await db.execute(
                 select(Tenant).where(
                     Tenant.parent_id.is_(None),
@@ -91,7 +296,6 @@ async def seed_runtime_data() -> None:
                 logger.warning("No root tenant found — skipping runtime seeders")
                 return
 
-            # Find admin user
             result = await db.execute(
                 select(User).where(
                     func.lower(User.email) == ADMIN_EMAIL.lower(),
@@ -143,6 +347,7 @@ async def main() -> None:
     logger.info("Organization: %s", ORG_NAME)
 
     await call_setup_wizard()
+    await replay_migration_seeds()
     await seed_runtime_data()
 
     logger.info("=" * 50)
