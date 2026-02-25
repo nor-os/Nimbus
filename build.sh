@@ -95,7 +95,7 @@ deploy() {
     sleep 5
 
     info "Running database migrations..."
-    docker compose -f "$COMPOSE_FILE" run --rm migrations
+    docker compose -f "$COMPOSE_FILE" up migrations
     ok "Migrations complete"
 
     info "Starting application services..."
