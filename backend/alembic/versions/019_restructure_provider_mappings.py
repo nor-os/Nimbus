@@ -253,7 +253,7 @@ def _migrate_data() -> None:
     rows = conn.execute(
         sa.text(
             """
-            SELECT provider_name, provider_resource_type, display_name,
+            SELECT provider_name, provider_resource_type,
                    semantic_type_id, notes, is_system
             FROM semantic_provider_mappings
             WHERE deleted_at IS NULL
@@ -264,10 +264,10 @@ def _migrate_data() -> None:
     for row in rows:
         provider_name = row[0]
         api_type = row[1]
-        display_name = row[2] or api_type
-        semantic_type_id = row[3]
-        notes = row[4]
-        is_system = row[5]
+        display_name = api_type
+        semantic_type_id = row[2]
+        notes = row[3]
+        is_system = row[4]
 
         # Ensure provider exists (handles custom providers not in seed list)
         conn.execute(
