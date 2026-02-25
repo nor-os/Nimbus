@@ -40,6 +40,7 @@ COPY --from=builder /app/alembic.ini ./alembic.ini
 COPY --from=builder /app/pyproject.toml ./pyproject.toml
 
 ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
