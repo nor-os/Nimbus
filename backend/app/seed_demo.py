@@ -261,6 +261,37 @@ def _replay_084(conn, tid: str) -> None:
     logger.info("Migration 084: enterprise demo data seeded")
 
 
+def _replay_components(conn) -> None:
+    """Component seeds (065, 066, 068, 073) — skip when users don't exist at migration time.
+
+    All four use conn = op.get_bind() with built-in skip logic (no users/providers → return).
+    We replay them via Alembic Operations context so op.get_bind() works.
+    """
+    count = conn.execute(
+        sa.text("SELECT count(*) FROM components WHERE is_system = true")
+    ).scalar()
+    if count and count > 0:
+        logger.info("Components: %d system components exist — skipping", count)
+        return
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    mc = MigrationContext.configure(conn)
+    with Operations.context(mc):
+        for filename in [
+            "065_seed_example_vm_component.py",
+            "066_update_and_add_example_components.py",
+            "068_seed_component_operations.py",
+            "073_seed_oci_flex_operations.py",
+        ]:
+            m = _load_migration(filename)
+            m.upgrade()
+            logger.info("Component seed %s replayed", filename.split("_", 1)[0])
+
+    logger.info("Component seeds done")
+
+
 def _do_replay_seeds(conn) -> None:
     """Synchronous callback for run_sync — replays all skipped migration seeds."""
     tid = _get_root_tenant_id(conn)
@@ -273,6 +304,7 @@ def _do_replay_seeds(conn) -> None:
     _replay_038(conn, tid)
     _replay_039(conn, tid)
     _replay_084(conn, tid)
+    _replay_components(conn)
     logger.info("Migration seed replay done")
 
 
