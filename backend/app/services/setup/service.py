@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.group import Group
 from app.models.group_role import GroupRole
-from app.models.identity_provider import IdPType, IdentityProvider
+
 from app.models.provider import Provider
 from app.models.role import Role
 from app.models.system_config import SystemConfig
@@ -82,17 +82,7 @@ class SetupService:
         self.db.add(user_tenant)
         await self.db.flush()
 
-        # Seed default Local Authentication provider for root tenant
-        local_idp = IdentityProvider(
-            tenant_id=root_tenant.id,
-            name="Local Authentication",
-            idp_type=IdPType.LOCAL,
-            is_enabled=True,
-            is_default=True,
-            config={},
-        )
-        self.db.add(local_idp)
-        await self.db.flush()
+        # Local IdP already created by TenantService.create_tenant()
 
         # Seed all global system roles (provider + tenant scoped)
         role_service = RoleService(self.db)
