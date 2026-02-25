@@ -28,8 +28,9 @@ ACTION_MIGRATION_MAP = {
     "EXPORT": ("data.export", "DATA"),
     "ARCHIVE": ("data.archive", "DATA"),
     "SYSTEM": ("system.config.update", "SYSTEM"),
-    "IMPERSONATE": ("security.impersonate.start", "SECURITY"),
-    "OVERRIDE": ("security.override", "SECURITY"),
+    # IMPERSONATE and OVERRIDE are excluded: they were added to the audit_action
+    # enum in migration 010 and can't be referenced until that transaction commits.
+    # No rows with those actions can exist yet on a fresh database.
 }
 
 BATCH_SIZE = 10000
