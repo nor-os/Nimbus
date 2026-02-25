@@ -164,12 +164,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    network_mode: "service:postgres"
     environment:
-      NIMBUS_DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-nimbus}:${POSTGRES_PASSWORD}@postgres:5432/nimbus?ssl=disable"
+      NIMBUS_DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-nimbus}:${POSTGRES_PASSWORD}@localhost:5432/nimbus?ssl=disable"
     command: ["alembic", "upgrade", "head"]
     restart: "no"
-    networks:
-      - nimbus
 
   # ── Temporal Worker ─────────────────────────────────────────────
   worker:
