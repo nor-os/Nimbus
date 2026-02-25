@@ -15,10 +15,10 @@ import { MonacoEditorComponent } from '@shared/components/monaco-editor/monaco-e
   template: `
     <div class="expression-editor">
       <nimbus-monaco-editor
-        [code]="value"
+        [value]="value"
         [language]="language"
         [height]="height"
-        (codeChange)="onValueChange($event)"
+        (valueChange)="onValueChange($event)"
       ></nimbus-monaco-editor>
       <div class="expression-hints">
         <span class="hint-chip" (click)="insertText('$input.')">$input</span>

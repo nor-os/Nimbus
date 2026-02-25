@@ -33,6 +33,9 @@ class LandingZone(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     backend_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cloud_backends.id"), nullable=False
     )
+    region_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("backend_regions.id"), nullable=True
+    )
     topology_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("architecture_topologies.id"), nullable=True
     )
@@ -61,10 +64,8 @@ class LandingZone(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     # Relationships
     tenant: Mapped["Tenant"] = relationship(lazy="joined", foreign_keys=[tenant_id])  # noqa: F821
     backend: Mapped["CloudBackend"] = relationship(lazy="joined")  # noqa: F821
+    region: Mapped["BackendRegion | None"] = relationship(lazy="joined")  # noqa: F821
     topology: Mapped["ArchitectureTopology | None"] = relationship(lazy="joined")  # noqa: F821
-    regions: Mapped[list["LandingZoneRegion"]] = relationship(
-        back_populates="landing_zone", lazy="selectin"
-    )
     tag_policies: Mapped[list["LandingZoneTagPolicy"]] = relationship(
         back_populates="landing_zone", lazy="selectin"
     )
@@ -73,26 +74,6 @@ class LandingZone(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         Index("ix_landing_zones_tenant", "tenant_id"),
         Index("ix_landing_zones_backend", "backend_id"),
         Index("ix_landing_zones_status", "tenant_id", "status"),
-    )
-
-
-class LandingZoneRegion(Base, IDMixin, TimestampMixin):
-    __tablename__ = "landing_zone_regions"
-
-    landing_zone_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("landing_zones.id"), nullable=False
-    )
-    region_identifier: Mapped[str] = mapped_column(String(100), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    is_dr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    settings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-
-    # Relationships
-    landing_zone: Mapped["LandingZone"] = relationship(back_populates="regions")
-
-    __table_args__ = (
-        Index("uq_lz_region", "landing_zone_id", "region_identifier", unique=True),
     )
 
 
@@ -111,7 +92,7 @@ class LandingZoneTagPolicy(Base, IDMixin, TimestampMixin):
     inherited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
     # Relationships
-    landing_zone: Mapped["LandingZone"] = relationship(back_populates="tag_policies")
+    landing_zone: Mapped["LandingZone"] = relationship(back_populates="tag_policies", lazy="joined")
 
     __table_args__ = (
         Index("uq_lz_tag_key", "landing_zone_id", "tag_key", unique=True),

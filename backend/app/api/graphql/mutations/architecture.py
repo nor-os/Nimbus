@@ -24,6 +24,15 @@ from app.api.graphql.types.architecture import (
 logger = logging.getLogger(__name__)
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class ArchitectureMutation:
 
@@ -39,22 +48,21 @@ class ArchitectureMutation:
             info, "architecture:topology:create", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            data = {
-                "name": input.name,
-                "description": input.description,
-                "graph": input.graph,
-                "tags": input.tags,
-                "is_template": input.is_template,
-            }
-            t = await svc.create(str(tenant_id), str(user_id), data)
-            await db.commit()
-            await db.refresh(t)
-            return _topology_to_type(t)
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        data = {
+            "name": input.name,
+            "description": input.description,
+            "graph": input.graph,
+            "tags": input.tags,
+            "is_template": input.is_template,
+        }
+        t = await svc.create(str(tenant_id), str(user_id), data)
+        await db.commit()
+        await db.refresh(t)
+        return _topology_to_type(t)
 
     @strawberry.mutation
     async def update_topology(
@@ -69,25 +77,24 @@ class ArchitectureMutation:
             info, "architecture:topology:update", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            data = {}
-            if input.name is not None:
-                data["name"] = input.name
-            if input.description is not None:
-                data["description"] = input.description
-            if input.graph is not None:
-                data["graph"] = input.graph
-            if input.tags is not None:
-                data["tags"] = input.tags
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        data = {}
+        if input.name is not None:
+            data["name"] = input.name
+        if input.description is not None:
+            data["description"] = input.description
+        if input.graph is not None:
+            data["graph"] = input.graph
+        if input.tags is not None:
+            data["tags"] = input.tags
 
-            t = await svc.update(str(tenant_id), str(topology_id), data)
-            await db.commit()
-            await db.refresh(t)
-            return _topology_to_type(t)
+        t = await svc.update(str(tenant_id), str(topology_id), data)
+        await db.commit()
+        await db.refresh(t)
+        return _topology_to_type(t)
 
     @strawberry.mutation
     async def publish_topology(
@@ -101,15 +108,14 @@ class ArchitectureMutation:
             info, "architecture:topology:publish", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            t = await svc.publish(str(tenant_id), str(topology_id), str(user_id))
-            await db.commit()
-            await db.refresh(t)
-            return _topology_to_type(t)
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        t = await svc.publish(str(tenant_id), str(topology_id), str(user_id))
+        await db.commit()
+        await db.refresh(t)
+        return _topology_to_type(t)
 
     @strawberry.mutation
     async def archive_topology(
@@ -123,15 +129,14 @@ class ArchitectureMutation:
             info, "architecture:topology:update", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            t = await svc.archive(str(tenant_id), str(topology_id))
-            await db.commit()
-            await db.refresh(t)
-            return _topology_to_type(t)
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        t = await svc.archive(str(tenant_id), str(topology_id))
+        await db.commit()
+        await db.refresh(t)
+        return _topology_to_type(t)
 
     @strawberry.mutation
     async def clone_topology(
@@ -145,15 +150,14 @@ class ArchitectureMutation:
             info, "architecture:topology:create", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            t = await svc.clone(str(tenant_id), str(topology_id), str(user_id))
-            await db.commit()
-            await db.refresh(t)
-            return _topology_to_type(t)
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        t = await svc.clone(str(tenant_id), str(topology_id), str(user_id))
+        await db.commit()
+        await db.refresh(t)
+        return _topology_to_type(t)
 
     @strawberry.mutation
     async def delete_topology(
@@ -167,14 +171,13 @@ class ArchitectureMutation:
             info, "architecture:topology:delete", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            result = await svc.delete(str(tenant_id), str(topology_id))
-            await db.commit()
-            return result
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        result = await svc.delete(str(tenant_id), str(topology_id))
+        await db.commit()
+        return result
 
     @strawberry.mutation
     async def export_topology(
@@ -189,17 +192,16 @@ class ArchitectureMutation:
             info, "architecture:topology:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            if format == "yaml":
-                yaml_str = await svc.export_yaml(str(tenant_id), str(topology_id))
-                return TopologyExportType(data=yaml_str, format="yaml")
-            else:
-                json_data = await svc.export_json(str(tenant_id), str(topology_id))
-                return TopologyExportType(data=json_data, format="json")
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        if format == "yaml":
+            yaml_str = await svc.export_yaml(str(tenant_id), str(topology_id))
+            return TopologyExportType(data=yaml_str, format="yaml")
+        else:
+            json_data = await svc.export_json(str(tenant_id), str(topology_id))
+            return TopologyExportType(data=json_data, format="json")
 
     @strawberry.mutation
     async def import_topology(
@@ -213,22 +215,21 @@ class ArchitectureMutation:
             info, "architecture:topology:create", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            data = {
-                "name": input.name,
-                "description": input.description,
-                "graph": input.graph,
-                "tags": input.tags,
-                "is_template": input.is_template,
-            }
-            t = await svc.import_topology(str(tenant_id), str(user_id), data)
-            await db.commit()
-            await db.refresh(t)
-            return _topology_to_type(t)
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        data = {
+            "name": input.name,
+            "description": input.description,
+            "graph": input.graph,
+            "tags": input.tags,
+            "is_template": input.is_template,
+        }
+        t = await svc.import_topology(str(tenant_id), str(user_id), data)
+        await db.commit()
+        await db.refresh(t)
+        return _topology_to_type(t)
 
     @strawberry.mutation
     async def create_topology_template(
@@ -242,14 +243,13 @@ class ArchitectureMutation:
             info, "architecture:template:manage", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            t = await svc.create_template(
-                str(tenant_id), str(topology_id), str(user_id)
-            )
-            await db.commit()
-            await db.refresh(t)
-            return _topology_to_type(t)
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        t = await svc.create_template(
+            str(tenant_id), str(topology_id), str(user_id)
+        )
+        await db.commit()
+        await db.refresh(t)
+        return _topology_to_type(t)

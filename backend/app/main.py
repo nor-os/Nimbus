@@ -5,18 +5,24 @@ Dependencies: fastapi, app.core.config, app.core.middleware
 Concepts: Application lifecycle, health checks, API routing
 """
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import ORJSONResponse
 from strawberry.fastapi import GraphQLRouter
 
+from app.api.graphql.context import get_context
 from app.api.graphql.schema import schema
 from app.api.v1.router import router as api_v1_router
 from app.core.audit_middleware import AuditMiddleware
 from app.core.config import get_settings
-from app.core.middleware import SecurityHeadersMiddleware, TenantContextMiddleware, TraceIDMiddleware
+from app.core.middleware import (
+    SecurityHeadersMiddleware,
+    TenantContextMiddleware,
+    TraceIDMiddleware,
+)
 
 settings = get_settings()
 
@@ -34,8 +40,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     setup_resolvers()
 
+    # Register system event types + create Valkey consumer group
+    from app.services.events.system_events import register_system_events, register_system_subscriptions
+
+    register_system_events()
+    register_system_subscriptions()
+
+    try:
+        from app.services.events.valkey_client import create_consumer_group
+        await create_consumer_group()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Valkey consumer group init skipped: %s", e)
+
     yield
     # Shutdown
+    try:
+        from app.services.events.valkey_client import close_client
+        await close_client()
+    except Exception:
+        pass
+
     from app.db.session import engine
 
     await engine.dispose()
@@ -45,6 +70,7 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     lifespan=lifespan,
+    default_response_class=ORJSONResponse,
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
 )
@@ -72,7 +98,7 @@ from app.api.v1.endpoints.scim import router as scim_router
 
 app.include_router(scim_router, prefix="/scim/v2")
 
-graphql_app = GraphQLRouter(schema, graphiql=settings.debug)
+graphql_app = GraphQLRouter(schema, graphiql=settings.debug, context_getter=get_context)
 app.include_router(graphql_app, prefix="/graphql")
 
 
@@ -97,7 +123,7 @@ async def ready() -> dict:
     from sqlalchemy import text
 
     from app.core.temporal import check_temporal_health
-    from app.db.session import async_session_factory
+    from app.db.session import async_session_factory, get_pool_stats
 
     # --- Database ---
     try:
@@ -127,6 +153,7 @@ async def ready() -> dict:
             "database": db_check,
             "temporal": temporal_check,
         },
+        "pool": get_pool_stats(),
     }
 
 

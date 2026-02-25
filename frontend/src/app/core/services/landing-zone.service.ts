@@ -18,18 +18,17 @@ import {
   IpReservation,
   LandingZone,
   LandingZoneBlueprint,
-  LandingZoneRegion,
   LandingZoneTagPolicy,
   LandingZoneValidation,
   ProviderHierarchy,
   TenantEnvironment,
 } from '@shared/models/landing-zone.model';
+import { ConfigOption, ConfigOptionCategory } from '@shared/models/env-config-option.model';
 
-const REGION_FIELDS = `id landingZoneId regionIdentifier displayName isPrimary isDr settings createdAt updatedAt`;
 const TAG_POLICY_FIELDS = `id landingZoneId tagKey displayName description isRequired allowedValues defaultValue inherited createdAt updatedAt`;
-const ZONE_FIELDS = `id tenantId backendId topologyId cloudTenancyId name description status version settings networkConfig iamConfig securityConfig namingConfig hierarchy createdBy createdAt updatedAt regions { ${REGION_FIELDS} } tagPolicies { ${TAG_POLICY_FIELDS} }`;
+const ZONE_FIELDS = `id tenantId backendId regionId region { id regionIdentifier displayName } topologyId cloudTenancyId name description status version settings networkConfig iamConfig securityConfig namingConfig hierarchy createdBy createdAt updatedAt tagPolicies { ${TAG_POLICY_FIELDS} }`;
 const TEMPLATE_FIELDS = `id providerId name displayName description icon color defaultTags defaultPolicies sortOrder isSystem createdAt updatedAt`;
-const ENV_FIELDS = `id tenantId landingZoneId templateId name displayName description status rootCompartmentId tags policies settings networkConfig iamConfig securityConfig monitoringConfig providerName createdBy createdAt updatedAt`;
+const ENV_FIELDS = `id tenantId landingZoneId templateId regionId region { id regionIdentifier displayName } drSourceEnvId drConfig name displayName description status rootCompartmentId tags policies settings networkConfig iamConfig securityConfig monitoringConfig providerName createdBy createdAt updatedAt`;
 const RESERVATION_FIELDS = `id allocationId ipAddress hostname purpose ciId status reservedBy createdAt updatedAt`;
 const ALLOCATION_FIELDS = `id addressSpaceId parentAllocationId tenantEnvironmentId name description cidr allocationType status purpose semanticTypeId cloudResourceId utilizationPercent metadata createdAt updatedAt children { id name cidr allocationType status purpose } reservations { ${RESERVATION_FIELDS} }`;
 const SPACE_FIELDS = `id landingZoneId regionId name description cidr ipVersion status createdAt updatedAt allocations { ${ALLOCATION_FIELDS} }`;
@@ -140,6 +139,7 @@ export class LandingZoneService {
   updateLandingZone(id: string, input: {
     name?: string | null;
     description?: string | null;
+    regionId?: string | null;
     cloudTenancyId?: string | null;
     settings?: Record<string, unknown> | null;
     networkConfig?: Record<string, unknown> | null;
@@ -187,34 +187,6 @@ export class LandingZoneService {
         deleteLandingZone(tenantId: $tenantId, zoneId: $zoneId)
       }
     `, { tenantId, zoneId: id }).pipe(map(d => d.deleteLandingZone));
-  }
-
-  // ── Regions ────────────────────────────────────────────────────
-
-  addRegion(landingZoneId: string, input: {
-    regionIdentifier: string;
-    displayName: string;
-    isPrimary?: boolean;
-    isDr?: boolean;
-    settings?: Record<string, unknown> | null;
-  }): Observable<LandingZoneRegion> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ addLandingZoneRegion: LandingZoneRegion }>(`
-      mutation AddLandingZoneRegion($tenantId: UUID!, $zoneId: UUID!, $input: LandingZoneRegionInput!) {
-        addLandingZoneRegion(tenantId: $tenantId, zoneId: $zoneId, input: $input) {
-          ${REGION_FIELDS}
-        }
-      }
-    `, { tenantId, zoneId: landingZoneId, input }).pipe(map(d => d.addLandingZoneRegion));
-  }
-
-  removeRegion(landingZoneId: string, regionId: string): Observable<boolean> {
-    const tenantId = this.tenantContext.currentTenantId();
-    return this.gql<{ removeLandingZoneRegion: boolean }>(`
-      mutation RemoveLandingZoneRegion($tenantId: UUID!, $regionId: UUID!) {
-        removeLandingZoneRegion(tenantId: $tenantId, regionId: $regionId)
-      }
-    `, { tenantId, regionId }).pipe(map(d => d.removeLandingZoneRegion));
   }
 
   // ── Tag Policies ───────────────────────────────────────────────
@@ -378,6 +350,9 @@ export class LandingZoneService {
     name: string;
     displayName: string;
     description?: string | null;
+    regionId?: string | null;
+    drSourceEnvId?: string | null;
+    drConfig?: Record<string, unknown> | null;
     tags?: Record<string, unknown>;
     policies?: Record<string, unknown>;
     settings?: Record<string, unknown> | null;
@@ -430,9 +405,61 @@ export class LandingZoneService {
     `, { tenantId, providerName }).pipe(map(d => d.envMonitoringConfigSchema));
   }
 
+  getEnvConfigOptions(providerName: string, domain: string): Observable<ConfigOption[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ envConfigOptionCatalog: ConfigOption[] }>(`
+      query EnvConfigOptionCatalog($tenantId: UUID!, $providerName: String!, $domain: String!) {
+        envConfigOptionCatalog(tenantId: $tenantId, providerName: $providerName, domain: $domain) {
+          id domain category providerName name displayName description detail
+          icon implications configValues conflictsWith requires
+          relatedResolverTypes relatedComponentNames sortOrder isDefault tags
+        }
+      }
+    `, { tenantId, providerName, domain }).pipe(map(d => d.envConfigOptionCatalog));
+  }
+
+  getLzConfigOptions(providerName: string, domain: string): Observable<ConfigOption[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ lzConfigOptionCatalog: ConfigOption[] }>(`
+      query LzConfigOptionCatalog($tenantId: UUID!, $providerName: String!, $domain: String!) {
+        lzConfigOptionCatalog(tenantId: $tenantId, providerName: $providerName, domain: $domain) {
+          id domain category providerName name displayName description detail
+          icon implications configValues conflictsWith requires
+          relatedResolverTypes relatedComponentNames sortOrder isDefault tags
+          hierarchyImplications
+        }
+      }
+    `, { tenantId, providerName, domain }).pipe(map(d => d.lzConfigOptionCatalog));
+  }
+
+  getLzConfigCategories(providerName: string, domain: string): Observable<ConfigOptionCategory[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ lzConfigOptionCategories: ConfigOptionCategory[] }>(`
+      query LzConfigOptionCategories($tenantId: UUID!, $providerName: String!, $domain: String!) {
+        lzConfigOptionCategories(tenantId: $tenantId, providerName: $providerName, domain: $domain) {
+          name displayName description icon
+        }
+      }
+    `, { tenantId, providerName, domain }).pipe(map(d => d.lzConfigOptionCategories));
+  }
+
+  getEnvConfigCategories(providerName: string, domain: string): Observable<ConfigOptionCategory[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ envConfigOptionCategories: ConfigOptionCategory[] }>(`
+      query EnvConfigOptionCategories($tenantId: UUID!, $providerName: String!, $domain: String!) {
+        envConfigOptionCategories(tenantId: $tenantId, providerName: $providerName, domain: $domain) {
+          name displayName description icon
+        }
+      }
+    `, { tenantId, providerName, domain }).pipe(map(d => d.envConfigOptionCategories));
+  }
+
   updateTenantEnvironment(id: string, input: {
     displayName?: string | null;
     description?: string | null;
+    regionId?: string | null;
+    drSourceEnvId?: string | null;
+    drConfig?: Record<string, unknown> | null;
     tags?: Record<string, unknown>;
     policies?: Record<string, unknown>;
     settings?: Record<string, unknown> | null;
@@ -615,6 +642,44 @@ export class LandingZoneService {
         releaseIpReservation(tenantId: $tenantId, reservationId: $reservationId)
       }
     `, { tenantId, reservationId }).pipe(map(d => d.releaseIpReservation));
+  }
+
+  // ── IPAM: Subnet Allocation Helpers ────────────────────────────
+
+  allocateSubnetFromIpam(
+    environmentId: string, addressSpaceId: string, prefixLength: number, subnetName: string,
+  ): Observable<{ cidr: string; gateway: string; allocationId: string }> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ allocateSubnetFromIpam: { cidr: string; gateway: string; allocationId: string } }>(`
+      mutation AllocateSubnetFromIpam($tenantId: UUID!, $input: SubnetIpamAllocationInput!) {
+        allocateSubnetFromIpam(tenantId: $tenantId, input: $input) {
+          cidr gateway allocationId
+        }
+      }
+    `, {
+      tenantId,
+      input: { environmentId, addressSpaceId, prefixLength, subnetName },
+    }).pipe(map(d => d.allocateSubnetFromIpam));
+  }
+
+  releaseSubnetIpamAllocation(allocationId: string): Observable<boolean> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ releaseSubnetIpamAllocation: boolean }>(`
+      mutation ReleaseSubnetIpamAllocation($tenantId: UUID!, $allocationId: UUID!) {
+        releaseSubnetIpamAllocation(tenantId: $tenantId, allocationId: $allocationId)
+      }
+    `, { tenantId, allocationId }).pipe(map(d => d.releaseSubnetIpamAllocation));
+  }
+
+  getEnvironmentIpamAllocations(environmentId: string): Observable<AddressAllocation[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ environmentIpamAllocations: AddressAllocation[] }>(`
+      query EnvironmentIpamAllocations($tenantId: UUID!, $environmentId: UUID!) {
+        environmentIpamAllocations(tenantId: $tenantId, environmentId: $environmentId) {
+          ${ALLOCATION_FIELDS}
+        }
+      }
+    `, { tenantId, environmentId }).pipe(map(d => d.environmentIpamAllocations));
   }
 
   // ── IPAM: Utilities ────────────────────────────────────────────

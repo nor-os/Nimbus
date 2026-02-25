@@ -41,6 +41,15 @@ def _topology_to_type(t) -> ArchitectureTopologyType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class ArchitectureQuery:
 
@@ -58,15 +67,14 @@ class ArchitectureQuery:
         """List architecture topologies for a tenant."""
         await check_graphql_permission(info, "architecture:topology:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            topologies = await svc.list(
-                str(tenant_id), status, is_template, search, offset, limit
-            )
-            return [_topology_to_type(t) for t in topologies]
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        topologies = await svc.list(
+            str(tenant_id), status, is_template, search, offset, limit
+        )
+        return [_topology_to_type(t) for t in topologies]
 
     @strawberry.field
     async def topology(
@@ -75,13 +83,12 @@ class ArchitectureQuery:
         """Get a topology by ID."""
         await check_graphql_permission(info, "architecture:topology:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            t = await svc.get(str(tenant_id), str(topology_id))
-            return _topology_to_type(t) if t else None
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        t = await svc.get(str(tenant_id), str(topology_id))
+        return _topology_to_type(t) if t else None
 
     @strawberry.field
     async def topology_versions(
@@ -90,13 +97,12 @@ class ArchitectureQuery:
         """Get all versions of a topology by name."""
         await check_graphql_permission(info, "architecture:topology:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            versions = await svc.get_versions(str(tenant_id), name)
-            return [_topology_to_type(t) for t in versions]
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        versions = await svc.get_versions(str(tenant_id), name)
+        return [_topology_to_type(t) for t in versions]
 
     @strawberry.field
     async def validate_topology_graph(
@@ -108,27 +114,26 @@ class ArchitectureQuery:
         """Validate a topology graph without saving it."""
         await check_graphql_permission(info, "architecture:topology:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            result = await svc.validate_graph(graph)
-            return TopologyValidationResultType(
-                valid=result.valid,
-                errors=[
-                    TopologyValidationErrorType(
-                        node_id=e.node_id, message=e.message, severity=e.severity
-                    )
-                    for e in result.errors
-                ],
-                warnings=[
-                    TopologyValidationErrorType(
-                        node_id=w.node_id, message=w.message, severity=w.severity
-                    )
-                    for w in result.warnings
-                ],
-            )
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        result = await svc.validate_graph(graph)
+        return TopologyValidationResultType(
+            valid=result.valid,
+            errors=[
+                TopologyValidationErrorType(
+                    node_id=e.node_id, message=e.message, severity=e.severity
+                )
+                for e in result.errors
+            ],
+            warnings=[
+                TopologyValidationErrorType(
+                    node_id=w.node_id, message=w.message, severity=w.severity
+                )
+                for w in result.warnings
+            ],
+        )
 
     @strawberry.field
     async def topology_templates(
@@ -142,19 +147,18 @@ class ArchitectureQuery:
         """List topology templates (tenant + system)."""
         await check_graphql_permission(info, "architecture:template:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            templates = await svc.list(
-                str(tenant_id),
-                is_template=True,
-                search=search,
-                offset=offset,
-                limit=limit,
-            )
-            return [_topology_to_type(t) for t in templates]
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        templates = await svc.list(
+            str(tenant_id),
+            is_template=True,
+            search=search,
+            offset=offset,
+            limit=limit,
+        )
+        return [_topology_to_type(t) for t in templates]
 
     # ── Parameter Resolution ────────────────────────────────────────
 
@@ -169,27 +173,26 @@ class ArchitectureQuery:
         """Resolve parameters for a single stack instance."""
         await check_graphql_permission(info, "architecture:topology:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.architecture.parameter_resolution_service import (
             ParameterResolutionService,
         )
 
-        async with async_session_factory() as db:
-            svc = ParameterResolutionService(db)
-            resolved = await svc.resolve_stack_parameters(
-                str(tenant_id), str(topology_id), stack_id
+        db = await _get_session(info)
+        svc = ParameterResolutionService(db)
+        resolved = await svc.resolve_stack_parameters(
+            str(tenant_id), str(topology_id), stack_id
+        )
+        return [
+            ResolvedParameterType(
+                name=r.name,
+                display_name=r.display_name,
+                value=r.value,
+                source=r.source,
+                is_required=r.is_required,
+                tag_key=r.tag_key,
             )
-            return [
-                ResolvedParameterType(
-                    name=r.name,
-                    display_name=r.display_name,
-                    value=r.value,
-                    source=r.source,
-                    is_required=r.is_required,
-                    tag_key=r.tag_key,
-                )
-                for r in resolved
-            ]
+            for r in resolved
+        ]
 
     @strawberry.field
     async def preview_topology_resolution(
@@ -201,41 +204,40 @@ class ArchitectureQuery:
         """Full resolution preview with deployment order."""
         await check_graphql_permission(info, "architecture:topology:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.architecture.parameter_resolution_service import (
             ParameterResolutionService,
         )
 
-        async with async_session_factory() as db:
-            svc = ParameterResolutionService(db)
-            preview = await svc.preview_resolution(str(tenant_id), str(topology_id))
-            return ResolutionPreviewType(
-                topology_id=preview.topology_id,
-                stacks=[
-                    StackResolutionType(
-                        stack_id=sr.stack_id,
-                        stack_label=sr.stack_label,
-                        blueprint_id=sr.blueprint_id,
-                        parameters=[
-                            ResolvedParameterType(
-                                name=p.name,
-                                display_name=p.display_name,
-                                value=p.value,
-                                source=p.source,
-                                is_required=p.is_required,
-                                tag_key=p.tag_key,
-                            )
-                            for p in sr.parameters
-                        ],
-                        is_complete=sr.is_complete,
-                        unresolved_count=sr.unresolved_count,
-                    )
-                    for sr in preview.stacks
-                ],
-                deployment_order=preview.deployment_order,
-                all_complete=preview.all_complete,
-                total_unresolved=preview.total_unresolved,
-            )
+        db = await _get_session(info)
+        svc = ParameterResolutionService(db)
+        preview = await svc.preview_resolution(str(tenant_id), str(topology_id))
+        return ResolutionPreviewType(
+            topology_id=preview.topology_id,
+            stacks=[
+                StackResolutionType(
+                    stack_id=sr.stack_id,
+                    stack_label=sr.stack_label,
+                    blueprint_id=sr.blueprint_id,
+                    parameters=[
+                        ResolvedParameterType(
+                            name=p.name,
+                            display_name=p.display_name,
+                            value=p.value,
+                            source=p.source,
+                            is_required=p.is_required,
+                            tag_key=p.tag_key,
+                        )
+                        for p in sr.parameters
+                    ],
+                    is_complete=sr.is_complete,
+                    unresolved_count=sr.unresolved_count,
+                )
+                for sr in preview.stacks
+            ],
+            deployment_order=preview.deployment_order,
+            all_complete=preview.all_complete,
+            total_unresolved=preview.total_unresolved,
+        )
 
     @strawberry.field
     async def topology_deployment_order(
@@ -247,13 +249,12 @@ class ArchitectureQuery:
         """Get deployment order for stacks in a topology."""
         await check_graphql_permission(info, "architecture:topology:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.architecture.topology_service import TopologyService
 
-        async with async_session_factory() as db:
-            svc = TopologyService(db)
-            t = await svc.get(str(tenant_id), str(topology_id))
-            if not t or not t.graph:
-                return DeploymentOrderType(groups=[])
-            groups = TopologyService.get_deployment_order(t.graph)
-            return DeploymentOrderType(groups=groups)
+        db = await _get_session(info)
+        svc = TopologyService(db)
+        t = await svc.get(str(tenant_id), str(topology_id))
+        if not t or not t.graph:
+            return DeploymentOrderType(groups=[])
+        groups = TopologyService.get_deployment_order(t.graph)
+        return DeploymentOrderType(groups=groups)

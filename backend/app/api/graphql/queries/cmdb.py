@@ -33,6 +33,16 @@ from app.api.graphql.types.cmdb import (
 )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+
+    return async_session_factory()
+
+
 def _ci_to_gql(ci) -> CIType:
     backend = getattr(ci, "backend", None)
     return CIType(
@@ -181,14 +191,12 @@ class CMDBQuery:
     ) -> CIType | None:
         """Get a single CI, optionally at a specific version."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.ci_service import CIService
 
-        async with async_session_factory() as db:
-            service = CIService(db)
-            ci = await service.get_ci(str(id), str(tenant_id), version)
-            return _ci_to_gql(ci) if ci else None
+        db = await _get_session(info)
+        service = CIService(db)
+        ci = await service.get_ci(str(id), str(tenant_id), version)
+        return _ci_to_gql(ci) if ci else None
 
     @strawberry.field
     async def cis(
@@ -205,28 +213,26 @@ class CMDBQuery:
     ) -> CIListType:
         """List CIs with filtering and pagination."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.ci_service import CIService
 
-        async with async_session_factory() as db:
-            service = CIService(db)
-            items, total = await service.list_cis(
-                tenant_id=str(tenant_id),
-                ci_class_id=str(ci_class_id) if ci_class_id else None,
-                compartment_id=(
-                    str(compartment_id) if compartment_id else None
-                ),
-                backend_id=str(backend_id) if backend_id else None,
-                lifecycle_state=lifecycle_state,
-                search=search,
-                offset=offset,
-                limit=limit,
-            )
-            return CIListType(
-                items=[_ci_to_gql(ci) for ci in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = CIService(db)
+        items, total = await service.list_cis(
+            tenant_id=str(tenant_id),
+            ci_class_id=str(ci_class_id) if ci_class_id else None,
+            compartment_id=(
+                str(compartment_id) if compartment_id else None
+            ),
+            backend_id=str(backend_id) if backend_id else None,
+            lifecycle_state=lifecycle_state,
+            search=search,
+            offset=offset,
+            limit=limit,
+        )
+        return CIListType(
+            items=[_ci_to_gql(ci) for ci in items],
+            total=total,
+        )
 
     # ── CI Versions ───────────────────────────────────────────────────
 
@@ -241,19 +247,17 @@ class CMDBQuery:
     ) -> CIVersionListType:
         """List version history for a CI."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.versioning_service import VersioningService
 
-        async with async_session_factory() as db:
-            service = VersioningService(db)
-            items, total = await service.get_versions(
-                str(ci_id), str(tenant_id), offset, limit
-            )
-            return CIVersionListType(
-                items=[_snapshot_to_gql(s) for s in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = VersioningService(db)
+        items, total = await service.get_versions(
+            str(ci_id), str(tenant_id), offset, limit
+        )
+        return CIVersionListType(
+            items=[_snapshot_to_gql(s) for s in items],
+            total=total,
+        )
 
     @strawberry.field
     async def ci_version_diff(
@@ -266,20 +270,18 @@ class CMDBQuery:
     ) -> VersionDiffType:
         """Compare two versions of a CI."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.versioning_service import VersioningService
 
-        async with async_session_factory() as db:
-            service = VersioningService(db)
-            diff = await service.diff_versions(
-                str(ci_id), str(tenant_id), version_a, version_b
-            )
-            return VersionDiffType(
-                version_a=diff.get("version_a", version_a),
-                version_b=diff.get("version_b", version_b),
-                changes=diff.get("changes", {}),
-            )
+        db = await _get_session(info)
+        service = VersioningService(db)
+        diff = await service.diff_versions(
+            str(ci_id), str(tenant_id), version_a, version_b
+        )
+        return VersionDiffType(
+            version_a=diff.get("version_a", version_a),
+            version_b=diff.get("version_b", version_b),
+            changes=diff.get("changes", {}),
+        )
 
     # ── CI Classes ────────────────────────────────────────────────────
 
@@ -294,16 +296,14 @@ class CMDBQuery:
         await check_graphql_permission(
             info, "cmdb:class:read", str(tenant_id)
         )
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.class_service import ClassService
 
-        async with async_session_factory() as db:
-            service = ClassService(db)
-            classes = await service.list_classes(
-                str(tenant_id), include_system
-            )
-            return [_class_to_gql(c) for c in classes]
+        db = await _get_session(info)
+        service = ClassService(db)
+        classes = await service.list_classes(
+            str(tenant_id), include_system
+        )
+        return [_class_to_gql(c) for c in classes]
 
     @strawberry.field
     async def ci_class(
@@ -313,14 +313,12 @@ class CMDBQuery:
         await check_graphql_permission(
             info, "cmdb:class:read", str(tenant_id)
         )
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.class_service import ClassService
 
-        async with async_session_factory() as db:
-            service = ClassService(db)
-            c = await service.get_class(id)
-            return _class_detail_to_gql(c) if c else None
+        db = await _get_session(info)
+        service = ClassService(db)
+        c = await service.get_class(id)
+        return _class_detail_to_gql(c) if c else None
 
     # ── Relationship Types ────────────────────────────────────────────
 
@@ -335,37 +333,35 @@ class CMDBQuery:
         await check_graphql_permission(
             info, "cmdb:relationship:read", str(tenant_id)
         )
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.ci_service import CIService
 
-        async with async_session_factory() as db:
-            service = CIService(db)
-            types = await service.list_relationship_types()
-            if domain:
-                types = [t for t in types if t.domain == domain]
-            return [
-                RelationshipTypeType(
-                    id=t.id,
-                    name=t.name,
-                    display_name=t.display_name,
-                    inverse_name=t.inverse_name,
-                    description=t.description,
-                    source_class_ids=t.source_class_ids,
-                    target_class_ids=t.target_class_ids,
-                    is_system=t.is_system,
-                    domain=t.domain,
-                    source_entity_type=t.source_entity_type,
-                    target_entity_type=t.target_entity_type,
-                    source_semantic_types=t.source_semantic_types,
-                    target_semantic_types=t.target_semantic_types,
-                    source_semantic_categories=t.source_semantic_categories,
-                    target_semantic_categories=t.target_semantic_categories,
-                    created_at=t.created_at,
-                    updated_at=t.updated_at,
-                )
-                for t in types
-            ]
+        db = await _get_session(info)
+        service = CIService(db)
+        types = await service.list_relationship_types()
+        if domain:
+            types = [t for t in types if t.domain == domain]
+        return [
+            RelationshipTypeType(
+                id=t.id,
+                name=t.name,
+                display_name=t.display_name,
+                inverse_name=t.inverse_name,
+                description=t.description,
+                source_class_ids=t.source_class_ids,
+                target_class_ids=t.target_class_ids,
+                is_system=t.is_system,
+                domain=t.domain,
+                source_entity_type=t.source_entity_type,
+                target_entity_type=t.target_entity_type,
+                source_semantic_types=t.source_semantic_types,
+                target_semantic_types=t.target_semantic_types,
+                source_semantic_categories=t.source_semantic_categories,
+                target_semantic_categories=t.target_semantic_categories,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+            )
+            for t in types
+        ]
 
     # ── CI Relationships ──────────────────────────────────────────────
 
@@ -382,19 +378,17 @@ class CMDBQuery:
         await check_graphql_permission(
             info, "cmdb:relationship:read", str(tenant_id)
         )
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.ci_service import CIService
 
-        async with async_session_factory() as db:
-            service = CIService(db)
-            rels = await service.get_relationships(
-                str(ci_id),
-                str(tenant_id),
-                str(relationship_type_id) if relationship_type_id else None,
-                direction,
-            )
-            return [_rel_to_gql(r) for r in rels]
+        db = await _get_session(info)
+        service = CIService(db)
+        rels = await service.get_relationships(
+            str(ci_id),
+            str(tenant_id),
+            str(relationship_type_id) if relationship_type_id else None,
+            direction,
+        )
+        return [_rel_to_gql(r) for r in rels]
 
     # ── Graph & Impact ────────────────────────────────────────────────
 
@@ -410,29 +404,27 @@ class CMDBQuery:
     ) -> list[GraphNodeType]:
         """Traverse the CI relationship graph."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.graph_service import GraphService
 
-        async with async_session_factory() as db:
-            service = GraphService(db)
-            nodes = await service.traverse(
-                str(ci_id),
-                str(tenant_id),
-                relationship_types,
-                direction,
-                max_depth,
+        db = await _get_session(info)
+        service = GraphService(db)
+        nodes = await service.traverse(
+            str(ci_id),
+            str(tenant_id),
+            relationship_types,
+            direction,
+            max_depth,
+        )
+        return [
+            GraphNodeType(
+                ci_id=n.ci_id,
+                name=n.name,
+                ci_class=n.ci_class,
+                depth=n.depth,
+                path=n.path,
             )
-            return [
-                GraphNodeType(
-                    ci_id=n.ci_id,
-                    name=n.name,
-                    ci_class=n.ci_class,
-                    depth=n.depth,
-                    path=n.path,
-                )
-                for n in nodes
-            ]
+            for n in nodes
+        ]
 
     @strawberry.field
     async def ci_impact(
@@ -445,25 +437,23 @@ class CMDBQuery:
     ) -> list[GraphNodeType]:
         """Analyze impact of a CI failure."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.graph_service import GraphService
 
-        async with async_session_factory() as db:
-            service = GraphService(db)
-            nodes = await service.impact_analysis(
-                str(ci_id), str(tenant_id), direction, max_depth
+        db = await _get_session(info)
+        service = GraphService(db)
+        nodes = await service.impact_analysis(
+            str(ci_id), str(tenant_id), direction, max_depth
+        )
+        return [
+            GraphNodeType(
+                ci_id=n.ci_id,
+                name=n.name,
+                ci_class=n.ci_class,
+                depth=n.depth,
+                path=n.path,
             )
-            return [
-                GraphNodeType(
-                    ci_id=n.ci_id,
-                    name=n.name,
-                    ci_class=n.ci_class,
-                    depth=n.depth,
-                    path=n.path,
-                )
-                for n in nodes
-            ]
+            for n in nodes
+        ]
 
     # ── Compartments ──────────────────────────────────────────────────
 
@@ -475,14 +465,12 @@ class CMDBQuery:
         await check_graphql_permission(
             info, "cmdb:compartment:read", str(tenant_id)
         )
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.compartment_service import CMDBCompartmentService
 
-        async with async_session_factory() as db:
-            service = CMDBCompartmentService(db)
-            tree = await service.get_compartment_tree(str(tenant_id))
-            return [_compartment_dict_to_gql(n) for n in tree]
+        db = await _get_session(info)
+        service = CMDBCompartmentService(db)
+        tree = await service.get_compartment_tree(str(tenant_id))
+        return [_compartment_dict_to_gql(n) for n in tree]
 
     # ── Templates ─────────────────────────────────────────────────────
 
@@ -499,22 +487,20 @@ class CMDBQuery:
         await check_graphql_permission(
             info, "cmdb:template:read", str(tenant_id)
         )
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.template_service import TemplateService
 
-        async with async_session_factory() as db:
-            service = TemplateService(db)
-            items, total = await service.list_templates(
-                str(tenant_id),
-                str(ci_class_id) if ci_class_id else None,
-                offset=offset,
-                limit=limit,
-            )
-            return CITemplateListType(
-                items=[_template_to_gql(t) for t in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = TemplateService(db)
+        items, total = await service.list_templates(
+            str(tenant_id),
+            str(ci_class_id) if ci_class_id else None,
+            offset=offset,
+            limit=limit,
+        )
+        return CITemplateListType(
+            items=[_template_to_gql(t) for t in items],
+            total=total,
+        )
 
     # ── Search ────────────────────────────────────────────────────────
 
@@ -532,27 +518,25 @@ class CMDBQuery:
     ) -> CIListType:
         """Search CIs with full-text query and filters."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.search_service import SearchService
 
-        async with async_session_factory() as db:
-            service = SearchService(db)
-            items, total = await service.search_cis(
-                tenant_id=str(tenant_id),
-                query=query,
-                ci_class_id=str(ci_class_id) if ci_class_id else None,
-                compartment_id=(
-                    str(compartment_id) if compartment_id else None
-                ),
-                lifecycle_state=lifecycle_state,
-                offset=offset,
-                limit=limit,
-            )
-            return CIListType(
-                items=[_ci_to_gql(ci) for ci in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = SearchService(db)
+        items, total = await service.search_cis(
+            tenant_id=str(tenant_id),
+            query=query,
+            ci_class_id=str(ci_class_id) if ci_class_id else None,
+            compartment_id=(
+                str(compartment_id) if compartment_id else None
+            ),
+            lifecycle_state=lifecycle_state,
+            offset=offset,
+            limit=limit,
+        )
+        return CIListType(
+            items=[_ci_to_gql(ci) for ci in items],
+            total=total,
+        )
 
     @strawberry.field
     async def saved_searches(
@@ -560,28 +544,26 @@ class CMDBQuery:
     ) -> list[SavedSearchType]:
         """List saved searches for a user."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.search_service import SearchService
 
-        async with async_session_factory() as db:
-            service = SearchService(db)
-            items = await service.list_saved_searches(
-                str(tenant_id), str(user_id)
+        db = await _get_session(info)
+        service = SearchService(db)
+        items = await service.list_saved_searches(
+            str(tenant_id), str(user_id)
+        )
+        return [
+            SavedSearchType(
+                id=s.id,
+                tenant_id=s.tenant_id,
+                user_id=s.user_id,
+                name=s.name,
+                query_text=s.query_text,
+                filters=s.filters,
+                sort_config=s.sort_config,
+                is_default=s.is_default,
             )
-            return [
-                SavedSearchType(
-                    id=s.id,
-                    tenant_id=s.tenant_id,
-                    user_id=s.user_id,
-                    name=s.name,
-                    query_text=s.query_text,
-                    filters=s.filters,
-                    sort_config=s.sort_config,
-                    is_default=s.is_default,
-                )
-                for s in items
-            ]
+            for s in items
+        ]
 
     # ── Explorer ──────────────────────────────────────────────────────
 
@@ -595,16 +577,14 @@ class CMDBQuery:
     ) -> ExplorerSummaryType:
         """Get aggregated CI counts grouped by semantic category, type, and backend."""
         await check_graphql_permission(info, "cmdb:ci:read", str(tenant_id))
-
-        from app.db.session import async_session_factory
         from app.services.cmdb.ci_service import CIService
 
-        async with async_session_factory() as db:
-            service = CIService(db)
-            return await service.get_explorer_summary(
-                tenant_id=str(tenant_id),
-                compartment_id=(
-                    str(compartment_id) if compartment_id else None
-                ),
-                backend_id=str(backend_id) if backend_id else None,
-            )
+        db = await _get_session(info)
+        service = CIService(db)
+        return await service.get_explorer_summary(
+            tenant_id=str(tenant_id),
+            compartment_id=(
+                str(compartment_id) if compartment_id else None
+            ),
+            backend_id=str(backend_id) if backend_id else None,
+        )

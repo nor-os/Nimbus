@@ -106,6 +106,10 @@ const ACTIVITY_DEFINITION_FIELDS = `
 
 const ACTIVITY_TEMPLATE_FIELDS = `
   id tenantId name description version
+  automatedActivityId
+  automatedActivity {
+    id name slug category operationKind implementationType isSystem
+  }
   definitions { ${ACTIVITY_DEFINITION_FIELDS} }
   createdAt updatedAt
 `;

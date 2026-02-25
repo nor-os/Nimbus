@@ -13,14 +13,34 @@ from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
 from app.api.graphql.types.cloud_backend import (
+    BackendRegionType,
     CloudBackendIAMMappingType,
     CloudBackendType,
+    ConfigOptionCategoryType,
+    ConfigOptionType,
 )
+
+
+def _region_to_gql(r) -> BackendRegionType:
+    return BackendRegionType(
+        id=r.id,
+        tenant_id=r.tenant_id,
+        backend_id=r.backend_id,
+        region_identifier=r.region_identifier,
+        display_name=r.display_name,
+        provider_region_code=r.provider_region_code,
+        is_enabled=r.is_enabled,
+        availability_zones=r.availability_zones,
+        settings=r.settings,
+        created_at=r.created_at,
+        updated_at=r.updated_at,
+    )
 
 
 def _backend_to_gql(b) -> CloudBackendType:
     provider = b.provider
     active_mappings = [m for m in (b.iam_mappings or []) if m.deleted_at is None]
+    active_regions = [r for r in (b.regions or []) if r.deleted_at is None]
     return CloudBackendType(
         id=b.id,
         tenant_id=b.tenant_id,
@@ -39,6 +59,7 @@ def _backend_to_gql(b) -> CloudBackendType:
         last_connectivity_check=b.last_connectivity_check,
         last_connectivity_status=b.last_connectivity_status,
         last_connectivity_error=b.last_connectivity_error,
+        regions=[_region_to_gql(r) for r in active_regions],
         iam_mapping_count=len(active_mappings),
         created_by=b.created_by,
         created_at=b.created_at,
@@ -60,6 +81,15 @@ def _iam_mapping_to_gql(m) -> CloudBackendIAMMappingType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class CloudBackendQuery:
     @strawberry.field
@@ -74,18 +104,17 @@ class CloudBackendQuery:
         """List cloud backends for a tenant."""
         await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            backends = await service.list_backends(
-                tenant_id,
-                include_shared=include_shared,
-                status=status,
-                provider_id=provider_id,
-            )
-            return [_backend_to_gql(b) for b in backends]
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        backends = await service.list_backends(
+            tenant_id,
+            include_shared=include_shared,
+            status=status,
+            provider_id=provider_id,
+        )
+        return [_backend_to_gql(b) for b in backends]
 
     @strawberry.field
     async def tenant_backend(
@@ -96,15 +125,14 @@ class CloudBackendQuery:
         """Get the single cloud backend for a tenant (1:1 mapping)."""
         await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            backend = await service.get_tenant_backend(tenant_id)
-            if not backend:
-                return None
-            return _backend_to_gql(backend)
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        backend = await service.get_tenant_backend(tenant_id)
+        if not backend:
+            return None
+        return _backend_to_gql(backend)
 
     @strawberry.field
     async def cloud_backend(
@@ -116,15 +144,31 @@ class CloudBackendQuery:
         """Get a single cloud backend by ID."""
         await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            backend = await service.get_backend(id, tenant_id)
-            if not backend:
-                return None
-            return _backend_to_gql(backend)
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        backend = await service.get_backend(id, tenant_id)
+        if not backend:
+            return None
+        return _backend_to_gql(backend)
+
+    @strawberry.field
+    async def backend_regions(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        backend_id: uuid.UUID,
+    ) -> list[BackendRegionType]:
+        """List regions for a cloud backend."""
+        await check_graphql_permission(info, "cloud:region:read", str(tenant_id))
+
+        from app.services.cloud.backend_service import CloudBackendService
+
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        regions = await service.list_regions(backend_id, tenant_id)
+        return [_region_to_gql(r) for r in regions]
 
     @strawberry.field
     async def cloud_backend_iam_mappings(
@@ -136,13 +180,12 @@ class CloudBackendQuery:
         """List IAM mappings for a cloud backend."""
         await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            mappings = await service.list_iam_mappings(backend_id, tenant_id)
-            return [_iam_mapping_to_gql(m) for m in mappings]
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        mappings = await service.list_iam_mappings(backend_id, tenant_id)
+        return [_iam_mapping_to_gql(m) for m in mappings]
 
     @strawberry.field
     async def cloud_credential_schema(
@@ -313,6 +356,136 @@ class CloudBackendQuery:
         from app.services.cloud.credential_schemas import get_env_monitoring_schema
 
         return get_env_monitoring_schema(provider_name)
+
+    # ── Environment config option catalog ────────────────────────
+
+    @strawberry.field
+    async def env_config_option_catalog(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+        domain: str,
+    ) -> list[ConfigOptionType]:
+        """Get browseable config options for a provider + domain."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.landing_zone.env_option_catalog import get_option_catalog
+
+        options = get_option_catalog(provider_name, domain)
+        return [
+            ConfigOptionType(
+                id=o.id,
+                domain=o.domain,
+                category=o.category,
+                provider_name=o.provider_name,
+                name=o.name,
+                display_name=o.display_name,
+                description=o.description,
+                detail=o.detail,
+                icon=o.icon,
+                implications=list(o.implications),
+                config_values=o.config_values,
+                conflicts_with=list(o.conflicts_with),
+                requires=list(o.requires),
+                related_resolver_types=list(o.related_resolver_types),
+                related_component_names=list(o.related_component_names),
+                sort_order=o.sort_order,
+                is_default=o.is_default,
+                tags=list(o.tags),
+                hierarchy_implications=o.hierarchy_implications,
+            )
+            for o in options
+        ]
+
+    @strawberry.field
+    async def env_config_option_categories(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+        domain: str,
+    ) -> list[ConfigOptionCategoryType]:
+        """Get option categories for a provider + domain."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.landing_zone.env_option_catalog import get_option_categories
+
+        categories = get_option_categories(provider_name, domain)
+        return [
+            ConfigOptionCategoryType(
+                name=c.name,
+                display_name=c.display_name,
+                description=c.description,
+                icon=c.icon,
+            )
+            for c in categories
+        ]
+
+    # ── Landing zone config option catalog ─────────────────────────
+
+    @strawberry.field
+    async def lz_config_option_catalog(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+        domain: str,
+    ) -> list[ConfigOptionType]:
+        """Get browseable LZ strategy/foundation options for a provider + domain."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.landing_zone.lz_option_catalog import get_lz_option_catalog
+
+        options = get_lz_option_catalog(provider_name, domain)
+        return [
+            ConfigOptionType(
+                id=o.id,
+                domain=o.domain,
+                category=o.category,
+                provider_name=o.provider_name,
+                name=o.name,
+                display_name=o.display_name,
+                description=o.description,
+                detail=o.detail,
+                icon=o.icon,
+                implications=list(o.implications),
+                config_values=o.config_values,
+                conflicts_with=list(o.conflicts_with),
+                requires=list(o.requires),
+                related_resolver_types=list(o.related_resolver_types),
+                related_component_names=list(o.related_component_names),
+                sort_order=o.sort_order,
+                is_default=o.is_default,
+                tags=list(o.tags),
+                hierarchy_implications=o.hierarchy_implications,
+            )
+            for o in options
+        ]
+
+    @strawberry.field
+    async def lz_config_option_categories(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        provider_name: str,
+        domain: str,
+    ) -> list[ConfigOptionCategoryType]:
+        """Get LZ option categories for a provider + domain."""
+        await check_graphql_permission(info, "cloud:backend:read", str(tenant_id))
+
+        from app.services.landing_zone.lz_option_catalog import get_lz_option_categories
+
+        categories = get_lz_option_categories(provider_name, domain)
+        return [
+            ConfigOptionCategoryType(
+                name=c.name,
+                display_name=c.display_name,
+                description=c.description,
+                icon=c.icon,
+            )
+            for c in categories
+        ]
 
     @strawberry.field
     async def cloud_iam_identity_schema(

@@ -87,8 +87,8 @@ import { ToastService } from '@shared/services/toast.service';
                       <span>{{ getBackendName(zone.backendId) }}</span>
                     </div>
                     <div class="meta-item">
-                      <span class="meta-label">Regions:</span>
-                      <span>{{ zone.regions.length }}</span>
+                      <span class="meta-label">Hub Region:</span>
+                      <span>{{ zone.region?.displayName || '—' }}</span>
                     </div>
                     <div class="meta-item">
                       <span class="meta-label">Tags:</span>

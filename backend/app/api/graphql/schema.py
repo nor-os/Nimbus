@@ -2,13 +2,17 @@
 Overview: Root GraphQL schema combining all query and mutation types.
 Architecture: GraphQL schema definition (Section 7.2)
 Dependencies: strawberry, app.api.graphql.queries, app.api.graphql.mutations
-Concepts: GraphQL schema, query and mutation aggregation
+Concepts: GraphQL schema, query and mutation aggregation, context lifecycle via extension
 """
 
+from typing import Any
+
 import strawberry
+from strawberry.extensions import SchemaExtension
 
 from app.api.graphql.mutations.architecture import ArchitectureMutation
 from app.api.graphql.mutations.approval import ApprovalMutation
+from app.api.graphql.mutations.automation import AutomationMutation
 from app.api.graphql.mutations.audit import AuditMutation
 from app.api.graphql.mutations.catalog import CatalogMutation
 from app.api.graphql.mutations.cloud_backend import CloudBackendMutation
@@ -16,10 +20,12 @@ from app.api.graphql.mutations.component import ComponentMutation
 from app.api.graphql.mutations.cluster import ClusterMutation
 from app.api.graphql.mutations.currency import CurrencyMutation
 from app.api.graphql.mutations.deployment import DeploymentMutation
+from app.api.graphql.mutations.events import EventMutation
 from app.api.graphql.mutations.cmdb import CMDBMutation
 from app.api.graphql.mutations.delivery import DeliveryMutation
 from app.api.graphql.mutations.impersonation import ImpersonationMutation
 from app.api.graphql.mutations.landing_zone import LandingZoneMutation
+from app.api.graphql.mutations.networking import NetworkingMutation
 from app.api.graphql.mutations.notification import NotificationMutation
 from app.api.graphql.mutations.os_image import OsImageMutation
 from app.api.graphql.mutations.permissions import PermissionMutation
@@ -32,6 +38,7 @@ from app.api.graphql.mutations.users import UserMutation
 from app.api.graphql.mutations.workflow import WorkflowMutation
 from app.api.graphql.queries.architecture import ArchitectureQuery
 from app.api.graphql.queries.approval import ApprovalQuery
+from app.api.graphql.queries.automation import AutomationQuery
 from app.api.graphql.queries.audit import AuditQuery
 from app.api.graphql.queries.catalog import CatalogQuery
 from app.api.graphql.queries.cloud_backend import CloudBackendQuery
@@ -39,11 +46,13 @@ from app.api.graphql.queries.component import ComponentQuery
 from app.api.graphql.queries.cluster import ClusterQuery
 from app.api.graphql.queries.currency import CurrencyQuery
 from app.api.graphql.queries.deployment import DeploymentQuery
+from app.api.graphql.queries.events import EventQuery
 from app.api.graphql.queries.cmdb import CMDBQuery
 from app.api.graphql.queries.delivery import DeliveryQuery
 from app.api.graphql.queries.health import HealthQuery
 from app.api.graphql.queries.impersonation import ImpersonationQuery
 from app.api.graphql.queries.landing_zone import LandingZoneQuery
+from app.api.graphql.queries.networking import NetworkingQuery
 from app.api.graphql.queries.notification import NotificationQuery
 from app.api.graphql.queries.os_image import OsImageQuery
 from app.api.graphql.queries.permissions import PermissionQuery
@@ -62,7 +71,9 @@ class Query(
     AuditQuery, ImpersonationQuery, NotificationQuery, ApprovalQuery,
     SemanticQuery, WorkflowQuery, CMDBQuery, ClusterQuery, CatalogQuery, DeliveryQuery,
     ArchitectureQuery, ServiceCatalogQuery, CloudBackendQuery, CurrencyQuery, DeploymentQuery,
-    LandingZoneQuery, PolicyQuery, OsImageQuery, ComponentQuery,
+    LandingZoneQuery, NetworkingQuery, PolicyQuery, OsImageQuery, ComponentQuery,
+    AutomationQuery,
+    EventQuery,
 ):
     pass
 
@@ -73,9 +84,25 @@ class Mutation(
     ImpersonationMutation, NotificationMutation, ApprovalMutation,
     SemanticMutation, WorkflowMutation, CMDBMutation, ClusterMutation, CatalogMutation,
     DeliveryMutation, ArchitectureMutation, ServiceCatalogMutation, CloudBackendMutation, DeploymentMutation,
-    LandingZoneMutation, CurrencyMutation, PolicyMutation, OsImageMutation, ComponentMutation,
+    LandingZoneMutation, NetworkingMutation, CurrencyMutation, PolicyMutation, OsImageMutation, ComponentMutation,
+    AutomationMutation,
+    EventMutation,
 ):
     pass
 
 
-schema = strawberry.Schema(query=Query, mutation=Mutation)
+class ContextCleanupExtension(SchemaExtension):
+    """Ensures NimbusContext DB sessions are closed after each GraphQL operation."""
+
+    async def on_execute(self) -> Any:
+        yield
+        ctx = self.execution_context.context
+        if hasattr(ctx, "close"):
+            await ctx.close()
+
+
+schema = strawberry.Schema(
+    query=Query,
+    mutation=Mutation,
+    extensions=[ContextCleanupExtension],
+)

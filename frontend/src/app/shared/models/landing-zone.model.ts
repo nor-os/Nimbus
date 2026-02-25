@@ -67,22 +67,18 @@ export interface LandingZoneTagPolicy {
   updatedAt: string;
 }
 
-export interface LandingZoneRegion {
+export interface BackendRegionRef {
   id: string;
-  landingZoneId: string;
   regionIdentifier: string;
   displayName: string;
-  isPrimary: boolean;
-  isDr: boolean;
-  settings: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface LandingZone {
   id: string;
   tenantId: string;
   backendId: string;
+  regionId: string | null;
+  region: BackendRegionRef | null;
   topologyId: string | null;
   cloudTenancyId: string | null;
   name: string;
@@ -98,7 +94,6 @@ export interface LandingZone {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-  regions: LandingZoneRegion[];
   tagPolicies: LandingZoneTagPolicy[];
 }
 
@@ -118,11 +113,26 @@ export interface EnvironmentTemplate {
   updatedAt: string;
 }
 
+export type FailoverMode = 'active_passive' | 'active_active' | 'pilot_light' | 'warm_standby';
+
+export interface DrConfig {
+  failoverMode: FailoverMode;
+  rpoHours: number;
+  rtoHours: number;
+  replicationConfig?: Record<string, unknown>;
+  failoverPriority?: number;
+  healthCheckUrl?: string;
+}
+
 export interface TenantEnvironment {
   id: string;
   tenantId: string;
   landingZoneId: string;
   templateId: string | null;
+  regionId: string | null;
+  region: BackendRegionRef | null;
+  drSourceEnvId: string | null;
+  drConfig: DrConfig | null;
   name: string;
   displayName: string;
   description: string | null;

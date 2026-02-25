@@ -24,9 +24,11 @@ class LandingZoneService:
                      topology_id: uuid.UUID | None = None,
                      description: str | None = None, cloud_tenancy_id: uuid.UUID | None = None,
                      settings: dict | None = None,
-                     hierarchy: dict | None = None) -> LandingZone:
+                     hierarchy: dict | None = None,
+                     region_id: uuid.UUID | None = None) -> LandingZone:
         zone = LandingZone(
             tenant_id=tenant_id, backend_id=backend_id, topology_id=topology_id,
+            region_id=region_id,
             name=name, description=description, cloud_tenancy_id=cloud_tenancy_id,
             settings=settings, hierarchy=hierarchy,
             created_by=created_by, status=LandingZoneStatus.DRAFT, version=0,
@@ -39,24 +41,37 @@ class LandingZoneService:
     async def get(self, db: AsyncSession, zone_id: uuid.UUID) -> LandingZone | None:
         result = await db.execute(
             select(LandingZone)
-            .options(selectinload(LandingZone.regions), selectinload(LandingZone.tag_policies))
+            .options(selectinload(LandingZone.tag_policies))
             .where(LandingZone.id == zone_id, LandingZone.deleted_at.is_(None))
         )
         return result.scalar_one_or_none()
 
     async def get_by_backend(self, db: AsyncSession, backend_id: uuid.UUID) -> LandingZone | None:
+        """Get the first landing zone for a backend (backward compat)."""
         result = await db.execute(
             select(LandingZone)
-            .options(selectinload(LandingZone.regions), selectinload(LandingZone.tag_policies))
+            .options(selectinload(LandingZone.tag_policies))
             .where(LandingZone.backend_id == backend_id, LandingZone.deleted_at.is_(None))
+            .order_by(LandingZone.created_at)
+            .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def list_by_region(self, db: AsyncSession, region_id: uuid.UUID) -> list[LandingZone]:
+        result = await db.execute(
+            select(LandingZone)
+            .options(selectinload(LandingZone.tag_policies))
+            .where(LandingZone.region_id == region_id, LandingZone.deleted_at.is_(None))
+            .order_by(LandingZone.created_at.desc())
+        )
+        return list(result.scalars().all())
 
     async def list_by_tenant(self, db: AsyncSession, tenant_id: uuid.UUID,
                              status: str | None = None, search: str | None = None,
                              offset: int | None = None, limit: int | None = None) -> list[LandingZone]:
         stmt = (
             select(LandingZone)
+            .options(selectinload(LandingZone.tag_policies))
             .where(LandingZone.tenant_id == tenant_id, LandingZone.deleted_at.is_(None))
         )
         if status:
@@ -74,6 +89,7 @@ class LandingZoneService:
     async def list_by_backend(self, db: AsyncSession, backend_id: uuid.UUID) -> list[LandingZone]:
         result = await db.execute(
             select(LandingZone)
+            .options(selectinload(LandingZone.tag_policies))
             .where(LandingZone.backend_id == backend_id, LandingZone.deleted_at.is_(None))
             .order_by(LandingZone.created_at.desc())
         )

@@ -236,6 +236,121 @@ class WorkflowDefinitionService:
         await self.db.flush()
         return clone
 
+    async def clone_from_template(
+        self,
+        tenant_id: str,
+        template_id: str,
+        created_by: str,
+        name: str,
+        description: str | None = None,
+    ) -> WorkflowDefinition:
+        """Clone a system template into a tenant-specific draft workflow."""
+        template = await self.db.execute(
+            select(WorkflowDefinition).where(
+                WorkflowDefinition.id == template_id,
+                WorkflowDefinition.is_template.is_(True),
+                WorkflowDefinition.deleted_at.is_(None),
+            )
+        )
+        source = template.scalar_one_or_none()
+        if not source:
+            raise WorkflowDefinitionError(
+                f"Workflow template '{template_id}' not found", "TEMPLATE_NOT_FOUND"
+            )
+
+        cloned = WorkflowDefinition(
+            tenant_id=tenant_id,
+            name=name,
+            description=description or source.description,
+            version=0,
+            graph=copy.deepcopy(source.graph) if source.graph else None,
+            status=WorkflowDefinitionStatus.DRAFT,
+            created_by=created_by,
+            timeout_seconds=source.timeout_seconds,
+            max_concurrent=source.max_concurrent,
+            workflow_type=WorkflowType.DEPLOYMENT,
+            is_system=False,
+            is_template=False,
+            template_source_id=source.id,
+        )
+        self.db.add(cloned)
+        await self.db.flush()
+        return cloned
+
+    async def resolve_template(
+        self,
+        operation_name: str,
+        provider_id: str | None = None,
+        semantic_type_id: str | None = None,
+    ) -> WorkflowDefinition | None:
+        """Resolve the best-matching deployment template for an operation.
+
+        Resolution chain (most specific first):
+        1. Provider + semantic type specific template
+        2. Provider-only template
+        3. Global default (no applicability filters)
+        """
+        from sqlalchemy import and_
+
+        base_filter = and_(
+            WorkflowDefinition.is_template.is_(True),
+            WorkflowDefinition.deleted_at.is_(None),
+            WorkflowDefinition.workflow_type == WorkflowType.DEPLOYMENT,
+            WorkflowDefinition.name == f"deployment:{operation_name}",
+        )
+
+        # 1. Provider + type specific
+        if provider_id and semantic_type_id:
+            result = await self.db.execute(
+                select(WorkflowDefinition).where(
+                    base_filter,
+                    WorkflowDefinition.applicable_provider_id == provider_id,
+                    WorkflowDefinition.applicable_semantic_type_id == semantic_type_id,
+                )
+            )
+            match = result.scalar_one_or_none()
+            if match:
+                return match
+
+        # 2. Provider-only
+        if provider_id:
+            result = await self.db.execute(
+                select(WorkflowDefinition).where(
+                    base_filter,
+                    WorkflowDefinition.applicable_provider_id == provider_id,
+                    WorkflowDefinition.applicable_semantic_type_id.is_(None),
+                )
+            )
+            match = result.scalar_one_or_none()
+            if match:
+                return match
+
+        # 3. Global default (NULL provider, NULL type)
+        result = await self.db.execute(
+            select(WorkflowDefinition).where(
+                base_filter,
+                WorkflowDefinition.applicable_provider_id.is_(None),
+                WorkflowDefinition.applicable_semantic_type_id.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def list_templates(
+        self, workflow_type: str | None = None
+    ) -> list[WorkflowDefinition]:
+        """List system workflow templates."""
+        query = select(WorkflowDefinition).where(
+            WorkflowDefinition.is_template.is_(True),
+            WorkflowDefinition.deleted_at.is_(None),
+        )
+        if workflow_type:
+            query = query.where(
+                WorkflowDefinition.workflow_type == WorkflowType(workflow_type)
+            )
+        query = query.order_by(WorkflowDefinition.name)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
     async def delete(
         self, tenant_id: str, definition_id: str
     ) -> bool:

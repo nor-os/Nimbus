@@ -6,6 +6,7 @@ Concepts: Auto-registration, node type discovery
 """
 
 from app.services.workflow.node_types import (
+    activity,
     approval_gate,
     audit_log,
     cloud_api,
@@ -13,6 +14,7 @@ from app.services.workflow.node_types import (
     condition,
     delay,
     deployment_gate,
+    event_trigger,
     http_request,
     loop,
     notification,
@@ -53,6 +55,10 @@ def register_all() -> None:
     stack_destroy.register()
     cmdb_record.register()
     deployment_gate.register()
+    # Activity node
+    activity.register()
+    # Event trigger node
+    event_trigger.register()
 
 
 # Auto-register on import

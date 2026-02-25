@@ -36,6 +36,15 @@ def _rate_to_type(r) -> CurrencyExchangeRateType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class CurrencyQuery:
     @strawberry.field
@@ -43,33 +52,31 @@ class CurrencyQuery:
         self, info: Info, provider_id: uuid.UUID, tenant_id: uuid.UUID
     ) -> ProviderCurrencyType:
         await check_graphql_permission(info, "settings:currency:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            currency = await service.get_provider_currency(str(provider_id))
-            return ProviderCurrencyType(
-                provider_id=provider_id,
-                default_currency=currency,
-            )
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        currency = await service.get_provider_currency(str(provider_id))
+        return ProviderCurrencyType(
+            provider_id=provider_id,
+            default_currency=currency,
+        )
 
     @strawberry.field
     async def tenant_currency(
         self, info: Info, tenant_id: uuid.UUID
     ) -> TenantCurrencyType:
         await check_graphql_permission(info, "settings:currency:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            invoice_currency, effective = await service.get_tenant_effective_currency(str(tenant_id))
-            return TenantCurrencyType(
-                tenant_id=tenant_id,
-                invoice_currency=invoice_currency,
-                effective_currency=effective,
-            )
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        invoice_currency, effective = await service.get_tenant_effective_currency(str(tenant_id))
+        return TenantCurrencyType(
+            tenant_id=tenant_id,
+            invoice_currency=invoice_currency,
+            effective_currency=effective,
+        )
 
     @strawberry.field
     async def exchange_rates(
@@ -81,18 +88,17 @@ class CurrencyQuery:
         target_currency: str | None = None,
     ) -> list[CurrencyExchangeRateType]:
         await check_graphql_permission(info, "settings:exchange_rate:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            if include_global:
-                rates = await service.list_exchange_rates(
-                    str(tenant_id), source_currency, target_currency
-                )
-            else:
-                rates = await service.list_tenant_overrides(str(tenant_id))
-            return [_rate_to_type(r) for r in rates]
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        if include_global:
+            rates = await service.list_exchange_rates(
+                str(tenant_id), source_currency, target_currency
+            )
+        else:
+            rates = await service.list_tenant_overrides(str(tenant_id))
+        return [_rate_to_type(r) for r in rates]
 
     @strawberry.field
     async def convert_currency(
@@ -105,20 +111,19 @@ class CurrencyQuery:
         as_of: date | None = None,
     ) -> CurrencyConversionResultType:
         await check_graphql_permission(info, "settings:exchange_rate:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
         effective_date = as_of or date.today()
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            converted, rate = await service.convert_amount(
-                amount, source_currency, target_currency, str(tenant_id), as_of
-            )
-            return CurrencyConversionResultType(
-                source_currency=source_currency.upper(),
-                target_currency=target_currency.upper(),
-                source_amount=amount,
-                converted_amount=converted,
-                rate=rate,
-                as_of=effective_date,
-            )
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        converted, rate = await service.convert_amount(
+            amount, source_currency, target_currency, str(tenant_id), as_of
+        )
+        return CurrencyConversionResultType(
+            source_currency=source_currency.upper(),
+            target_currency=target_currency.upper(),
+            source_amount=amount,
+            converted_amount=converted,
+            rate=rate,
+            as_of=effective_date,
+        )

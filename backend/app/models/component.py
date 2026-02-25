@@ -26,6 +26,20 @@ class ComponentLanguage(str, enum.Enum):
     PYTHON = "python"
 
 
+class OperationCategory(str, enum.Enum):
+    DEPLOYMENT = "DEPLOYMENT"
+    DAY2 = "DAY2"
+
+
+class OperationKind(str, enum.Enum):
+    CREATE = "CREATE"
+    DELETE = "DELETE"
+    RESTORE = "RESTORE"
+    UPDATE = "UPDATE"
+    VALIDATE = "VALIDATE"
+    READ = "READ"
+
+
 class EstimatedDowntime(str, enum.Enum):
     NONE = "NONE"
     BRIEF = "BRIEF"
@@ -171,8 +185,22 @@ class ComponentOperation(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         default=EstimatedDowntime.NONE,
         server_default="NONE",
     )
+    operation_category: Mapped[OperationCategory] = mapped_column(
+        Enum(OperationCategory, name="operation_category", create_constraint=False, native_enum=False),
+        nullable=False,
+        default=OperationCategory.DAY2,
+        server_default="DAY2",
+    )
+    operation_kind: Mapped[OperationKind | None] = mapped_column(
+        Enum(OperationKind, name="operation_kind", create_constraint=False, native_enum=False),
+        nullable=True,
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     # Relationships
     component: Mapped["Component"] = relationship(back_populates="operations")
     workflow_definition: Mapped["WorkflowDefinition"] = relationship(lazy="joined")  # noqa: F821
+
+    __table_args__ = (
+        Index("ix_component_operations_category", "component_id", "operation_category"),
+    )

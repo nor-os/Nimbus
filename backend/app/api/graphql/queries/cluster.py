@@ -97,6 +97,15 @@ def _cluster_to_gql(c) -> ServiceClusterType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class ClusterQuery:
 
@@ -107,15 +116,14 @@ class ClusterQuery:
         """Get a single service cluster by ID."""
         await check_graphql_permission(info, "cmdb:cluster:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.cluster_service import ClusterService
 
-        async with async_session_factory() as db:
-            service = ClusterService(db)
-            cluster = await service.get_cluster(id, str(tenant_id))
-            if not cluster:
-                return None
-            return _cluster_to_gql(cluster)
+        db = await _get_session(info)
+        service = ClusterService(db)
+        cluster = await service.get_cluster(id, str(tenant_id))
+        if not cluster:
+            return None
+        return _cluster_to_gql(cluster)
 
     @strawberry.field
     async def service_clusters(
@@ -130,18 +138,17 @@ class ClusterQuery:
         """List service clusters with pagination and filtering."""
         await check_graphql_permission(info, "cmdb:cluster:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.cluster_service import ClusterService
 
-        async with async_session_factory() as db:
-            service = ClusterService(db)
-            clusters, total = await service.list_clusters(
-                str(tenant_id), cluster_type, search, offset, limit
-            )
-            return ServiceClusterListType(
-                items=[_cluster_to_gql(c) for c in clusters],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = ClusterService(db)
+        clusters, total = await service.list_clusters(
+            str(tenant_id), cluster_type, search, offset, limit
+        )
+        return ServiceClusterListType(
+            items=[_cluster_to_gql(c) for c in clusters],
+            total=total,
+        )
 
     @strawberry.field
     async def blueprint_parameters(
@@ -150,13 +157,12 @@ class ClusterQuery:
         """List parameter definitions for a blueprint."""
         await check_graphql_permission(info, "cmdb:blueprint_param:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.parameter_service import StackParameterService
 
-        async with async_session_factory() as db:
-            service = StackParameterService(db)
-            params = await service.list_parameters(cluster_id)
-            return [_param_to_gql(p) for p in params]
+        db = await _get_session(info)
+        service = StackParameterService(db)
+        params = await service.list_parameters(cluster_id)
+        return [_param_to_gql(p) for p in params]
 
     @strawberry.field
     async def blueprint_stacks(
@@ -165,29 +171,28 @@ class ClusterQuery:
         """List deployed stacks for a blueprint based on its stack_tag_key."""
         await check_graphql_permission(info, "cmdb:cluster:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.cluster_service import ClusterService
 
-        async with async_session_factory() as db:
-            service = ClusterService(db)
-            result = await service.list_blueprint_stacks(
-                str(blueprint_id), str(tenant_id)
-            )
-            if result is None:
-                return None
-            return StackListType(
-                blueprint_id=result["blueprint_id"],
-                blueprint_name=result["blueprint_name"],
-                tag_key=result["tag_key"],
-                stacks=[
-                    StackInstanceType(
-                        tag_value=s["tag_value"],
-                        ci_count=s["ci_count"],
-                        active_count=s["active_count"],
-                        planned_count=s["planned_count"],
-                        maintenance_count=s["maintenance_count"],
-                    )
-                    for s in result["stacks"]
-                ],
-                total=len(result["stacks"]),
-            )
+        db = await _get_session(info)
+        service = ClusterService(db)
+        result = await service.list_blueprint_stacks(
+            str(blueprint_id), str(tenant_id)
+        )
+        if result is None:
+            return None
+        return StackListType(
+            blueprint_id=result["blueprint_id"],
+            blueprint_name=result["blueprint_name"],
+            tag_key=result["tag_key"],
+            stacks=[
+                StackInstanceType(
+                    tag_value=s["tag_value"],
+                    ci_count=s["ci_count"],
+                    active_count=s["active_count"],
+                    planned_count=s["planned_count"],
+                    maintenance_count=s["maintenance_count"],
+                )
+                for s in result["stacks"]
+            ],
+            total=len(result["stacks"]),
+        )

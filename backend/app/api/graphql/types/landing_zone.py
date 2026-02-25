@@ -81,19 +81,6 @@ class LandingZoneTagPolicyType:
 
 
 @strawberry.type
-class LandingZoneRegionType:
-    id: uuid.UUID
-    landing_zone_id: uuid.UUID
-    region_identifier: str
-    display_name: str
-    is_primary: bool
-    is_dr: bool
-    settings: strawberry.scalars.JSON | None
-    created_at: datetime
-    updated_at: datetime
-
-
-@strawberry.type
 class HierarchyLevelType:
     type_id: str
     label: str
@@ -112,10 +99,20 @@ class ProviderHierarchyType:
 
 
 @strawberry.type
+class BackendRegionRefType:
+    """Lightweight region reference embedded in LandingZoneType."""
+    id: uuid.UUID
+    region_identifier: str
+    display_name: str
+
+
+@strawberry.type
 class LandingZoneType:
     id: uuid.UUID
     tenant_id: uuid.UUID
     backend_id: uuid.UUID
+    region_id: uuid.UUID | None
+    region: BackendRegionRefType | None
     topology_id: uuid.UUID | None
     cloud_tenancy_id: uuid.UUID | None
     name: str
@@ -131,7 +128,6 @@ class LandingZoneType:
     created_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
-    regions: list[LandingZoneRegionType]
     tag_policies: list[LandingZoneTagPolicyType]
 
 
@@ -160,6 +156,10 @@ class TenantEnvironmentType:
     tenant_id: uuid.UUID
     landing_zone_id: uuid.UUID
     template_id: uuid.UUID | None
+    region_id: uuid.UUID | None
+    region: BackendRegionRefType | None
+    dr_source_env_id: uuid.UUID | None
+    dr_config: strawberry.scalars.JSON | None
     name: str
     display_name: str
     description: str | None
@@ -254,6 +254,7 @@ class CidrSummaryType:
 class LandingZoneCreateInput:
     name: str
     backend_id: uuid.UUID
+    region_id: uuid.UUID | None = None
     topology_id: uuid.UUID | None = None
     description: str | None = None
     cloud_tenancy_id: uuid.UUID | None = None
@@ -265,21 +266,13 @@ class LandingZoneCreateInput:
 class LandingZoneUpdateInput:
     name: str | None = None
     description: str | None = None
+    region_id: uuid.UUID | None = None
     settings: strawberry.scalars.JSON | None = None
     network_config: strawberry.scalars.JSON | None = None
     iam_config: strawberry.scalars.JSON | None = None
     security_config: strawberry.scalars.JSON | None = None
     naming_config: strawberry.scalars.JSON | None = None
     hierarchy: strawberry.scalars.JSON | None = None
-
-
-@strawberry.input
-class LandingZoneRegionInput:
-    region_identifier: str
-    display_name: str
-    is_primary: bool = False
-    is_dr: bool = False
-    settings: strawberry.scalars.JSON | None = None
 
 
 @strawberry.input
@@ -314,6 +307,9 @@ class TenantEnvironmentCreateInput:
     template_id: uuid.UUID | None = None
     description: str | None = None
     root_compartment_id: uuid.UUID | None = None
+    region_id: uuid.UUID | None = None
+    dr_source_env_id: uuid.UUID | None = None
+    dr_config: strawberry.scalars.JSON | None = None
     tags: strawberry.scalars.JSON | None = None
     policies: strawberry.scalars.JSON | None = None
     settings: strawberry.scalars.JSON | None = None
@@ -328,6 +324,9 @@ class TenantEnvironmentUpdateInput:
     name: str | None = None
     display_name: str | None = None
     description: str | None = None
+    region_id: uuid.UUID | None = None
+    dr_source_env_id: uuid.UUID | None = None
+    dr_config: strawberry.scalars.JSON | None = None
     tags: strawberry.scalars.JSON | None = None
     policies: strawberry.scalars.JSON | None = None
     settings: strawberry.scalars.JSON | None = None
@@ -357,6 +356,21 @@ class AllocationCreateInput:
     tenant_environment_id: uuid.UUID | None = None
     purpose: str | None = None
     description: str | None = None
+
+
+@strawberry.input
+class SubnetIpamAllocationInput:
+    environment_id: uuid.UUID
+    address_space_id: uuid.UUID
+    prefix_length: int
+    subnet_name: str
+
+
+@strawberry.type
+class SubnetIpamAllocationResult:
+    cidr: str
+    gateway: str
+    allocation_id: uuid.UUID
 
 
 @strawberry.input

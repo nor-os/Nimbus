@@ -42,6 +42,15 @@ class GroupMemberInput:
     group_id: uuid.UUID
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class PermissionMutation:
     @strawberry.mutation
@@ -50,33 +59,32 @@ class PermissionMutation:
     ) -> RoleType:
         """Create a custom role."""
         await check_graphql_permission(info, "users:role:create", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.permission.role_service import RoleService
 
-        async with async_session_factory() as db:
-            service = RoleService(db)
-            role = await service.create_role(
-                tenant_id=str(tenant_id),
-                name=input.name,
-                description=input.description,
-                scope=input.scope or "tenant",
-                parent_role_id=str(input.parent_role_id) if input.parent_role_id else None,
-                permission_ids=[str(pid) for pid in input.permission_ids],
-            )
-            await db.commit()
-            return RoleType(
-                id=role.id,
-                tenant_id=role.tenant_id,
-                name=role.name,
-                description=role.description,
-                is_system=role.is_system,
-                is_custom=role.is_custom,
-                scope=role.scope,
-                parent_role_id=role.parent_role_id,
-                max_level=role.max_level,
-                created_at=role.created_at,
-                updated_at=role.updated_at,
-            )
+        db = await _get_session(info)
+        service = RoleService(db)
+        role = await service.create_role(
+            tenant_id=str(tenant_id),
+            name=input.name,
+            description=input.description,
+            scope=input.scope or "tenant",
+            parent_role_id=str(input.parent_role_id) if input.parent_role_id else None,
+            permission_ids=[str(pid) for pid in input.permission_ids],
+        )
+        await db.commit()
+        return RoleType(
+            id=role.id,
+            tenant_id=role.tenant_id,
+            name=role.name,
+            description=role.description,
+            is_system=role.is_system,
+            is_custom=role.is_custom,
+            scope=role.scope,
+            parent_role_id=role.parent_role_id,
+            max_level=role.max_level,
+            created_at=role.created_at,
+            updated_at=role.updated_at,
+        )
 
     @strawberry.mutation
     async def assign_role(
@@ -84,19 +92,18 @@ class PermissionMutation:
     ) -> bool:
         """Assign a role to a user."""
         await check_graphql_permission(info, "users:role:assign", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.permission.role_service import RoleService
 
-        async with async_session_factory() as db:
-            service = RoleService(db)
-            await service.assign_role(
-                user_id=str(input.user_id),
-                role_id=str(input.role_id),
-                tenant_id=str(tenant_id),
-                compartment_id=str(input.compartment_id) if input.compartment_id else None,
-            )
-            await db.commit()
-            return True
+        db = await _get_session(info)
+        service = RoleService(db)
+        await service.assign_role(
+            user_id=str(input.user_id),
+            role_id=str(input.role_id),
+            tenant_id=str(tenant_id),
+            compartment_id=str(input.compartment_id) if input.compartment_id else None,
+        )
+        await db.commit()
+        return True
 
     @strawberry.mutation
     async def create_group(
@@ -104,36 +111,34 @@ class PermissionMutation:
     ) -> GroupType:
         """Create a new group."""
         await check_graphql_permission(info, "users:group:create", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.permission.group_service import GroupService
 
-        async with async_session_factory() as db:
-            service = GroupService(db)
-            group = await service.create_group(
-                tenant_id=str(tenant_id),
-                name=input.name,
-                description=input.description,
-            )
-            await db.commit()
-            return GroupType(
-                id=group.id,
-                tenant_id=group.tenant_id,
-                name=group.name,
-                description=group.description,
-                created_at=group.created_at,
-                updated_at=group.updated_at,
-            )
+        db = await _get_session(info)
+        service = GroupService(db)
+        group = await service.create_group(
+            tenant_id=str(tenant_id),
+            name=input.name,
+            description=input.description,
+        )
+        await db.commit()
+        return GroupType(
+            id=group.id,
+            tenant_id=group.tenant_id,
+            name=group.name,
+            description=group.description,
+            created_at=group.created_at,
+            updated_at=group.updated_at,
+        )
 
     @strawberry.mutation
     async def add_group_member(
         self, info: Info, input: GroupMemberInput
     ) -> bool:
         """Add a user to a group."""
-        from app.db.session import async_session_factory
         from app.services.permission.group_service import GroupService
 
-        async with async_session_factory() as db:
-            service = GroupService(db)
-            await service.add_member(str(input.group_id), str(input.user_id))
-            await db.commit()
-            return True
+        db = await _get_session(info)
+        service = GroupService(db)
+        await service.add_member(str(input.group_id), str(input.user_id))
+        await db.commit()
+        return True

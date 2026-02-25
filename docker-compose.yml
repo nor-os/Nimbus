@@ -88,6 +88,21 @@ services:
       retries: 20
       start_period: 30s
 
+  # ── Valkey (Redis-compatible) ───────────────────────────────────
+  # Event stream transport; Phase 13 adds caching + Socket.IO pub/sub
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: nimbus-valkey
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # ── Temporal UI ─────────────────────────────────────────────────
   temporal-ui:
     image: temporalio/ui:latest
@@ -104,3 +119,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  valkey_data:

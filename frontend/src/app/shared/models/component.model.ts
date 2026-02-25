@@ -128,6 +128,8 @@ export interface ComponentCreateInput {
 }
 
 export type EstimatedDowntime = 'NONE' | 'BRIEF' | 'EXTENDED';
+export type OperationCategory = 'DEPLOYMENT' | 'DAY2';
+export type OperationKind = 'CREATE' | 'DELETE' | 'RESTORE' | 'UPDATE' | 'VALIDATE' | 'READ';
 
 export interface ComponentOperation {
   id: string;
@@ -142,6 +144,8 @@ export interface ComponentOperation {
   isDestructive: boolean;
   requiresApproval: boolean;
   estimatedDowntime: EstimatedDowntime;
+  operationCategory: OperationCategory;
+  operationKind: OperationKind | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;

@@ -327,6 +327,21 @@ export class WorkflowService {
     );
   }
 
+  getActivityNodePalette(): Observable<NodeTypeInfo[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ activityNodePalette: NodeTypeInfo[] }>(`
+      query ActivityNodePalette($tenantId: UUID!) {
+        activityNodePalette(tenantId: $tenantId) {
+          typeId label category description icon isMarker
+          ports { name direction portType label required multiple }
+          configSchema
+        }
+      }
+    `, { tenantId }).pipe(
+      map(data => data.activityNodePalette),
+    );
+  }
+
   // ── Validation ──────────────────────────────────────
 
   validateGraph(graph: Record<string, unknown>): Observable<ValidationResult> {

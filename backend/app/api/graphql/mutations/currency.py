@@ -35,6 +35,15 @@ def _rate_to_type(r) -> CurrencyExchangeRateType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class CurrencyMutation:
     @strawberry.mutation
@@ -46,17 +55,16 @@ class CurrencyMutation:
         currency: str,
     ) -> ProviderCurrencyType:
         await check_graphql_permission(info, "settings:currency:manage", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            provider = await service.update_provider_currency(str(provider_id), currency)
-            await db.commit()
-            return ProviderCurrencyType(
-                provider_id=provider.id,
-                default_currency=provider.default_currency,
-            )
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        provider = await service.update_provider_currency(str(provider_id), currency)
+        await db.commit()
+        return ProviderCurrencyType(
+            provider_id=provider.id,
+            default_currency=provider.default_currency,
+        )
 
     @strawberry.mutation
     async def update_tenant_invoice_currency(
@@ -66,19 +74,18 @@ class CurrencyMutation:
         currency: str | None = None,
     ) -> TenantCurrencyType:
         await check_graphql_permission(info, "settings:currency:manage", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            await service.update_tenant_currency(str(tenant_id), currency)
-            invoice_currency, effective = await service.get_tenant_effective_currency(str(tenant_id))
-            await db.commit()
-            return TenantCurrencyType(
-                tenant_id=tenant_id,
-                invoice_currency=invoice_currency,
-                effective_currency=effective,
-            )
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        await service.update_tenant_currency(str(tenant_id), currency)
+        invoice_currency, effective = await service.get_tenant_effective_currency(str(tenant_id))
+        await db.commit()
+        return TenantCurrencyType(
+            tenant_id=tenant_id,
+            invoice_currency=invoice_currency,
+            effective_currency=effective,
+        )
 
     @strawberry.mutation
     async def create_exchange_rate(
@@ -88,23 +95,22 @@ class CurrencyMutation:
         input: ExchangeRateCreateInput,
     ) -> CurrencyExchangeRateType:
         await check_graphql_permission(info, "settings:exchange_rate:manage", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
         # Determine scope: input.tenant_id for override, None for global
         rate_tenant_id = str(input.tenant_id) if input.tenant_id else None
 
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            rate = await service.create_exchange_rate({
-                "source_currency": input.source_currency,
-                "target_currency": input.target_currency,
-                "rate": input.rate,
-                "effective_from": input.effective_from,
-                "effective_to": input.effective_to,
-            }, tenant_id=rate_tenant_id)
-            await db.commit()
-            return _rate_to_type(rate)
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        rate = await service.create_exchange_rate({
+            "source_currency": input.source_currency,
+            "target_currency": input.target_currency,
+            "rate": input.rate,
+            "effective_from": input.effective_from,
+            "effective_to": input.effective_to,
+        }, tenant_id=rate_tenant_id)
+        await db.commit()
+        return _rate_to_type(rate)
 
     @strawberry.mutation
     async def update_exchange_rate(
@@ -115,7 +121,6 @@ class CurrencyMutation:
         input: ExchangeRateUpdateInput,
     ) -> CurrencyExchangeRateType:
         await check_graphql_permission(info, "settings:exchange_rate:manage", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
         data = {}
@@ -126,11 +131,11 @@ class CurrencyMutation:
         if input.effective_to is not strawberry.UNSET:
             data["effective_to"] = input.effective_to
 
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            rate = await service.update_exchange_rate(str(rate_id), data)
-            await db.commit()
-            return _rate_to_type(rate)
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        rate = await service.update_exchange_rate(str(rate_id), data)
+        await db.commit()
+        return _rate_to_type(rate)
 
     @strawberry.mutation
     async def delete_exchange_rate(
@@ -140,11 +145,10 @@ class CurrencyMutation:
         rate_id: uuid.UUID,
     ) -> bool:
         await check_graphql_permission(info, "settings:exchange_rate:manage", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.currency.currency_service import CurrencyService
 
-        async with async_session_factory() as db:
-            service = CurrencyService(db)
-            result = await service.delete_exchange_rate(str(rate_id))
-            await db.commit()
-            return result
+        db = await _get_session(info)
+        service = CurrencyService(db)
+        result = await service.delete_exchange_rate(str(rate_id))
+        await db.commit()
+        return result

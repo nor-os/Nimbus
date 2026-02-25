@@ -17,6 +17,7 @@ from app.api.graphql.types.landing_zone import (
     AllocationStatusGQL,
     AllocationTypeGQL,
     AddressSpaceStatusGQL,
+    BackendRegionRefType,
     CidrSuggestionType,
     CidrSummaryType,
     EnvironmentStatusGQL,
@@ -25,7 +26,6 @@ from app.api.graphql.types.landing_zone import (
     IpReservationType,
     LandingZoneBlueprintType,
     LandingZoneCheckType,
-    LandingZoneRegionType,
     LandingZoneStatusGQL,
     LandingZoneTagPolicyType,
     LandingZoneType,
@@ -74,15 +74,6 @@ def _space_to_type(s) -> AddressSpaceType:
     )
 
 
-def _region_to_type(r) -> LandingZoneRegionType:
-    return LandingZoneRegionType(
-        id=r.id, landing_zone_id=r.landing_zone_id,
-        region_identifier=r.region_identifier, display_name=r.display_name,
-        is_primary=r.is_primary, is_dr=r.is_dr, settings=r.settings,
-        created_at=r.created_at, updated_at=r.updated_at,
-    )
-
-
 def _tag_policy_to_type(tp) -> LandingZoneTagPolicyType:
     return LandingZoneTagPolicyType(
         id=tp.id, landing_zone_id=tp.landing_zone_id,
@@ -94,8 +85,16 @@ def _tag_policy_to_type(tp) -> LandingZoneTagPolicyType:
 
 
 def _zone_to_type(z) -> LandingZoneType:
+    region_ref = None
+    if z.region:
+        region_ref = BackendRegionRefType(
+            id=z.region.id,
+            region_identifier=z.region.region_identifier,
+            display_name=z.region.display_name,
+        )
     return LandingZoneType(
         id=z.id, tenant_id=z.tenant_id, backend_id=z.backend_id,
+        region_id=z.region_id, region=region_ref,
         topology_id=z.topology_id, cloud_tenancy_id=z.cloud_tenancy_id,
         name=z.name, description=z.description,
         status=LandingZoneStatusGQL(z.status.value),
@@ -105,7 +104,6 @@ def _zone_to_type(z) -> LandingZoneType:
         hierarchy=z.hierarchy,
         created_by=z.created_by,
         created_at=z.created_at, updated_at=z.updated_at,
-        regions=[_region_to_type(r) for r in (z.regions or [])],
         tag_policies=[_tag_policy_to_type(tp) for tp in (z.tag_policies or [])],
     )
 
@@ -129,9 +127,21 @@ def _env_to_type(e) -> TenantEnvironmentType:
             backend = lz.backend
             if hasattr(backend, 'provider') and backend.provider:
                 provider_name = backend.provider.name
+    region_ref = None
+    if hasattr(e, 'region') and e.region:
+        region_ref = BackendRegionRefType(
+            id=e.region.id,
+            region_identifier=e.region.region_identifier,
+            display_name=e.region.display_name,
+        )
     return TenantEnvironmentType(
         id=e.id, tenant_id=e.tenant_id, landing_zone_id=e.landing_zone_id,
-        template_id=e.template_id, name=e.name, display_name=e.display_name,
+        template_id=e.template_id,
+        region_id=getattr(e, 'region_id', None),
+        region=region_ref,
+        dr_source_env_id=getattr(e, 'dr_source_env_id', None),
+        dr_config=getattr(e, 'dr_config', None),
+        name=e.name, display_name=e.display_name,
         description=e.description, status=EnvironmentStatusGQL(e.status.value),
         root_compartment_id=e.root_compartment_id, tags=e.tags, policies=e.policies,
         settings=e.settings,
@@ -145,6 +155,16 @@ def _env_to_type(e) -> TenantEnvironmentType:
 
 # ── Queries ────────────────────────────────────────────────────────────
 
+
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class LandingZoneQuery:
 
@@ -157,14 +177,13 @@ class LandingZoneQuery:
         """List all landing zones for a tenant."""
         await check_graphql_permission(info, "landingzone:zone:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.zone_service import LandingZoneService
 
-        async with async_session_factory() as db:
-            svc = LandingZoneService()
-            zones = await svc.list_by_tenant(db, tenant_id, status=status, search=search,
-                                             offset=offset, limit=limit)
-            return [_zone_to_type(z) for z in zones]
+        db = await _get_session(info)
+        svc = LandingZoneService()
+        zones = await svc.list_by_tenant(db, tenant_id, status=status, search=search,
+                                         offset=offset, limit=limit)
+        return [_zone_to_type(z) for z in zones]
 
     @strawberry.field
     async def landing_zone(
@@ -173,13 +192,12 @@ class LandingZoneQuery:
         """Get a landing zone by ID."""
         await check_graphql_permission(info, "landingzone:zone:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.zone_service import LandingZoneService
 
-        async with async_session_factory() as db:
-            svc = LandingZoneService()
-            z = await svc.get(db, zone_id)
-            return _zone_to_type(z) if z else None
+        db = await _get_session(info)
+        svc = LandingZoneService()
+        z = await svc.get(db, zone_id)
+        return _zone_to_type(z) if z else None
 
     @strawberry.field
     async def landing_zones_by_backend(
@@ -188,13 +206,12 @@ class LandingZoneQuery:
         """List landing zones for a specific cloud backend."""
         await check_graphql_permission(info, "landingzone:zone:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.zone_service import LandingZoneService
 
-        async with async_session_factory() as db:
-            svc = LandingZoneService()
-            zones = await svc.list_by_backend(db, backend_id)
-            return [_zone_to_type(z) for z in zones]
+        db = await _get_session(info)
+        svc = LandingZoneService()
+        zones = await svc.list_by_backend(db, backend_id)
+        return [_zone_to_type(z) for z in zones]
 
     @strawberry.field
     async def landing_zone_by_backend(
@@ -203,13 +220,26 @@ class LandingZoneQuery:
         """Get the single landing zone for a cloud backend (1:1 relationship)."""
         await check_graphql_permission(info, "landingzone:zone:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.zone_service import LandingZoneService
 
-        async with async_session_factory() as db:
-            svc = LandingZoneService()
-            z = await svc.get_by_backend(db, backend_id)
-            return _zone_to_type(z) if z else None
+        db = await _get_session(info)
+        svc = LandingZoneService()
+        z = await svc.get_by_backend(db, backend_id)
+        return _zone_to_type(z) if z else None
+
+    @strawberry.field
+    async def landing_zones_by_region(
+        self, info: Info, tenant_id: uuid.UUID, region_id: uuid.UUID,
+    ) -> list[LandingZoneType]:
+        """List landing zones for a specific backend region."""
+        await check_graphql_permission(info, "landingzone:zone:read", str(tenant_id))
+
+        from app.services.landing_zone.zone_service import LandingZoneService
+
+        db = await _get_session(info)
+        svc = LandingZoneService()
+        zones = await svc.list_by_region(db, region_id)
+        return [_zone_to_type(z) for z in zones]
 
     # ── Environment Templates ──────────────────────────────────────
 
@@ -222,13 +252,12 @@ class LandingZoneQuery:
         """List environment templates, optionally filtered by provider."""
         await check_graphql_permission(info, "landingzone:template:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.environment_service import EnvironmentService
 
-        async with async_session_factory() as db:
-            svc = EnvironmentService()
-            templates = await svc.list_templates(db, provider_id, offset=offset, limit=limit)
-            return [_template_to_type(t) for t in templates]
+        db = await _get_session(info)
+        svc = EnvironmentService()
+        templates = await svc.list_templates(db, provider_id, offset=offset, limit=limit)
+        return [_template_to_type(t) for t in templates]
 
     @strawberry.field
     async def environment_template(
@@ -237,13 +266,12 @@ class LandingZoneQuery:
         """Get an environment template by ID."""
         await check_graphql_permission(info, "landingzone:template:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.environment_service import EnvironmentService
 
-        async with async_session_factory() as db:
-            svc = EnvironmentService()
-            t = await svc.get_template(db, template_id)
-            return _template_to_type(t) if t else None
+        db = await _get_session(info)
+        svc = EnvironmentService()
+        t = await svc.get_template(db, template_id)
+        return _template_to_type(t) if t else None
 
     # ── Tenant Environments ────────────────────────────────────────
 
@@ -257,14 +285,13 @@ class LandingZoneQuery:
         """List tenant environments."""
         await check_graphql_permission(info, "landingzone:environment:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.environment_service import EnvironmentService
 
-        async with async_session_factory() as db:
-            svc = EnvironmentService()
-            envs = await svc.list_environments(db, tenant_id, landing_zone_id,
-                                               status=status, offset=offset, limit=limit)
-            return [_env_to_type(e) for e in envs]
+        db = await _get_session(info)
+        svc = EnvironmentService()
+        envs = await svc.list_environments(db, tenant_id, landing_zone_id,
+                                           status=status, offset=offset, limit=limit)
+        return [_env_to_type(e) for e in envs]
 
     @strawberry.field
     async def tenant_environment(
@@ -273,13 +300,12 @@ class LandingZoneQuery:
         """Get a tenant environment by ID."""
         await check_graphql_permission(info, "landingzone:environment:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.environment_service import EnvironmentService
 
-        async with async_session_factory() as db:
-            svc = EnvironmentService()
-            e = await svc.get_environment(db, environment_id)
-            return _env_to_type(e) if e else None
+        db = await _get_session(info)
+        svc = EnvironmentService()
+        e = await svc.get_environment(db, environment_id)
+        return _env_to_type(e) if e else None
 
     # ── IPAM ───────────────────────────────────────────────────────
 
@@ -290,13 +316,12 @@ class LandingZoneQuery:
         """List address spaces for a landing zone."""
         await check_graphql_permission(info, "ipam:space:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.ipam.ipam_service import IpamService
 
-        async with async_session_factory() as db:
-            svc = IpamService()
-            spaces = await svc.list_address_spaces(db, landing_zone_id)
-            return [_space_to_type(s) for s in spaces]
+        db = await _get_session(info)
+        svc = IpamService()
+        spaces = await svc.list_address_spaces(db, landing_zone_id)
+        return [_space_to_type(s) for s in spaces]
 
     @strawberry.field
     async def address_space(
@@ -305,13 +330,12 @@ class LandingZoneQuery:
         """Get an address space by ID."""
         await check_graphql_permission(info, "ipam:space:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.ipam.ipam_service import IpamService
 
-        async with async_session_factory() as db:
-            svc = IpamService()
-            s = await svc.get_address_space(db, space_id)
-            return _space_to_type(s) if s else None
+        db = await _get_session(info)
+        svc = IpamService()
+        s = await svc.get_address_space(db, space_id)
+        return _space_to_type(s) if s else None
 
     @strawberry.field
     async def address_allocations(
@@ -321,13 +345,12 @@ class LandingZoneQuery:
         """List allocations in an address space, optionally filtered by parent."""
         await check_graphql_permission(info, "ipam:allocation:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.ipam.ipam_service import IpamService
 
-        async with async_session_factory() as db:
-            svc = IpamService()
-            allocs = await svc.list_allocations(db, address_space_id, parent_id=parent_id)
-            return [_allocation_to_type(a) for a in allocs]
+        db = await _get_session(info)
+        svc = IpamService()
+        allocs = await svc.list_allocations(db, address_space_id, parent_id=parent_id)
+        return [_allocation_to_type(a) for a in allocs]
 
     @strawberry.field
     async def ip_reservations(
@@ -336,13 +359,36 @@ class LandingZoneQuery:
         """List IP reservations for a subnet allocation."""
         await check_graphql_permission(info, "ipam:reservation:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.ipam.ipam_service import IpamService
 
-        async with async_session_factory() as db:
-            svc = IpamService()
-            reservations = await svc.list_reservations(db, allocation_id)
-            return [_reservation_to_type(r) for r in reservations]
+        db = await _get_session(info)
+        svc = IpamService()
+        reservations = await svc.list_reservations(db, allocation_id)
+        return [_reservation_to_type(r) for r in reservations]
+
+    @strawberry.field
+    async def environment_ipam_allocations(
+        self, info: Info, tenant_id: uuid.UUID, environment_id: uuid.UUID,
+    ) -> list[AddressAllocationType]:
+        """List IPAM allocations associated with a specific environment."""
+        await check_graphql_permission(info, "ipam:allocation:read", str(tenant_id))
+
+        from sqlalchemy import select
+
+        from app.models.ipam import AddressAllocation
+
+        db = await _get_session(info)
+        stmt = (
+            select(AddressAllocation)
+            .where(
+                AddressAllocation.tenant_environment_id == environment_id,
+                AddressAllocation.status != "RELEASED",
+            )
+            .order_by(AddressAllocation.created_at)
+        )
+        result = await db.execute(stmt)
+        allocs = result.scalars().all()
+        return [_allocation_to_type(a) for a in allocs]
 
     @strawberry.field
     async def suggest_next_block(
@@ -353,16 +399,15 @@ class LandingZoneQuery:
         """Suggest the next available CIDR block of a given prefix length."""
         await check_graphql_permission(info, "ipam:allocation:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.ipam.ipam_service import IpamService
 
-        async with async_session_factory() as db:
-            svc = IpamService()
-            cidr = await svc.suggest_next_block(
-                db, address_space_id, prefix_length,
-                parent_allocation_id=parent_allocation_id,
-            )
-            return CidrSuggestionType(cidr=cidr, available=cidr is not None)
+        db = await _get_session(info)
+        svc = IpamService()
+        cidr = await svc.suggest_next_block(
+            db, address_space_id, prefix_length,
+            parent_allocation_id=parent_allocation_id,
+        )
+        return CidrSuggestionType(cidr=cidr, available=cidr is not None)
 
     @strawberry.field
     async def cidr_summary(
@@ -469,18 +514,17 @@ class LandingZoneQuery:
         """Validate a landing zone for publish readiness."""
         await check_graphql_permission(info, "landingzone:zone:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.landing_zone.validation_service import LandingZoneValidationService
 
-        async with async_session_factory() as db:
-            svc = LandingZoneValidationService()
-            result = await svc.validate(db, zone_id)
-            return LandingZoneValidationType(
-                ready=result.ready,
-                checks=[
-                    LandingZoneCheckType(
-                        key=c.key, label=c.label, status=c.status, message=c.message,
-                    )
-                    for c in result.checks
-                ],
-            )
+        db = await _get_session(info)
+        svc = LandingZoneValidationService()
+        result = await svc.validate(db, zone_id)
+        return LandingZoneValidationType(
+            ready=result.ready,
+            checks=[
+                LandingZoneCheckType(
+                    key=c.key, label=c.label, status=c.status, message=c.message,
+                )
+                for c in result.checks
+            ],
+        )

@@ -17,6 +17,40 @@ from strawberry.scalars import JSON
 
 
 @strawberry.type
+class BackendRegionType:
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    backend_id: uuid.UUID
+    region_identifier: str
+    display_name: str
+    provider_region_code: str | None
+    is_enabled: bool
+    availability_zones: JSON | None
+    settings: JSON | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@strawberry.input
+class BackendRegionInput:
+    region_identifier: str
+    display_name: str
+    provider_region_code: str | None = None
+    is_enabled: bool = True
+    availability_zones: JSON | None = None
+    settings: JSON | None = None
+
+
+@strawberry.input
+class BackendRegionUpdateInput:
+    display_name: str | None = None
+    provider_region_code: str | None = strawberry.UNSET
+    is_enabled: bool | None = None
+    availability_zones: JSON | None = strawberry.UNSET
+    settings: JSON | None = strawberry.UNSET
+
+
+@strawberry.type
 class CloudBackendType:
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -35,6 +69,7 @@ class CloudBackendType:
     last_connectivity_check: datetime | None
     last_connectivity_status: str | None
     last_connectivity_error: str | None
+    regions: list[BackendRegionType]
     iam_mapping_count: int
     created_by: uuid.UUID | None
     created_at: datetime
@@ -93,6 +128,37 @@ class CloudBackendIAMMappingInput:
     cloud_identity: JSON
     description: str | None = None
     is_active: bool = True
+
+
+@strawberry.type
+class ConfigOptionType:
+    id: str
+    domain: str
+    category: str
+    provider_name: str
+    name: str
+    display_name: str
+    description: str
+    detail: str
+    icon: str
+    implications: list[str]
+    config_values: JSON
+    conflicts_with: list[str]
+    requires: list[str]
+    related_resolver_types: list[str]
+    related_component_names: list[str]
+    sort_order: int
+    is_default: bool
+    tags: list[str]
+    hierarchy_implications: JSON | None = None
+
+
+@strawberry.type
+class ConfigOptionCategoryType:
+    name: str
+    display_name: str
+    description: str
+    icon: str
 
 
 @strawberry.input

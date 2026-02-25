@@ -67,6 +67,9 @@ class CloudBackend(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     )
 
     provider: Mapped["SemanticProvider"] = relationship(lazy="joined")  # noqa: F821
+    regions: Mapped[list["BackendRegion"]] = relationship(
+        back_populates="backend", lazy="selectin"
+    )
     iam_mappings: Mapped[list["CloudBackendIAMMapping"]] = relationship(
         back_populates="backend", lazy="selectin"
     )
@@ -79,6 +82,38 @@ class CloudBackend(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         Index("ix_cloud_backends_tenant", "tenant_id"),
         Index("ix_cloud_backends_provider", "provider_id"),
         Index("ix_cloud_backends_status", "status"),
+    )
+
+
+class BackendRegion(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
+    """An activated/configured region on a cloud backend."""
+
+    __tablename__ = "backend_regions"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+    )
+    backend_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cloud_backends.id"), nullable=False
+    )
+    region_identifier: Mapped[str] = mapped_column(String(100), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_region_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    availability_zones: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    settings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    backend: Mapped["CloudBackend"] = relationship(
+        back_populates="regions", lazy="joined"
+    )
+
+    __table_args__ = (
+        # Partial unique index (backend_id, region_identifier) WHERE deleted_at IS NULL
+        # created in migration 080 via raw SQL
+        Index("ix_backend_regions_tenant", "tenant_id"),
+        Index("ix_backend_regions_backend", "backend_id"),
     )
 
 

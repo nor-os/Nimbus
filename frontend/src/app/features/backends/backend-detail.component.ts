@@ -25,6 +25,8 @@ import { LandingZoneService } from '@core/services/landing-zone.service';
 import { PermissionService } from '@core/services/permission.service';
 import { Role } from '@core/models/permission.model';
 import {
+  BackendRegion,
+  BackendRegionInput,
   CloudBackend,
   CloudBackendIAMMapping,
   CloudBackendIAMMappingInput,
@@ -48,7 +50,7 @@ interface SchemaProperty {
   showWhen?: Record<string, string>;
 }
 
-type TabKey = 'overview' | 'credentials' | 'iam';
+type TabKey = 'overview' | 'credentials' | 'regions' | 'iam';
 
 @Component({
   selector: 'nimbus-backend-detail',
@@ -130,6 +132,10 @@ type TabKey = 'overview' | 'credentials' | 'iam';
               class="tab" [class.active]="activeTab() === 'credentials'"
               (click)="activeTab.set('credentials')"
             >Credentials</button>
+            <button
+              class="tab" [class.active]="activeTab() === 'regions'"
+              (click)="activeTab.set('regions')"
+            >Regions ({{ b.regions.length }})</button>
             <button
               class="tab" [class.active]="activeTab() === 'iam'"
               (click)="loadIAMMappings(); activeTab.set('iam')"
@@ -287,6 +293,112 @@ type TabKey = 'overview' | 'credentials' | 'iam';
                     {{ saving() ? 'Saving...' : 'Save Credentials' }}
                   </button>
                 </div>
+              </div>
+            </div>
+          }
+
+          <!-- Regions Tab -->
+          @if (activeTab() === 'regions') {
+            <div class="tab-content">
+              <div class="form-card">
+                <div class="section-header">
+                  <h3>Regions</h3>
+                  <button
+                    *nimbusHasPermission="'cloud:region:create'"
+                    class="btn btn-primary btn-sm"
+                    (click)="openRegionForm()"
+                  >Add Region</button>
+                </div>
+                <p class="iam-hint">
+                  Activated regions for this backend. Each landing zone is pinned to one region.
+                </p>
+
+                @if (showRegionForm()) {
+                  <div class="iam-form">
+                    <h4>{{ editingRegionId ? 'Edit' : 'New' }} Region</h4>
+                    <div class="form-row">
+                      <div class="form-group half">
+                        <label class="form-label">Region Identifier <span class="required-mark">*</span></label>
+                        <input class="form-input" [(ngModel)]="regionIdentifier"
+                          placeholder="e.g. us-east-1, westeurope" [disabled]="!!editingRegionId" />
+                      </div>
+                      <div class="form-group half">
+                        <label class="form-label">Display Name <span class="required-mark">*</span></label>
+                        <input class="form-input" [(ngModel)]="regionDisplayName"
+                          placeholder="e.g. US East (N. Virginia)" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group half">
+                        <label class="form-label">Provider Region Code</label>
+                        <input class="form-input" [(ngModel)]="regionProviderCode"
+                          placeholder="e.g. us-east-1 (normalized)" />
+                      </div>
+                      <div class="form-group half">
+                        <label class="form-label">Availability Zones</label>
+                        <input class="form-input" [(ngModel)]="regionAZs"
+                          placeholder="us-east-1a, us-east-1b, us-east-1c" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-check-label">
+                        <input type="checkbox" [(ngModel)]="regionEnabled" class="form-check" />
+                        Enabled
+                      </label>
+                    </div>
+                    <div class="form-actions">
+                      <button class="btn btn-secondary btn-sm" (click)="cancelRegionForm()">Cancel</button>
+                      <button class="btn btn-primary btn-sm" (click)="saveRegion()"
+                        [disabled]="!regionIdentifier.trim() || !regionDisplayName.trim()">
+                        {{ editingRegionId ? 'Update' : 'Create' }}
+                      </button>
+                    </div>
+                  </div>
+                }
+
+                @if (b.regions.length === 0 && !showRegionForm()) {
+                  <div class="empty-state-sm">No regions configured. Add a region to deploy landing zones.</div>
+                }
+
+                @if (b.regions.length > 0) {
+                  <div class="region-grid">
+                    @for (r of b.regions; track r.id) {
+                      <div class="region-card" [class.region-disabled]="!r.isEnabled">
+                        <div class="region-card-header">
+                          <div class="region-card-title">
+                            <span class="region-id-badge">{{ r.regionIdentifier }}</span>
+                            <span class="region-name">{{ r.displayName }}</span>
+                          </div>
+                          <div class="region-card-actions">
+                            <button *nimbusHasPermission="'cloud:region:update'"
+                              class="btn-icon" title="Edit" (click)="editRegion(r)">&#9998;</button>
+                            <button *nimbusHasPermission="'cloud:region:delete'"
+                              class="btn-icon btn-danger" title="Remove" (click)="confirmDeleteRegion(r)">&times;</button>
+                          </div>
+                        </div>
+                        <div class="region-card-body">
+                          @if (r.providerRegionCode) {
+                            <div class="region-meta"><span class="info-label">Code:</span> {{ r.providerRegionCode }}</div>
+                          }
+                          @if (r.availabilityZones?.length) {
+                            <div class="region-meta">
+                              <span class="info-label">AZs:</span>
+                              @for (az of r.availabilityZones; track az) {
+                                <span class="badge badge-az">{{ az }}</span>
+                              }
+                            </div>
+                          }
+                          <div class="region-meta">
+                            <span class="info-label">Status:</span>
+                            <span class="badge" [class.badge-active]="r.isEnabled" [class.badge-disabled]="!r.isEnabled">
+                              {{ r.isEnabled ? 'Enabled' : 'Disabled' }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
               </div>
             </div>
           }
@@ -690,6 +802,39 @@ type TabKey = 'overview' | 'credentials' | 'iam';
     .badge-env-decommissioning { background: #fef2f2; color: #dc2626; }
     .badge-env-decommissioned { background: #f1f5f9; color: #64748b; }
 
+    /* -- Region cards ------------------------------------------------- */
+    .region-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 0.75rem; margin-top: 1rem;
+    }
+    .region-card {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 1rem; transition: border-color 0.15s;
+    }
+    .region-card:hover { border-color: #3b82f6; }
+    .region-disabled { opacity: 0.6; }
+    .region-card-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .region-card-title { display: flex; align-items: center; gap: 0.5rem; }
+    .region-card-actions { display: flex; gap: 0.25rem; }
+    .region-id-badge {
+      font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.75rem;
+      font-weight: 600; background: #dbeafe; color: #1d4ed8;
+      padding: 0.125rem 0.5rem; border-radius: 4px;
+    }
+    .region-name { font-size: 0.8125rem; font-weight: 500; color: #1e293b; }
+    .region-card-body { display: flex; flex-direction: column; gap: 0.375rem; }
+    .region-meta {
+      font-size: 0.75rem; color: #374151;
+      display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;
+    }
+    .badge-az {
+      background: #f0fdf4; color: #166534; font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.625rem;
+    }
+
     /* -- States ------------------------------------------------------- */
     .loading, .empty-state {
       padding: 2rem; text-align: center; color: #64748b; font-size: 0.8125rem;
@@ -803,6 +948,15 @@ export class BackendDetailComponent implements OnInit {
   // Credentials
   credentialsJson = '';
   credValues: Record<string, string> = {};
+
+  // Region form
+  showRegionForm = signal(false);
+  editingRegionId: string | null = null;
+  regionIdentifier = '';
+  regionDisplayName = '';
+  regionProviderCode = '';
+  regionAZs = '';
+  regionEnabled = true;
 
   // IAM form fields
   iamRoleId = '';
@@ -1228,6 +1382,99 @@ export class BackendDetailComponent implements OnInit {
       key,
       value: String(value),
     }));
+  }
+
+  // -- Regions ------------------------------------------------------------
+
+  openRegionForm(): void {
+    this.resetRegionForm();
+    this.showRegionForm.set(true);
+  }
+
+  cancelRegionForm(): void {
+    this.showRegionForm.set(false);
+    this.resetRegionForm();
+  }
+
+  private resetRegionForm(): void {
+    this.editingRegionId = null;
+    this.regionIdentifier = '';
+    this.regionDisplayName = '';
+    this.regionProviderCode = '';
+    this.regionAZs = '';
+    this.regionEnabled = true;
+  }
+
+  editRegion(r: BackendRegion): void {
+    this.editingRegionId = r.id;
+    this.regionIdentifier = r.regionIdentifier;
+    this.regionDisplayName = r.displayName;
+    this.regionProviderCode = r.providerRegionCode || '';
+    this.regionAZs = r.availabilityZones?.join(', ') || '';
+    this.regionEnabled = r.isEnabled;
+    this.showRegionForm.set(true);
+  }
+
+  saveRegion(): void {
+    const b = this.backend();
+    if (!b) return;
+
+    const azList = this.regionAZs.split(',').map(s => s.trim()).filter(Boolean);
+
+    if (this.editingRegionId) {
+      this.backendService.updateRegion(this.editingRegionId, {
+        displayName: this.regionDisplayName.trim(),
+        providerRegionCode: this.regionProviderCode.trim() || null,
+        isEnabled: this.regionEnabled,
+        availabilityZones: azList.length > 0 ? azList : null,
+      }).subscribe({
+        next: () => {
+          this.showRegionForm.set(false);
+          this.resetRegionForm();
+          this.toastService.success('Region updated');
+          this.loadBackend(b.id);
+        },
+        error: (err) => this.toastService.error(err.message || 'Failed to update region'),
+      });
+    } else {
+      const input: BackendRegionInput = {
+        regionIdentifier: this.regionIdentifier.trim(),
+        displayName: this.regionDisplayName.trim(),
+        providerRegionCode: this.regionProviderCode.trim() || undefined,
+        isEnabled: this.regionEnabled,
+        availabilityZones: azList.length > 0 ? azList : undefined,
+      };
+      this.backendService.addRegion(b.id, input).subscribe({
+        next: () => {
+          this.showRegionForm.set(false);
+          this.resetRegionForm();
+          this.toastService.success('Region added');
+          this.loadBackend(b.id);
+        },
+        error: (err) => this.toastService.error(err.message || 'Failed to add region'),
+      });
+    }
+  }
+
+  async confirmDeleteRegion(r: BackendRegion): Promise<void> {
+    const ok = await this.confirmService.confirm({
+      title: 'Remove Region',
+      message: `Remove region "${r.displayName}" (${r.regionIdentifier})? Landing zones in this region will need to be reassigned.`,
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    const b = this.backend();
+    if (!b) return;
+
+    this.backendService.removeRegion(r.id).subscribe({
+      next: () => {
+        this.toastService.success('Region removed');
+        this.loadBackend(b.id);
+      },
+      error: (err) => this.toastService.error(err.message || 'Failed to remove region'),
+    });
   }
 
   // -- Landing Zone --------------------------------------------------------

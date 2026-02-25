@@ -11,6 +11,13 @@ from app.models.approval_policy import ApprovalPolicy
 from app.models.approval_request import ApprovalRequest
 from app.models.approval_step import ApprovalStep
 from app.models.audit import AuditLog, CategoryRetentionOverride, RedactionRule, RetentionPolicy, SavedQuery
+from app.models.automated_activity import (
+    ActivityExecution,
+    ActivityScope,
+    AutomatedActivity,
+    AutomatedActivityVersion,
+    ConfigurationChange,
+)
 from app.models.component import Component, ComponentGovernance, ComponentOperation, ComponentVersion
 from app.models.cmdb import (
     ActivityDefinition,
@@ -54,13 +61,22 @@ from app.models.cmdb import (
     TenantRegionAcceptance,
     TenantRegionTemplateAssignment,
 )
-from app.models.cloud_backend import CloudBackend, CloudBackendIAMMapping
+from app.models.cloud_backend import BackendRegion, CloudBackend, CloudBackendIAMMapping
 from app.models.compartment import Compartment
 from app.models.currency_exchange_rate import CurrencyExchangeRate
 from app.models.deployment import Deployment, DeploymentCI
 from app.models.environment import EnvironmentTemplate, TenantEnvironment
+from app.models.event import EventDelivery, EventLog, EventSubscription, EventType
 from app.models.ipam import AddressAllocation, AddressSpace, IpReservation
-from app.models.landing_zone import LandingZone, LandingZoneRegion, LandingZoneTagPolicy
+from app.models.landing_zone import LandingZone, LandingZoneTagPolicy
+from app.models.networking import (
+    ConnectivityConfig,
+    EnvironmentLoadBalancer,
+    EnvironmentPrivateEndpoint,
+    PeeringConfig,
+    PrivateEndpointPolicy,
+    SharedLoadBalancer,
+)
 from app.models.domain_mapping import DomainMapping
 from app.models.group import Group
 from app.models.group_membership import GroupMembership
@@ -109,12 +125,16 @@ __all__ = [
     "AddressSpace",
     "ArchitectureTopology",
     "ActivityDefinition",
+    "ActivityExecution",
     "ActivityTemplate",
     "ApprovalPolicy",
     "ApprovalRequest",
     "ApprovalStep",
     "AuditLog",
+    "AutomatedActivity",
+    "AutomatedActivityVersion",
     "CategoryRetentionOverride",
+    "BackendRegion",
     "CloudBackend",
     "CloudBackendIAMMapping",
     "CIAttributeDefinition",
@@ -128,14 +148,22 @@ __all__ = [
     "ComponentOperation",
     "ComponentVersion",
     "Compartment",
+    "ConnectivityConfig",
     "CurrencyExchangeRate",
+    "ConfigurationChange",
     "ConfigurationItem",
     "Deployment",
     "DeploymentCI",
     "ConsumptionRecord",
     "DeliveryRegion",
     "DomainMapping",
+    "EnvironmentLoadBalancer",
+    "EnvironmentPrivateEndpoint",
     "EnvironmentTemplate",
+    "EventDelivery",
+    "EventLog",
+    "EventSubscription",
+    "EventType",
     "EstimationLineItem",
     "Group",
     "GroupMembership",
@@ -146,7 +174,6 @@ __all__ = [
     "InternalRateCard",
     "IpReservation",
     "LandingZone",
-    "LandingZoneRegion",
     "LandingZoneTagPolicy",
     "NamingSequence",
     "Notification",

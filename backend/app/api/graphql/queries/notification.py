@@ -24,6 +24,15 @@ from app.api.graphql.types.notification import (
 )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class NotificationQuery:
     @strawberry.field
@@ -40,7 +49,6 @@ class NotificationQuery:
         user_id = await check_graphql_permission(
             info, "notification:notification:read", str(tenant_id)
         )
-        from app.db.session import async_session_factory
         from app.services.notification.in_app_service import InAppService
 
         cat = None
@@ -48,23 +56,23 @@ class NotificationQuery:
             from app.models.notification import NotificationCategory
             cat = NotificationCategory(category.value)
 
-        async with async_session_factory() as db:
-            service = InAppService(db)
-            items, total, unread_count = await service.list_notifications(
-                tenant_id=str(tenant_id),
-                user_id=user_id,
-                is_read=is_read,
-                category=cat,
-                offset=offset,
-                limit=limit,
-            )
-            return NotificationListType(
-                items=[_to_notification_type(n) for n in items],
-                total=total,
-                unread_count=unread_count,
-                offset=offset,
-                limit=limit,
-            )
+        db = await _get_session(info)
+        service = InAppService(db)
+        items, total, unread_count = await service.list_notifications(
+            tenant_id=str(tenant_id),
+            user_id=user_id,
+            is_read=is_read,
+            category=cat,
+            offset=offset,
+            limit=limit,
+        )
+        return NotificationListType(
+            items=[_to_notification_type(n) for n in items],
+            total=total,
+            unread_count=unread_count,
+            offset=offset,
+            limit=limit,
+        )
 
     @strawberry.field
     async def unread_notification_count(
@@ -74,12 +82,11 @@ class NotificationQuery:
         user_id = await check_graphql_permission(
             info, "notification:notification:read", str(tenant_id)
         )
-        from app.db.session import async_session_factory
         from app.services.notification.in_app_service import InAppService
 
-        async with async_session_factory() as db:
-            service = InAppService(db)
-            return await service.get_unread_count(str(tenant_id), user_id)
+        db = await _get_session(info)
+        service = InAppService(db)
+        return await service.get_unread_count(str(tenant_id), user_id)
 
     @strawberry.field
     async def notification_preferences(
@@ -89,13 +96,12 @@ class NotificationQuery:
         user_id = await check_graphql_permission(
             info, "notification:preference:manage", str(tenant_id)
         )
-        from app.db.session import async_session_factory
         from app.services.notification.preference_service import PreferenceService
 
-        async with async_session_factory() as db:
-            service = PreferenceService(db)
-            prefs = await service.get_preferences(str(tenant_id), user_id)
-            return [_to_preference_type(p) for p in prefs]
+        db = await _get_session(info)
+        service = PreferenceService(db)
+        prefs = await service.get_preferences(str(tenant_id), user_id)
+        return [_to_preference_type(p) for p in prefs]
 
     @strawberry.field
     async def notification_templates(
@@ -105,13 +111,12 @@ class NotificationQuery:
         await check_graphql_permission(
             info, "notification:template:read", str(tenant_id)
         )
-        from app.db.session import async_session_factory
         from app.services.notification.template_service import TemplateService
 
-        async with async_session_factory() as db:
-            service = TemplateService(db)
-            templates = await service.list_templates(str(tenant_id))
-            return [_to_template_type(t) for t in templates]
+        db = await _get_session(info)
+        service = TemplateService(db)
+        templates = await service.list_templates(str(tenant_id))
+        return [_to_template_type(t) for t in templates]
 
     @strawberry.field
     async def webhook_configs(
@@ -121,13 +126,12 @@ class NotificationQuery:
         await check_graphql_permission(
             info, "notification:webhook:read", str(tenant_id)
         )
-        from app.db.session import async_session_factory
         from app.services.notification.webhook_service import WebhookService
 
-        async with async_session_factory() as db:
-            service = WebhookService(db)
-            configs = await service.list_configs(str(tenant_id))
-            return [_to_webhook_config_type(c) for c in configs]
+        db = await _get_session(info)
+        service = WebhookService(db)
+        configs = await service.list_configs(str(tenant_id))
+        return [_to_webhook_config_type(c) for c in configs]
 
     @strawberry.field
     async def webhook_deliveries(
@@ -143,7 +147,6 @@ class NotificationQuery:
         await check_graphql_permission(
             info, "notification:webhook:read", str(tenant_id)
         )
-        from app.db.session import async_session_factory
         from app.services.notification.webhook_delivery_service import WebhookDeliveryService
 
         delivery_status = None
@@ -151,21 +154,21 @@ class NotificationQuery:
             from app.models.webhook_delivery import WebhookDeliveryStatus
             delivery_status = WebhookDeliveryStatus(status.value)
 
-        async with async_session_factory() as db:
-            service = WebhookDeliveryService(db)
-            items, total = await service.list_deliveries(
-                tenant_id=str(tenant_id),
-                config_id=str(config_id) if config_id else None,
-                status=delivery_status,
-                offset=offset,
-                limit=limit,
-            )
-            return WebhookDeliveryListType(
-                items=[_to_webhook_delivery_type(d) for d in items],
-                total=total,
-                offset=offset,
-                limit=limit,
-            )
+        db = await _get_session(info)
+        service = WebhookDeliveryService(db)
+        items, total = await service.list_deliveries(
+            tenant_id=str(tenant_id),
+            config_id=str(config_id) if config_id else None,
+            status=delivery_status,
+            offset=offset,
+            limit=limit,
+        )
+        return WebhookDeliveryListType(
+            items=[_to_webhook_delivery_type(d) for d in items],
+            total=total,
+            offset=offset,
+            limit=limit,
+        )
 
 
 # -- Converters ---------------------------------------------------------------

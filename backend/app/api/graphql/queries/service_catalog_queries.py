@@ -171,6 +171,15 @@ def _diff_item_to_gql(item) -> CatalogDiffItemType:
 # ── Queries ──────────────────────────────────────────────────────────
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class ServiceCatalogQuery:
     @strawberry.field
@@ -187,18 +196,17 @@ class ServiceCatalogQuery:
             info, "catalog:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_catalog_service import ServiceCatalogService
 
-        async with async_session_factory() as db:
-            service = ServiceCatalogService(db)
-            items, total = await service.list_catalogs(
-                str(tenant_id), status=status, offset=offset, limit=limit
-            )
-            return ServiceCatalogListType(
-                items=[_catalog_to_gql(c) for c in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = ServiceCatalogService(db)
+        items, total = await service.list_catalogs(
+            str(tenant_id), status=status, offset=offset, limit=limit
+        )
+        return ServiceCatalogListType(
+            items=[_catalog_to_gql(c) for c in items],
+            total=total,
+        )
 
     @strawberry.field
     async def service_catalog(
@@ -212,13 +220,12 @@ class ServiceCatalogQuery:
             info, "catalog:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_catalog_service import ServiceCatalogService
 
-        async with async_session_factory() as db:
-            service = ServiceCatalogService(db)
-            c = await service.get_catalog(str(id))
-            return _catalog_to_gql(c) if c else None
+        db = await _get_session(info)
+        service = ServiceCatalogService(db)
+        c = await service.get_catalog(str(id))
+        return _catalog_to_gql(c) if c else None
 
     @strawberry.field
     async def service_catalog_versions(
@@ -232,13 +239,12 @@ class ServiceCatalogQuery:
             info, "catalog:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_catalog_service import ServiceCatalogService
 
-        async with async_session_factory() as db:
-            service = ServiceCatalogService(db)
-            versions = await service.list_versions(str(group_id))
-            return [_catalog_to_gql(c) for c in versions]
+        db = await _get_session(info)
+        service = ServiceCatalogService(db)
+        versions = await service.list_versions(str(group_id))
+        return [_catalog_to_gql(c) for c in versions]
 
     @strawberry.field
     async def tenant_catalog_pins(
@@ -251,13 +257,12 @@ class ServiceCatalogQuery:
             info, "catalog:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_catalog_service import ServiceCatalogService
 
-        async with async_session_factory() as db:
-            service = ServiceCatalogService(db)
-            pins = await service.get_pins(str(tenant_id))
-            return [_pin_to_gql(p) for p in pins]
+        db = await _get_session(info)
+        service = ServiceCatalogService(db)
+        pins = await service.get_pins(str(tenant_id))
+        return [_pin_to_gql(p) for p in pins]
 
     @strawberry.field
     async def pinned_tenants_for_catalog(
@@ -271,13 +276,12 @@ class ServiceCatalogQuery:
             info, "catalog:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_catalog_service import ServiceCatalogService
 
-        async with async_session_factory() as db:
-            service = ServiceCatalogService(db)
-            pins = await service.get_pinned_tenants_for_catalog(str(catalog_id))
-            return [_pin_to_gql(p) for p in pins]
+        db = await _get_session(info)
+        service = ServiceCatalogService(db)
+        pins = await service.get_pinned_tenants_for_catalog(str(catalog_id))
+        return [_pin_to_gql(p) for p in pins]
 
     @strawberry.field
     async def provider_skus(
@@ -296,23 +300,22 @@ class ServiceCatalogQuery:
             info, "catalog:sku:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.sku_service import SkuService
 
-        async with async_session_factory() as db:
-            service = SkuService(db)
-            items, total = await service.list_skus(
-                provider_id=str(provider_id) if provider_id else None,
-                category=category,
-                semantic_type_id=str(semantic_type_id) if semantic_type_id else None,
-                active_only=active_only,
-                offset=offset,
-                limit=limit,
-            )
-            return ProviderSkuListType(
-                items=[_sku_to_gql(s) for s in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = SkuService(db)
+        items, total = await service.list_skus(
+            provider_id=str(provider_id) if provider_id else None,
+            category=category,
+            semantic_type_id=str(semantic_type_id) if semantic_type_id else None,
+            active_only=active_only,
+            offset=offset,
+            limit=limit,
+        )
+        return ProviderSkuListType(
+            items=[_sku_to_gql(s) for s in items],
+            total=total,
+        )
 
     @strawberry.field
     async def provider_sku(
@@ -326,13 +329,12 @@ class ServiceCatalogQuery:
             info, "catalog:sku:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.sku_service import SkuService
 
-        async with async_session_factory() as db:
-            service = SkuService(db)
-            s = await service.get_sku(str(id))
-            return _sku_to_gql(s) if s else None
+        db = await _get_session(info)
+        service = SkuService(db)
+        s = await service.get_sku(str(id))
+        return _sku_to_gql(s) if s else None
 
     @strawberry.field
     async def service_groups(
@@ -348,18 +350,17 @@ class ServiceCatalogQuery:
             info, "catalog:group:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_group_service import ServiceGroupService
 
-        async with async_session_factory() as db:
-            service = ServiceGroupService(db)
-            items, total = await service.list_groups(
-                str(tenant_id), status=status, offset=offset, limit=limit
-            )
-            return ServiceGroupListType(
-                items=[_group_to_gql(g) for g in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = ServiceGroupService(db)
+        items, total = await service.list_groups(
+            str(tenant_id), status=status, offset=offset, limit=limit
+        )
+        return ServiceGroupListType(
+            items=[_group_to_gql(g) for g in items],
+            total=total,
+        )
 
     @strawberry.field
     async def service_group(
@@ -373,13 +374,12 @@ class ServiceCatalogQuery:
             info, "catalog:group:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_group_service import ServiceGroupService
 
-        async with async_session_factory() as db:
-            service = ServiceGroupService(db)
-            g = await service.get_group(str(id), str(tenant_id))
-            return _group_to_gql(g) if g else None
+        db = await _get_session(info)
+        service = ServiceGroupService(db)
+        g = await service.get_group(str(id), str(tenant_id))
+        return _group_to_gql(g) if g else None
 
     @strawberry.field
     async def offering_cost_breakdown(
@@ -396,32 +396,31 @@ class ServiceCatalogQuery:
             info, "catalog:sku:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            rows = await service.get_offering_cost_breakdown(
-                str(tenant_id),
-                str(offering_id),
-                delivery_region_id=str(delivery_region_id) if delivery_region_id else None,
-                coverage_model=coverage_model,
-                price_list_id=str(price_list_id) if price_list_id else None,
+        db = await _get_session(info)
+        service = CatalogService(db)
+        rows = await service.get_offering_cost_breakdown(
+            str(tenant_id),
+            str(offering_id),
+            delivery_region_id=str(delivery_region_id) if delivery_region_id else None,
+            coverage_model=coverage_model,
+            price_list_id=str(price_list_id) if price_list_id else None,
+        )
+        return [
+            OfferingCostBreakdownItemType(
+                source_type=r["source_type"],
+                source_id=r["source_id"],
+                source_name=r["source_name"],
+                quantity=r["quantity"],
+                is_required=r["is_required"],
+                price_per_unit=r["price_per_unit"],
+                currency=r["currency"],
+                measuring_unit=r["measuring_unit"],
+                markup_percent=r.get("markup_percent"),
             )
-            return [
-                OfferingCostBreakdownItemType(
-                    source_type=r["source_type"],
-                    source_id=r["source_id"],
-                    source_name=r["source_name"],
-                    quantity=r["quantity"],
-                    is_required=r["is_required"],
-                    price_per_unit=r["price_per_unit"],
-                    currency=r["currency"],
-                    measuring_unit=r["measuring_unit"],
-                    markup_percent=r.get("markup_percent"),
-                )
-                for r in rows
-            ]
+            for r in rows
+        ]
 
     @strawberry.field
     async def ci_count_for_offering(
@@ -435,14 +434,13 @@ class ServiceCatalogQuery:
             info, "catalog:sku:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            return await service.get_ci_count_for_offering(
-                str(tenant_id), str(offering_id)
-            )
+        db = await _get_session(info)
+        service = CatalogService(db)
+        return await service.get_ci_count_for_offering(
+            str(tenant_id), str(offering_id)
+        )
 
     @strawberry.field
     async def offering_skus(
@@ -456,25 +454,24 @@ class ServiceCatalogQuery:
             info, "catalog:sku:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.sku_service import SkuService
 
-        async with async_session_factory() as db:
-            service = SkuService(db)
-            links = await service.list_offering_skus(str(service_offering_id))
-            return [
-                ServiceOfferingSkuType(
-                    id=link.id,
-                    service_offering_id=link.service_offering_id,
-                    provider_sku_id=link.provider_sku_id,
-                    default_quantity=link.default_quantity,
-                    is_required=link.is_required,
-                    sort_order=link.sort_order,
-                    created_at=link.created_at,
-                    updated_at=link.updated_at,
-                )
-                for link in links
-            ]
+        db = await _get_session(info)
+        service = SkuService(db)
+        links = await service.list_offering_skus(str(service_offering_id))
+        return [
+            ServiceOfferingSkuType(
+                id=link.id,
+                service_offering_id=link.service_offering_id,
+                provider_sku_id=link.provider_sku_id,
+                default_quantity=link.default_quantity,
+                is_required=link.is_required,
+                sort_order=link.sort_order,
+                created_at=link.created_at,
+                updated_at=link.updated_at,
+            )
+            for link in links
+        ]
 
     @strawberry.field
     async def tenant_catalog_assignments(
@@ -488,24 +485,23 @@ class ServiceCatalogQuery:
             info, "catalog:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_catalog_service import ServiceCatalogService
 
-        async with async_session_factory() as db:
-            service = ServiceCatalogService(db)
-            rows = await service.get_tenant_assignments(str(catalog_id))
-            return [
-                TenantCatalogAssignmentType(
-                    tenant_id=uuid.UUID(r["tenant_id"]),
-                    assignment_type=r["assignment_type"],
-                    catalog_id=uuid.UUID(r["catalog_id"]),
-                    clone_catalog_id=uuid.UUID(r["clone_catalog_id"]) if r["clone_catalog_id"] else None,
-                    additions=r["additions"],
-                    deletions=r["deletions"],
-                    is_customized=r["is_customized"],
-                )
-                for r in rows
-            ]
+        db = await _get_session(info)
+        service = ServiceCatalogService(db)
+        rows = await service.get_tenant_assignments(str(catalog_id))
+        return [
+            TenantCatalogAssignmentType(
+                tenant_id=uuid.UUID(r["tenant_id"]),
+                assignment_type=r["assignment_type"],
+                catalog_id=uuid.UUID(r["catalog_id"]),
+                clone_catalog_id=uuid.UUID(r["clone_catalog_id"]) if r["clone_catalog_id"] else None,
+                additions=r["additions"],
+                deletions=r["deletions"],
+                is_customized=r["is_customized"],
+            )
+            for r in rows
+        ]
 
     @strawberry.field
     async def catalog_diff(
@@ -520,18 +516,17 @@ class ServiceCatalogQuery:
             info, "catalog:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.service_catalog_service import ServiceCatalogService
 
-        async with async_session_factory() as db:
-            service = ServiceCatalogService(db)
-            diff = await service.get_catalog_diff(
-                str(source_catalog_id), str(clone_catalog_id)
-            )
-            return CatalogDiffType(
-                source_catalog_id=uuid.UUID(diff["source_catalog_id"]),
-                clone_catalog_id=uuid.UUID(diff["clone_catalog_id"]),
-                additions=[_diff_item_to_gql(i) for i in diff["additions"]],
-                deletions=[_diff_item_to_gql(i) for i in diff["deletions"]],
-                common=[_diff_item_to_gql(i) for i in diff["common"]],
-            )
+        db = await _get_session(info)
+        service = ServiceCatalogService(db)
+        diff = await service.get_catalog_diff(
+            str(source_catalog_id), str(clone_catalog_id)
+        )
+        return CatalogDiffType(
+            source_catalog_id=uuid.UUID(diff["source_catalog_id"]),
+            clone_catalog_id=uuid.UUID(diff["clone_catalog_id"]),
+            additions=[_diff_item_to_gql(i) for i in diff["additions"]],
+            deletions=[_diff_item_to_gql(i) for i in diff["deletions"]],
+            common=[_diff_item_to_gql(i) for i in diff["common"]],
+        )

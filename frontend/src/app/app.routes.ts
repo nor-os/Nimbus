@@ -363,6 +363,33 @@ export const routes: Routes = [
         data: { breadcrumb: [{ label: 'Executions', path: '/workflows/executions' }, 'Details'] },
       },
       {
+        path: 'activities',
+        loadComponent: () =>
+          import('./features/automation/activity-list/activity-list.component').then(
+            (m) => m.ActivityListComponent,
+          ),
+        canActivate: [permissionGuard('automation:activity:read')],
+        data: { breadcrumb: [{ label: 'Workflows', path: '/workflows/definitions' }, 'Activities'] },
+      },
+      {
+        path: 'activities/new',
+        loadComponent: () =>
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
+          ),
+        canActivate: [permissionGuard('automation:activity:create')],
+        data: { breadcrumb: [{ label: 'Activities', path: '/workflows/activities' }, 'New'] },
+      },
+      {
+        path: 'activities/:id',
+        loadComponent: () =>
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
+          ),
+        canActivate: [permissionGuard('automation:activity:read')],
+        data: { breadcrumb: [{ label: 'Activities', path: '/workflows/activities' }, 'Details'] },
+      },
+      {
         path: '',
         redirectTo: 'definitions',
         pathMatch: 'full',
@@ -785,6 +812,37 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'provider/activities',
+    canActivate: [authGuard, permissionGuard('automation:activity:read')],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/automation/activity-list/activity-list.component').then(
+            (m) => m.ActivityListComponent,
+          ),
+        data: { breadcrumb: [{ label: 'Provider', path: '/tenants' }, 'Activities'], mode: 'provider' },
+      },
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
+          ),
+        canActivate: [permissionGuard('automation:activity:create')],
+        data: { breadcrumb: [{ label: 'Activities', path: '/provider/activities' }, 'New'], mode: 'provider' },
+      },
+      {
+        path: ':id',
+        loadComponent: () =>
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
+          ),
+        data: { breadcrumb: [{ label: 'Activities', path: '/provider/activities' }, 'Details'], mode: 'provider' },
+      },
+    ],
+  },
+  {
     path: 'provider/resolvers',
     canActivate: [authGuard, permissionGuard('component:definition:create')],
     children: [
@@ -1096,6 +1154,80 @@ export const routes: Routes = [
         data: { breadcrumb: 'Policy Library' },
       },
     ],
+  },
+  {
+    path: 'events',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: 'types',
+        loadComponent: () =>
+          import('./features/events/event-type-list/event-type-list.component').then(
+            (m) => m.EventTypeListComponent,
+          ),
+        canActivate: [permissionGuard('events:type:read')],
+        data: { breadcrumb: [{ label: 'Events', path: '/events/types' }, 'Types'] },
+      },
+      {
+        path: 'subscriptions',
+        loadComponent: () =>
+          import('./features/events/event-subscription-list/event-subscription-list.component').then(
+            (m) => m.EventSubscriptionListComponent,
+          ),
+        canActivate: [permissionGuard('events:subscription:read')],
+        data: { breadcrumb: [{ label: 'Events', path: '/events/types' }, 'Subscriptions'] },
+      },
+      {
+        path: 'log',
+        loadComponent: () =>
+          import('./features/events/event-log-viewer/event-log-viewer.component').then(
+            (m) => m.EventLogViewerComponent,
+          ),
+        canActivate: [permissionGuard('events:log:read')],
+        data: { breadcrumb: [{ label: 'Events', path: '/events/types' }, 'Log'] },
+      },
+      {
+        path: '',
+        redirectTo: 'types',
+        pathMatch: 'full',
+      },
+    ],
+  },
+  {
+    path: 'activities',
+    canActivate: [authGuard, permissionGuard('automation:activity:read')],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/automation/activity-list/activity-list.component').then(
+            (m) => m.ActivityListComponent,
+          ),
+        data: { breadcrumb: [{ label: 'Infrastructure', path: '/environments' }, 'Component Activities'], mode: 'tenant' },
+      },
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
+          ),
+        canActivate: [permissionGuard('automation:activity:create')],
+        data: { breadcrumb: [{ label: 'Component Activities', path: '/activities' }, 'New'], mode: 'tenant' },
+      },
+      {
+        path: ':id',
+        loadComponent: () =>
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
+          ),
+        data: { breadcrumb: [{ label: 'Component Activities', path: '/activities' }, 'Details'], mode: 'tenant' },
+      },
+    ],
+  },
+  {
+    path: 'automation/activities',
+    redirectTo: 'workflows/activities',
+    pathMatch: 'full',
   },
   {
     path: 'notifications',

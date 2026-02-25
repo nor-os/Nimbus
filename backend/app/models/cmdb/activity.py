@@ -36,10 +36,17 @@ class ActivityTemplate(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         nullable=True,
     )
 
+    automated_activity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("automated_activities.id"),
+        nullable=True,
+    )
+
     definitions: Mapped[list["ActivityDefinition"]] = relationship(
         back_populates="template", lazy="selectin", order_by="ActivityDefinition.sort_order"
     )
     semantic_activity_type = relationship("SemanticActivityType", lazy="joined")
+    automated_activity = relationship("AutomatedActivity", lazy="joined")
 
 
 class ActivityDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):

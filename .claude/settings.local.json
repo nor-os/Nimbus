@@ -46,7 +46,11 @@
       "Bash(.venv/bin/alembic upgrade:*)",
       "Bash(npx --yes ng build:*)",
       "Bash(npx tsc:*)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(python -c:*)",
+      "Bash(alembic downgrade:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv tool:*)"
     ]
   }
 }

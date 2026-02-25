@@ -1,107 +1,119 @@
 /**
- * Overview: Monaco Editor wrapper — standalone Angular component for code editing with syntax highlighting.
- * Architecture: Shared component for code editing (Section 11)
- * Dependencies: @angular/core, monaco-editor (CDN)
- * Concepts: Wraps the Monaco Editor with Angular signals, supports TypeScript and Python,
- *   light theme, configurable height, two-way code binding via input/output.
+ * Overview: Reusable Monaco Editor component — standalone code editor with language support.
+ * Architecture: Shared UI component for code editing (Section 11.5)
+ * Dependencies: @angular/core, monaco-editor
+ * Concepts: Monaco integration, Signal inputs, light theme, multi-language support
  */
 import {
   Component,
   ElementRef,
-  EventEmitter,
-  Input,
-  OnChanges,
   OnDestroy,
-  AfterViewInit,
-  Output,
-  SimpleChanges,
+  OnInit,
   ViewChild,
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  inject,
-  NgZone,
+  afterNextRender,
+  effect,
+  input,
+  output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+
+declare const monaco: any;
 
 @Component({
   selector: 'nimbus-monaco-editor',
   standalone: true,
   imports: [CommonModule],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="editor-container" [style.height]="height">
-      <div #editorHost class="editor-host"></div>
-      @if (!editorReady) {
-        <div class="editor-loading">Loading editor...</div>
-      }
+    <div class="editor-wrapper" [style.height]="height()">
+      <div #editorContainer class="editor-container"></div>
+      <div *ngIf="loading" class="editor-loading">
+        <span>Loading editor...</span>
+      </div>
     </div>
   `,
   styles: [`
-    .editor-container {
+    .editor-wrapper {
       position: relative;
-      border: 1px solid #e2e8f0;
+      border: 1px solid #d1d5db;
       border-radius: 6px;
       overflow: hidden;
       background: #fff;
     }
-    .editor-host {
+    .editor-container {
       width: 100%;
       height: 100%;
     }
     .editor-loading {
       position: absolute;
-      inset: 0;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #64748b;
-      font-size: 0.875rem;
-      background: #f8fafc;
+      background: #f9fafb;
+      color: #6b7280;
+      font-size: 14px;
     }
   `],
 })
-export class MonacoEditorComponent implements AfterViewInit, OnChanges, OnDestroy {
-  @Input() code = '';
-  @Input() language: 'typescript' | 'python' | 'json' | 'shell' = 'typescript';
-  @Input() readOnly = false;
-  @Input() height = '400px';
-  @Output() codeChange = new EventEmitter<string>();
+export class MonacoEditorComponent implements OnInit, OnDestroy {
+  /** Programming language (python, json, yaml, shell, typescript) */
+  language = input<string>('python');
+  /** Editor content */
+  value = input<string>('');
+  /** Read-only mode */
+  readOnly = input<boolean>(false);
+  /** Editor height (CSS value) */
+  height = input<string>('400px');
+  /** Minimap enabled */
+  minimap = input<boolean>(false);
 
-  @ViewChild('editorHost', { static: true }) editorHost!: ElementRef<HTMLDivElement>;
+  /** Emits when content changes */
+  valueChange = output<string>();
 
-  editorReady = false;
+  @ViewChild('editorContainer', { static: true })
+  editorContainer!: ElementRef<HTMLDivElement>;
+
+  loading = true;
   private editor: any = null;
-  private ignoreChange = false;
-  private cdr = inject(ChangeDetectorRef);
-  private ngZone = inject(NgZone);
+  private preventEmit = false;
 
-  ngAfterViewInit(): void {
-    this.initEditor();
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (!this.editor) return;
-
-    if (changes['code'] && !this.ignoreChange) {
-      const current = this.editor.getValue();
-      if (current !== this.code) {
-        this.ignoreChange = true;
-        this.editor.setValue(this.code);
-        this.ignoreChange = false;
-      }
-    }
-    if (changes['language']) {
-      const m = (window as any).monaco;
-      if (m) {
+  constructor() {
+    // React to input changes
+    effect(() => {
+      const lang = this.language();
+      if (this.editor && lang) {
         const model = this.editor.getModel();
         if (model) {
-          m.editor.setModelLanguage(model, this.language);
+          monaco.editor.setModelLanguage(model, lang);
         }
       }
-    }
-    if (changes['readOnly']) {
-      this.editor.updateOptions({ readOnly: this.readOnly });
-    }
+    });
+
+    effect(() => {
+      const val = this.value();
+      if (this.editor && val !== undefined) {
+        const current = this.editor.getValue();
+        if (val !== current) {
+          this.preventEmit = true;
+          this.editor.setValue(val);
+          this.preventEmit = false;
+        }
+      }
+    });
+
+    effect(() => {
+      const ro = this.readOnly();
+      if (this.editor) {
+        this.editor.updateOptions({ readOnly: ro });
+      }
+    });
+  }
+
+  ngOnInit(): void {
+    this.loadMonaco();
   }
 
   ngOnDestroy(): void {
@@ -111,88 +123,62 @@ export class MonacoEditorComponent implements AfterViewInit, OnChanges, OnDestro
     }
   }
 
-  private async initEditor(): Promise<void> {
-    try {
-      const m = await this.ensureMonacoLoaded();
-
-      this.ngZone.runOutsideAngular(() => {
-        this.editor = m.editor.create(this.editorHost.nativeElement, {
-          value: this.code,
-          language: this.language,
-          readOnly: this.readOnly,
-          theme: 'vs',
-          minimap: { enabled: false },
-          fontSize: 13,
-          lineNumbers: 'on',
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 2,
-          wordWrap: 'on',
-          renderWhitespace: 'selection',
-          padding: { top: 8 },
-        });
-
-        this.editor.onDidChangeModelContent(() => {
-          if (this.ignoreChange) return;
-          const value = this.editor.getValue();
-          this.ignoreChange = true;
-          this.ngZone.run(() => this.codeChange.emit(value));
-          this.ignoreChange = false;
-        });
-      });
-
-      this.editorReady = true;
-      this.cdr.markForCheck();
-    } catch (err) {
-      console.error('Failed to initialize Monaco editor:', err);
+  private loadMonaco(): void {
+    if (typeof monaco !== 'undefined') {
+      this.initEditor();
+      return;
     }
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
+    script.onload = () => {
+      (window as any).require.config({
+        paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
+      });
+      (window as any).require(['vs/editor/editor.main'], () => {
+        this.initEditor();
+      });
+    };
+    document.head.appendChild(script);
   }
 
-  private ensureMonacoLoaded(): Promise<any> {
-    const w = window as any;
-
-    // Already loaded
-    if (w.monaco?.editor) {
-      return Promise.resolve(w.monaco);
-    }
-
-    return new Promise<any>((resolve, reject) => {
-      // If the loader script is already in the DOM, wait for monaco to appear
-      if (document.getElementById('monaco-loader-script')) {
-        const check = setInterval(() => {
-          if (w.monaco?.editor) {
-            clearInterval(check);
-            resolve(w.monaco);
-          }
-        }, 100);
-        // Timeout after 15s
-        setTimeout(() => { clearInterval(check); reject(new Error('Monaco load timeout')); }, 15000);
-        return;
-      }
-
-      // Save any existing AMD require before Monaco's loader overwrites it
-      const existingRequire = w.require;
-
-      const loaderScript = document.createElement('script');
-      loaderScript.id = 'monaco-loader-script';
-      loaderScript.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
-      loaderScript.onload = () => {
-        // Monaco's loader.js sets window.require to its AMD require
-        const amdRequire = w.require;
-        // Restore original require if it existed (e.g. webpack)
-        if (existingRequire) {
-          w.require = existingRequire;
-        }
-
-        amdRequire.config({
-          paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
-        });
-        amdRequire(['vs/editor/editor.main'], () => {
-          resolve(w.monaco);
-        });
-      };
-      loaderScript.onerror = () => reject(new Error('Failed to load Monaco loader script'));
-      document.head.appendChild(loaderScript);
+  private initEditor(): void {
+    this.loading = false;
+    this.editor = monaco.editor.create(this.editorContainer.nativeElement, {
+      value: this.value() || '',
+      language: this.language(),
+      theme: 'vs', // Light theme ONLY
+      readOnly: this.readOnly(),
+      minimap: { enabled: this.minimap() },
+      automaticLayout: true,
+      fontSize: 13,
+      lineNumbers: 'on',
+      scrollBeyondLastLine: false,
+      tabSize: 4,
+      insertSpaces: true,
+      wordWrap: 'on',
+      padding: { top: 8, bottom: 8 },
+      renderLineHighlight: 'line',
+      scrollbar: {
+        verticalScrollbarSize: 10,
+        horizontalScrollbarSize: 10,
+      },
     });
+
+    this.editor.onDidChangeModelContent(() => {
+      if (!this.preventEmit) {
+        this.valueChange.emit(this.editor.getValue());
+      }
+    });
+  }
+
+  /** Programmatically focus the editor */
+  focus(): void {
+    this.editor?.focus();
+  }
+
+  /** Format the document */
+  format(): void {
+    this.editor?.getAction('editor.action.formatDocument')?.run();
   }
 }

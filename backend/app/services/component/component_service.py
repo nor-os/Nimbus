@@ -136,6 +136,27 @@ class ComponentService:
         db.add(component)
         await db.flush()
         await db.refresh(component)
+
+        # Auto-provision deployment operations for new components
+        try:
+            from app.services.component.operation_service import ComponentOperationService
+            op_svc = ComponentOperationService()
+            await op_svc.provision_deployment_operations(
+                db,
+                component_id=component.id,
+                tenant_id=str(tenant_id) if tenant_id else "00000000-0000-0000-0000-000000000000",
+                created_by=str(created_by),
+                provider_id=str(provider_id),
+                semantic_type_id=str(semantic_type_id),
+            )
+            await db.refresh(component)
+        except Exception:
+            logger.warning(
+                "Failed to provision deployment operations for component %s",
+                component.id,
+                exc_info=True,
+            )
+
         return component
 
     async def update_component(

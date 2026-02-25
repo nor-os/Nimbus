@@ -46,7 +46,7 @@ class WorkflowCompiler:
         for conn in connections:
             src = conn.get("source")
             tgt = conn.get("target")
-            src_port = conn.get("source_port", "out")
+            src_port = conn.get("sourcePort", conn.get("source_port", "out"))
             if src in adj:
                 adj[src].append((tgt, src_port))
             if tgt in reverse_adj:
@@ -174,7 +174,7 @@ class WorkflowCompiler:
             for conn in connections:
                 if (
                     conn.get("source") == loop_id
-                    and conn.get("source_port", "") == "body"
+                    and conn.get("sourcePort", conn.get("source_port", "")) == "body"
                 ):
                     body_starts.append(conn.get("target"))
 
@@ -210,7 +210,7 @@ class WorkflowCompiler:
         for conn in connections:
             src = conn.get("source")
             tgt = conn.get("target")
-            src_port = conn.get("source_port", "")
+            src_port = conn.get("sourcePort", conn.get("source_port", ""))
             src_type = node_map.get(src, {}).get("type")
 
             if src_type in branching_types and src_port:

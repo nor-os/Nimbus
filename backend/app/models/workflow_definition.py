@@ -79,6 +79,14 @@ class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         ForeignKey("semantic_providers.id", ondelete="SET NULL"),
         nullable=True,
     )
+    is_template: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    template_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_definitions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint(

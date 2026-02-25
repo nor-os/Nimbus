@@ -79,6 +79,15 @@ def _request_to_type(r) -> ApprovalRequestType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class ApprovalQuery:
     @strawberry.field
@@ -87,13 +96,12 @@ class ApprovalQuery:
     ) -> list[ApprovalPolicyType]:
         """List approval policies for a tenant."""
         await check_graphql_permission(info, "approval:policy:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.approval.service import ApprovalService
 
-        async with async_session_factory() as db:
-            service = ApprovalService(db)
-            policies = await service.get_policies(str(tenant_id))
-            return [_policy_to_type(p) for p in policies]
+        db = await _get_session(info)
+        service = ApprovalService(db)
+        policies = await service.get_policies(str(tenant_id))
+        return [_policy_to_type(p) for p in policies]
 
     @strawberry.field
     async def approval_requests(
@@ -107,22 +115,21 @@ class ApprovalQuery:
     ) -> ApprovalRequestListType:
         """List approval requests for a tenant."""
         await check_graphql_permission(info, "approval:request:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.approval.service import ApprovalService
 
-        async with async_session_factory() as db:
-            service = ApprovalService(db)
-            items, total = await service.get_requests(
-                tenant_id=str(tenant_id),
-                status=status,
-                requester_id=str(requester_id) if requester_id else None,
-                offset=offset,
-                limit=limit,
-            )
-            return ApprovalRequestListType(
-                items=[_request_to_type(r) for r in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = ApprovalService(db)
+        items, total = await service.get_requests(
+            tenant_id=str(tenant_id),
+            status=status,
+            requester_id=str(requester_id) if requester_id else None,
+            offset=offset,
+            limit=limit,
+        )
+        return ApprovalRequestListType(
+            items=[_request_to_type(r) for r in items],
+            total=total,
+        )
 
     @strawberry.field
     async def approval_request(
@@ -130,15 +137,14 @@ class ApprovalQuery:
     ) -> ApprovalRequestType | None:
         """Get a single approval request with steps."""
         await check_graphql_permission(info, "approval:request:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.approval.service import ApprovalService
 
-        async with async_session_factory() as db:
-            service = ApprovalService(db)
-            r = await service.get_request(str(tenant_id), str(request_id))
-            if not r:
-                return None
-            return _request_to_type(r)
+        db = await _get_session(info)
+        service = ApprovalService(db)
+        r = await service.get_request(str(tenant_id), str(request_id))
+        if not r:
+            return None
+        return _request_to_type(r)
 
     @strawberry.field
     async def pending_approvals(
@@ -152,18 +158,17 @@ class ApprovalQuery:
         user_id = await check_graphql_permission(
             info, "approval:decision:submit", str(tenant_id)
         )
-        from app.db.session import async_session_factory
         from app.services.approval.service import ApprovalService
 
-        async with async_session_factory() as db:
-            service = ApprovalService(db)
-            items, total = await service.get_pending_for_user(
-                tenant_id=str(tenant_id),
-                user_id=user_id,
-                offset=offset,
-                limit=limit,
-            )
-            return ApprovalRequestListType(
-                items=[_request_to_type(r) for r in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = ApprovalService(db)
+        items, total = await service.get_pending_for_user(
+            tenant_id=str(tenant_id),
+            user_id=user_id,
+            offset=offset,
+            limit=limit,
+        )
+        return ApprovalRequestListType(
+            items=[_request_to_type(r) for r in items],
+            total=total,
+        )

@@ -12,6 +12,7 @@ import strawberry.scalars
 from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
+from app.api.graphql.types.automation import OperationKindGQL
 from app.api.graphql.types.component import (
     ComponentGovernanceType,
     ComponentLanguageGQL,
@@ -19,6 +20,7 @@ from app.api.graphql.types.component import (
     ComponentType,
     ComponentVersionType,
     EstimatedDowntimeGQL,
+    OperationCategoryGQL,
     ResolverConfigurationType,
     ResolverType,
 )
@@ -48,6 +50,12 @@ def _operation_to_type(op) -> ComponentOperationType:
     wf_name = None
     if hasattr(op, "workflow_definition") and op.workflow_definition:
         wf_name = op.workflow_definition.name
+    op_kind = None
+    if hasattr(op, "operation_kind") and op.operation_kind:
+        op_kind = OperationKindGQL(op.operation_kind.value)
+    op_cat = OperationCategoryGQL.DAY2
+    if hasattr(op, "operation_category") and op.operation_category:
+        op_cat = OperationCategoryGQL(op.operation_category.value)
     return ComponentOperationType(
         id=op.id, component_id=op.component_id, name=op.name,
         display_name=op.display_name, description=op.description,
@@ -56,6 +64,8 @@ def _operation_to_type(op) -> ComponentOperationType:
         workflow_definition_name=wf_name,
         is_destructive=op.is_destructive, requires_approval=op.requires_approval,
         estimated_downtime=EstimatedDowntimeGQL(op.estimated_downtime.value),
+        operation_category=op_cat,
+        operation_kind=op_kind,
         sort_order=op.sort_order,
         created_at=op.created_at, updated_at=op.updated_at,
     )
@@ -117,6 +127,16 @@ def _resolver_config_to_type(rc) -> ResolverConfigurationType:
 
 # ── Queries ────────────────────────────────────────────────────────────
 
+
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class ComponentQuery:
 
@@ -133,17 +153,16 @@ class ComponentQuery:
         """List components visible to a tenant, or provider-level if tenant_id is null."""
         await check_graphql_permission(info, "component:definition:read", str(tenant_id or ""))
 
-        from app.db.session import async_session_factory
         from app.services.component.component_service import ComponentService
 
-        async with async_session_factory() as db:
-            svc = ComponentService()
-            items = await svc.list_components(
-                db, tenant_id, provider_id=provider_id,
-                semantic_type_id=semantic_type_id, published_only=published_only,
-                search=search, offset=offset, limit=limit,
-            )
-            return [_component_to_type(c) for c in items]
+        db = await _get_session(info)
+        svc = ComponentService()
+        items = await svc.list_components(
+            db, tenant_id, provider_id=provider_id,
+            semantic_type_id=semantic_type_id, published_only=published_only,
+            search=search, offset=offset, limit=limit,
+        )
+        return [_component_to_type(c) for c in items]
 
     @strawberry.field
     async def component(
@@ -153,13 +172,12 @@ class ComponentQuery:
         """Get a component by ID."""
         await check_graphql_permission(info, "component:definition:read", str(tenant_id or ""))
 
-        from app.db.session import async_session_factory
         from app.services.component.component_service import ComponentService
 
-        async with async_session_factory() as db:
-            svc = ComponentService()
-            c = await svc.get_component(db, component_id)
-            return _component_to_type(c) if c else None
+        db = await _get_session(info)
+        svc = ComponentService()
+        c = await svc.get_component(db, component_id)
+        return _component_to_type(c) if c else None
 
     @strawberry.field
     async def component_versions(
@@ -168,13 +186,12 @@ class ComponentQuery:
         """Get version history for a component."""
         await check_graphql_permission(info, "component:definition:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.component.component_service import ComponentService
 
-        async with async_session_factory() as db:
-            svc = ComponentService()
-            versions = await svc.get_version_history(db, component_id)
-            return [_version_to_type(v) for v in versions]
+        db = await _get_session(info)
+        svc = ComponentService()
+        versions = await svc.get_version_history(db, component_id)
+        return [_version_to_type(v) for v in versions]
 
     @strawberry.field
     async def component_version(
@@ -184,28 +201,26 @@ class ComponentQuery:
         """Get a specific version snapshot."""
         await check_graphql_permission(info, "component:definition:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.component.component_service import ComponentService
 
-        async with async_session_factory() as db:
-            svc = ComponentService()
-            v = await svc.get_version(db, component_id, version)
-            return _version_to_type(v) if v else None
+        db = await _get_session(info)
+        svc = ComponentService()
+        v = await svc.get_version(db, component_id, version)
+        return _version_to_type(v) if v else None
 
     @strawberry.field
     async def resolvers(self, info: Info) -> list[ResolverType]:
         """List all resolver type definitions."""
-        from app.db.session import async_session_factory
         from app.models.resolver import Resolver
         from sqlalchemy import select
 
-        async with async_session_factory() as db:
-            result = await db.execute(
-                select(Resolver).where(Resolver.deleted_at.is_(None))
-                .order_by(Resolver.resolver_type)
-            )
-            items = list(result.scalars().all())
-            return [_resolver_to_type(r) for r in items]
+        db = await _get_session(info)
+        result = await db.execute(
+            select(Resolver).where(Resolver.deleted_at.is_(None))
+            .order_by(Resolver.resolver_type)
+        )
+        items = list(result.scalars().all())
+        return [_resolver_to_type(r) for r in items]
 
     @strawberry.field
     async def resolver_configurations(
@@ -216,37 +231,36 @@ class ComponentQuery:
         """List resolver configurations for a scope."""
         await check_graphql_permission(info, "resolver:config:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.models.resolver import ResolverConfiguration
         from sqlalchemy import select
 
-        async with async_session_factory() as db:
-            stmt = select(ResolverConfiguration)
-            if landing_zone_id:
-                stmt = stmt.where(ResolverConfiguration.landing_zone_id == landing_zone_id)
-            if environment_id:
-                stmt = stmt.where(ResolverConfiguration.environment_id == environment_id)
-            stmt = stmt.order_by(ResolverConfiguration.created_at)
+        db = await _get_session(info)
+        stmt = select(ResolverConfiguration)
+        if landing_zone_id:
+            stmt = stmt.where(ResolverConfiguration.landing_zone_id == landing_zone_id)
+        if environment_id:
+            stmt = stmt.where(ResolverConfiguration.environment_id == environment_id)
+        stmt = stmt.order_by(ResolverConfiguration.created_at)
 
-            result = await db.execute(stmt)
-            items = list(result.scalars().all())
-            return [_resolver_config_to_type(rc) for rc in items]
+        result = await db.execute(stmt)
+        items = list(result.scalars().all())
+        return [_resolver_config_to_type(rc) for rc in items]
 
     @strawberry.field
     async def component_operations(
         self, info: Info, component_id: uuid.UUID,
         tenant_id: uuid.UUID | None = None,
+        category: str | None = None,
     ) -> list[ComponentOperationType]:
-        """List day-2 operations for a component."""
+        """List operations for a component, optionally filtered by category (DEPLOYMENT/DAY2)."""
         await check_graphql_permission(info, "component:operation:read", str(tenant_id or ""))
 
-        from app.db.session import async_session_factory
         from app.services.component.operation_service import ComponentOperationService
 
-        async with async_session_factory() as db:
-            svc = ComponentOperationService()
-            ops = await svc.list_operations(db, component_id)
-            return [_operation_to_type(op) for op in ops]
+        db = await _get_session(info)
+        svc = ComponentOperationService()
+        ops = await svc.list_operations(db, component_id, category=category)
+        return [_operation_to_type(op) for op in ops]
 
     @strawberry.field
     async def suggest_resolvers_for_field(
@@ -255,12 +269,11 @@ class ComponentQuery:
         """Suggest compatible resolvers for a field type."""
         await check_graphql_permission(info, "resolver:config:read", "")
 
-        from app.db.session import async_session_factory
         from app.services.resolver.binding_validator import ResolverBindingValidator
 
-        async with async_session_factory() as db:
-            validator = ResolverBindingValidator()
-            return await validator.suggest_resolvers_for_field(db, field_type, provider_id)
+        db = await _get_session(info)
+        validator = ResolverBindingValidator()
+        return await validator.suggest_resolvers_for_field(db, field_type, provider_id)
 
     @strawberry.field
     async def validate_resolver_bindings(
@@ -269,12 +282,11 @@ class ComponentQuery:
         """Validate resolver bindings on a component. Returns warnings."""
         await check_graphql_permission(info, "component:definition:read", "")
 
-        from app.db.session import async_session_factory
         from app.services.resolver.binding_validator import ResolverBindingValidator
 
-        async with async_session_factory() as db:
-            validator = ResolverBindingValidator()
-            return await validator.validate_bindings(db, component_id)
+        db = await _get_session(info)
+        validator = ResolverBindingValidator()
+        return await validator.validate_bindings(db, component_id)
 
     @strawberry.field
     async def resolver_definitions(
@@ -283,13 +295,12 @@ class ComponentQuery:
         """List resolver definitions, optionally filtered by compatible provider."""
         await check_graphql_permission(info, "resolver:config:read", "")
 
-        from app.db.session import async_session_factory
         from app.services.resolver.definition_service import ResolverDefinitionService
 
-        async with async_session_factory() as db:
-            svc = ResolverDefinitionService()
-            items = await svc.list_all(db, provider_id=provider_id)
-            return [_resolver_to_type(r) for r in items]
+        db = await _get_session(info)
+        svc = ResolverDefinitionService()
+        items = await svc.list_all(db, provider_id=provider_id)
+        return [_resolver_to_type(r) for r in items]
 
     @strawberry.field
     async def resolver_definition(
@@ -298,13 +309,12 @@ class ComponentQuery:
         """Get a single resolver definition by ID."""
         await check_graphql_permission(info, "resolver:config:read", "")
 
-        from app.db.session import async_session_factory
         from app.services.resolver.definition_service import ResolverDefinitionService
 
-        async with async_session_factory() as db:
-            svc = ResolverDefinitionService()
-            r = await svc.get(db, resolver_id)
-            return _resolver_to_type(r) if r else None
+        db = await _get_session(info)
+        svc = ResolverDefinitionService()
+        r = await svc.get(db, resolver_id)
+        return _resolver_to_type(r) if r else None
 
     @strawberry.field
     async def component_governance(
@@ -313,10 +323,9 @@ class ComponentQuery:
         """List governance rules for a tenant."""
         await check_graphql_permission(info, "component:definition:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.component.governance_service import ComponentGovernanceService
 
-        async with async_session_factory() as db:
-            svc = ComponentGovernanceService()
-            rules = await svc.list_governance_for_tenant(db, tenant_id)
-            return [_governance_to_type(g) for g in rules]
+        db = await _get_session(info)
+        svc = ComponentGovernanceService()
+        rules = await svc.list_governance_for_tenant(db, tenant_id)
+        return [_governance_to_type(g) for g in rules]

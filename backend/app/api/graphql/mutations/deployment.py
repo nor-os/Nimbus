@@ -22,6 +22,15 @@ from app.api.graphql.types.deployment import (
 )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class DeploymentMutation:
 
@@ -34,22 +43,21 @@ class DeploymentMutation:
             info, "deployment:deployment:create", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.deployment.deployment_service import DeploymentService
 
-        async with async_session_factory() as db:
-            svc = DeploymentService()
-            d = await svc.create(
-                db, tenant_id=tenant_id,
-                environment_id=input.environment_id,
-                topology_id=input.topology_id,
-                name=input.name,
-                deployed_by=user_id,
-                description=input.description,
-                parameters=input.parameters,
-            )
-            await db.commit()
-            return _deployment_to_type(d)
+        db = await _get_session(info)
+        svc = DeploymentService()
+        d = await svc.create(
+            db, tenant_id=tenant_id,
+            environment_id=input.environment_id,
+            topology_id=input.topology_id,
+            name=input.name,
+            deployed_by=user_id,
+            description=input.description,
+            parameters=input.parameters,
+        )
+        await db.commit()
+        return _deployment_to_type(d)
 
     @strawberry.mutation
     async def update_deployment(
@@ -61,23 +69,22 @@ class DeploymentMutation:
             info, "deployment:deployment:update", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.deployment.deployment_service import DeploymentService
 
-        async with async_session_factory() as db:
-            svc = DeploymentService()
-            kwargs = {}
-            if input.name is not None:
-                kwargs["name"] = input.name
-            if input.description is not None:
-                kwargs["description"] = input.description
-            if input.status is not None:
-                kwargs["status"] = input.status.value
-            if input.parameters is not None:
-                kwargs["parameters"] = input.parameters
-            d = await svc.update(db, deployment_id, **kwargs)
-            await db.commit()
-            return _deployment_to_type(d)
+        db = await _get_session(info)
+        svc = DeploymentService()
+        kwargs = {}
+        if input.name is not None:
+            kwargs["name"] = input.name
+        if input.description is not None:
+            kwargs["description"] = input.description
+        if input.status is not None:
+            kwargs["status"] = input.status.value
+        if input.parameters is not None:
+            kwargs["parameters"] = input.parameters
+        d = await svc.update(db, deployment_id, **kwargs)
+        await db.commit()
+        return _deployment_to_type(d)
 
     @strawberry.mutation
     async def delete_deployment(
@@ -88,14 +95,13 @@ class DeploymentMutation:
             info, "deployment:deployment:delete", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.deployment.deployment_service import DeploymentService
 
-        async with async_session_factory() as db:
-            svc = DeploymentService()
-            await svc.delete(db, deployment_id)
-            await db.commit()
-            return True
+        db = await _get_session(info)
+        svc = DeploymentService()
+        await svc.delete(db, deployment_id)
+        await db.commit()
+        return True
 
     @strawberry.mutation
     async def preview_resolved_parameters(
@@ -108,53 +114,52 @@ class DeploymentMutation:
 
         from sqlalchemy import select
 
-        from app.db.session import async_session_factory
         from app.models.component import Component
         from app.services.resolver.registry import get_resolver_registry
 
-        async with async_session_factory() as db:
-            result = await db.execute(
-                select(Component).where(
-                    Component.id == input.component_id,
-                    Component.deleted_at.is_(None),
-                )
+        db = await _get_session(info)
+        result = await db.execute(
+            select(Component).where(
+                Component.id == input.component_id,
+                Component.deleted_at.is_(None),
             )
-            component = result.scalar_one_or_none()
-            if not component:
-                raise ValueError(f"Component {input.component_id} not found")
+        )
+        component = result.scalar_one_or_none()
+        if not component:
+            raise ValueError(f"Component {input.component_id} not found")
 
-            registry = get_resolver_registry()
-            user_params = input.user_params or {}
-            resolved = await registry.resolve_all(
-                component, db, tenant_id, user_params,
-                environment_id=input.environment_id,
-                landing_zone_id=input.landing_zone_id,
-                dry_run=True,
-            )
+        registry = get_resolver_registry()
+        user_params = input.user_params or {}
+        resolved = await registry.resolve_all(
+            component, db, tenant_id, user_params,
+            environment_id=input.environment_id,
+            landing_zone_id=input.landing_zone_id,
+            dry_run=True,
+        )
 
-            # Build detail annotations
-            details: list[ResolvedParameterInfo] = []
-            bindings = component.resolver_bindings or {}
-            input_schema = component.input_schema or {}
-            defaults = {
-                k: v.get("default")
-                for k, v in input_schema.get("properties", {}).items()
-                if "default" in v
-            }
+        # Build detail annotations
+        details: list[ResolvedParameterInfo] = []
+        bindings = component.resolver_bindings or {}
+        input_schema = component.input_schema or {}
+        defaults = {
+            k: v.get("default")
+            for k, v in input_schema.get("properties", {}).items()
+            if "default" in v
+        }
 
-            for key, value in resolved.items():
-                if key in bindings:
-                    resolver_type = bindings[key].get("resolver_type", "unknown")
-                    source = f"resolver:{resolver_type}"
-                elif key in user_params:
-                    source = "user"
-                elif key in defaults:
-                    source = "default"
-                else:
-                    source = "resolved"
-                details.append(ResolvedParameterInfo(key=key, value=value, source=source))
+        for key, value in resolved.items():
+            if key in bindings:
+                resolver_type = bindings[key].get("resolver_type", "unknown")
+                source = f"resolver:{resolver_type}"
+            elif key in user_params:
+                source = "user"
+            elif key in defaults:
+                source = "default"
+            else:
+                source = "resolved"
+            details.append(ResolvedParameterInfo(key=key, value=value, source=source))
 
-            return ResolvedParametersPreview(parameters=resolved, details=details)
+        return ResolvedParametersPreview(parameters=resolved, details=details)
 
     @strawberry.mutation
     async def execute_deployment(
@@ -165,22 +170,21 @@ class DeploymentMutation:
             info, "deployment:deployment:execute", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.deployment.deployment_service import DeploymentService
 
-        async with async_session_factory() as db:
-            svc = DeploymentService()
-            deployment = await svc.get(db, deployment_id)
-            if not deployment:
-                raise ValueError(f"Deployment {deployment_id} not found")
-            if deployment.status.value not in ("PLANNED", "APPROVED"):
-                raise ValueError(
-                    f"Cannot execute deployment in status {deployment.status.value}. "
-                    "Must be PLANNED or APPROVED."
-                )
+        db = await _get_session(info)
+        svc = DeploymentService()
+        deployment = await svc.get(db, deployment_id)
+        if not deployment:
+            raise ValueError(f"Deployment {deployment_id} not found")
+        if deployment.status.value not in ("PLANNED", "APPROVED"):
+            raise ValueError(
+                f"Cannot execute deployment in status {deployment.status.value}. "
+                "Must be PLANNED or APPROVED."
+            )
 
-            deployment = await svc.transition_status(db, deployment_id, "DEPLOYING")
-            await db.commit()
+        deployment = await svc.transition_status(db, deployment_id, "DEPLOYING")
+        await db.commit()
 
         # Start Temporal workflow (outside the DB session)
         from app.core.config import get_settings
@@ -196,7 +200,7 @@ class DeploymentMutation:
         )
 
         # Re-fetch to return fresh state
-        async with async_session_factory() as db:
-            svc = DeploymentService()
-            deployment = await svc.get(db, deployment_id)
-            return _deployment_to_type(deployment)
+        db = await _get_session(info)
+        svc = DeploymentService()
+        deployment = await svc.get(db, deployment_id)
+        return _deployment_to_type(deployment)

@@ -7,7 +7,7 @@
 import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { switchMap, of, tap } from 'rxjs';
+import { switchMap, of, tap, forkJoin } from 'rxjs';
 import { WorkflowService } from '@core/services/workflow.service';
 import { WorkflowDefinition, NodeTypeInfo, ValidationResult, WorkflowType, WorkflowGraph } from '@shared/models/workflow.model';
 import { WorkflowCanvasComponent } from './workflow-canvas.component';
@@ -156,10 +156,13 @@ export class WorkflowEditorComponent implements OnInit {
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
 
-    // Load nodeTypes FIRST, then the definition — the canvas needs type info
-    // (ports, categories, icons) before it can render the graph correctly.
-    this.workflowService.getNodeTypes().pipe(
-      tap(types => this.nodeTypes.set(types)),
+    // Load nodeTypes + activity palette FIRST, then the definition — the canvas
+    // needs type info (ports, categories, icons) before it can render the graph.
+    forkJoin([
+      this.workflowService.getNodeTypes(),
+      this.workflowService.getActivityNodePalette(),
+    ]).pipe(
+      tap(([staticTypes, activityTypes]) => this.nodeTypes.set([...staticTypes, ...activityTypes])),
       switchMap(() => id ? this.workflowService.getDefinition(id) : of(null)),
     ).subscribe(d => {
       if (d) {

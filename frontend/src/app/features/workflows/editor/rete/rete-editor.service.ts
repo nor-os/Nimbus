@@ -100,6 +100,11 @@ export class ReteEditorService {
       }
     }
 
+    // Wait for Angular to render node DOM so port positions are available
+    await new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+
     for (const conn of graph.connections) {
       const sourceNode = nodeMap.get(conn.source);
       const targetNode = nodeMap.get(conn.target);

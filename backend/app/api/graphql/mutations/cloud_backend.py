@@ -12,8 +12,11 @@ import strawberry
 from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
-from app.api.graphql.queries.cloud_backend import _backend_to_gql, _iam_mapping_to_gql
+from app.api.graphql.queries.cloud_backend import _backend_to_gql, _iam_mapping_to_gql, _region_to_gql
 from app.api.graphql.types.cloud_backend import (
+    BackendRegionInput,
+    BackendRegionType,
+    BackendRegionUpdateInput,
     CloudBackendIAMMappingInput,
     CloudBackendIAMMappingType,
     CloudBackendIAMMappingUpdateInput,
@@ -22,6 +25,15 @@ from app.api.graphql.types.cloud_backend import (
     CloudBackendUpdateInput,
     ConnectivityTestResult,
 )
+
+
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
 
 
 @strawberry.type
@@ -38,7 +50,6 @@ class CloudBackendMutation:
         """Create a new cloud backend connection."""
         await check_graphql_permission(info, "cloud:backend:create", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
         # Extract user ID from context if available
@@ -47,61 +58,61 @@ class CloudBackendMutation:
         if request and hasattr(request, "state") and hasattr(request.state, "user_id"):
             user_id = request.state.user_id
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            backend = await service.create_backend(
-                tenant_id,
-                provider_id=input.provider_id,
-                name=input.name,
-                description=input.description,
-                status=input.status,
-                credentials=input.credentials,
-                scope_config=input.scope_config,
-                endpoint_url=input.endpoint_url,
-                is_shared=input.is_shared,
-                created_by=user_id,
-            )
-            await db.flush()
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        backend = await service.create_backend(
+            tenant_id,
+            provider_id=input.provider_id,
+            name=input.name,
+            description=input.description,
+            status=input.status,
+            credentials=input.credentials,
+            scope_config=input.scope_config,
+            endpoint_url=input.endpoint_url,
+            is_shared=input.is_shared,
+            created_by=user_id,
+        )
+        await db.flush()
 
-            # Auto-create landing zone + topology for the backend
-            from app.models.architecture_topology import ArchitectureTopology
-            from app.services.landing_zone.zone_service import LandingZoneService
-            from sqlalchemy import func as sa_func
+        # Auto-create landing zone + topology for the backend
+        from app.models.architecture_topology import ArchitectureTopology
+        from app.services.landing_zone.zone_service import LandingZoneService
+        from sqlalchemy import func as sa_func
 
-            base_name = f"{input.name} Landing Zone"
-            topo_name = base_name
-            count_stmt = select(sa_func.count()).select_from(ArchitectureTopology).where(
-                ArchitectureTopology.tenant_id == tenant_id,
-                ArchitectureTopology.name.like(f"{base_name}%"),
-            )
-            existing_count = (await db.execute(count_stmt)).scalar() or 0
-            if existing_count > 0:
-                topo_name = f"{base_name} ({existing_count + 1})"
+        base_name = f"{input.name} Landing Zone"
+        topo_name = base_name
+        count_stmt = select(sa_func.count()).select_from(ArchitectureTopology).where(
+            ArchitectureTopology.tenant_id == tenant_id,
+            ArchitectureTopology.name.like(f"{base_name}%"),
+        )
+        existing_count = (await db.execute(count_stmt)).scalar() or 0
+        if existing_count > 0:
+            topo_name = f"{base_name} ({existing_count + 1})"
 
-            topology = ArchitectureTopology(
-                tenant_id=tenant_id,
-                name=topo_name,
-                description=f"Auto-created landing zone topology for {input.name}",
-                is_landing_zone=True,
-                created_by=user_id or backend.created_by,
-            )
-            db.add(topology)
-            await db.flush()
+        topology = ArchitectureTopology(
+            tenant_id=tenant_id,
+            name=topo_name,
+            description=f"Auto-created landing zone topology for {input.name}",
+            is_landing_zone=True,
+            created_by=user_id or backend.created_by,
+        )
+        db.add(topology)
+        await db.flush()
 
-            zone_svc = LandingZoneService()
-            await zone_svc.create(
-                db,
-                tenant_id=tenant_id,
-                backend_id=backend.id,
-                topology_id=topology.id,
-                name=topo_name,
-                created_by=user_id or backend.created_by,
-            )
+        zone_svc = LandingZoneService()
+        await zone_svc.create(
+            db,
+            tenant_id=tenant_id,
+            backend_id=backend.id,
+            topology_id=topology.id,
+            name=topo_name,
+            created_by=user_id or backend.created_by,
+        )
 
-            await db.commit()
-            # Re-fetch with relationships
-            backend = await service.get_backend(backend.id, tenant_id)
-            return _backend_to_gql(backend)
+        await db.commit()
+        # Re-fetch with relationships
+        backend = await service.get_backend(backend.id, tenant_id)
+        return _backend_to_gql(backend)
 
     @strawberry.mutation
     async def initialize_backend_landing_zone(
@@ -113,7 +124,6 @@ class CloudBackendMutation:
         """Create a landing zone + topology for an existing backend that doesn't have one."""
         user_id = await check_graphql_permission(info, "cloud:backend:update", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.models.architecture_topology import ArchitectureTopology
         from app.models.cloud_backend import CloudBackend
         from app.services.cloud.backend_service import CloudBackendService
@@ -124,66 +134,66 @@ class CloudBackendMutation:
         import uuid as _uuid
         created_by = _uuid.UUID(user_id)
 
-        async with async_session_factory() as db:
-            # Fetch backend with explicit eager loading
-            stmt = (
-                select(CloudBackend)
-                .where(
-                    CloudBackend.id == backend_id,
-                    CloudBackend.tenant_id == tenant_id,
-                    CloudBackend.deleted_at.is_(None),
-                )
-                .options(selectinload(CloudBackend.iam_mappings))
+        db = await _get_session(info)
+        # Fetch backend with explicit eager loading
+        stmt = (
+            select(CloudBackend)
+            .where(
+                CloudBackend.id == backend_id,
+                CloudBackend.tenant_id == tenant_id,
+                CloudBackend.deleted_at.is_(None),
             )
-            result = await db.execute(stmt)
-            backend = result.scalar_one_or_none()
-            if not backend:
-                raise ValueError("Backend not found")
+            .options(selectinload(CloudBackend.iam_mappings))
+        )
+        result = await db.execute(stmt)
+        backend = result.scalar_one_or_none()
+        if not backend:
+            raise ValueError("Backend not found")
 
-            # Check if landing zone already exists
-            zone_svc = LandingZoneService()
-            existing = await zone_svc.get_by_backend(db, backend_id)
-            if existing:
-                raise ValueError("Landing zone already exists for this backend")
+        # Check if landing zone already exists
+        zone_svc = LandingZoneService()
+        existing = await zone_svc.get_by_backend(db, backend_id)
+        if existing:
+            raise ValueError("Landing zone already exists for this backend")
 
-            # Find a unique topology name (constraint includes soft-deleted rows)
-            base_name = f"{backend.name} Landing Zone"
-            topo_name = base_name
-            from sqlalchemy import func as sa_func
-            count_stmt = select(sa_func.count()).select_from(ArchitectureTopology).where(
-                ArchitectureTopology.tenant_id == tenant_id,
-                ArchitectureTopology.name.like(f"{base_name}%"),
-            )
-            existing_count = (await db.execute(count_stmt)).scalar() or 0
-            if existing_count > 0:
-                topo_name = f"{base_name} ({existing_count + 1})"
+        # Find a unique topology name (constraint includes soft-deleted rows)
+        base_name = f"{backend.name} Landing Zone"
+        topo_name = base_name
+        from sqlalchemy import func as sa_func
+        count_stmt = select(sa_func.count()).select_from(ArchitectureTopology).where(
+            ArchitectureTopology.tenant_id == tenant_id,
+            ArchitectureTopology.name.like(f"{base_name}%"),
+        )
+        existing_count = (await db.execute(count_stmt)).scalar() or 0
+        if existing_count > 0:
+            topo_name = f"{base_name} ({existing_count + 1})"
 
-            topology = ArchitectureTopology(
-                tenant_id=tenant_id,
-                name=topo_name,
-                description=f"Auto-created landing zone topology for {backend.name}",
-                is_landing_zone=True,
-                created_by=created_by,
-            )
-            db.add(topology)
-            await db.flush()
+        topology = ArchitectureTopology(
+            tenant_id=tenant_id,
+            name=topo_name,
+            description=f"Auto-created landing zone topology for {backend.name}",
+            is_landing_zone=True,
+            created_by=created_by,
+        )
+        db.add(topology)
+        await db.flush()
 
-            await zone_svc.create(
-                db,
-                tenant_id=tenant_id,
-                backend_id=backend.id,
-                topology_id=topology.id,
-                name=f"{backend.name} Landing Zone",
-                created_by=created_by,
-            )
+        await zone_svc.create(
+            db,
+            tenant_id=tenant_id,
+            backend_id=backend.id,
+            topology_id=topology.id,
+            name=f"{backend.name} Landing Zone",
+            created_by=created_by,
+        )
 
-            await db.commit()
+        await db.commit()
 
         # Re-fetch in a clean session to avoid greenlet issues
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            backend = await service.get_backend(backend_id, tenant_id)
-            return _backend_to_gql(backend)
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        backend = await service.get_backend(backend_id, tenant_id)
+        return _backend_to_gql(backend)
 
     @strawberry.mutation
     async def update_cloud_backend(
@@ -196,7 +206,6 @@ class CloudBackendMutation:
         """Update a cloud backend connection."""
         await check_graphql_permission(info, "cloud:backend:update", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
         kwargs = {}
@@ -215,13 +224,15 @@ class CloudBackendMutation:
         if input.is_shared is not None:
             kwargs["is_shared"] = input.is_shared
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            backend = await service.update_backend(id, tenant_id, **kwargs)
-            if not backend:
-                return None
-            await db.commit()
-            return _backend_to_gql(backend)
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        backend = await service.update_backend(id, tenant_id, **kwargs)
+        if not backend:
+            return None
+        await db.commit()
+        # Re-fetch with relationships to avoid expired-attribute greenlet error
+        backend = await service.get_backend(id, tenant_id)
+        return _backend_to_gql(backend)
 
     @strawberry.mutation
     async def delete_cloud_backend(
@@ -233,14 +244,96 @@ class CloudBackendMutation:
         """Delete a cloud backend (soft delete)."""
         await check_graphql_permission(info, "cloud:backend:delete", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            deleted = await service.delete_backend(id, tenant_id)
-            await db.commit()
-            return deleted
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        deleted = await service.delete_backend(id, tenant_id)
+        await db.commit()
+        return deleted
+
+    # -- Region CRUD ---------------------------------------------------------
+
+    @strawberry.mutation
+    async def add_backend_region(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        backend_id: uuid.UUID,
+        input: BackendRegionInput,
+    ) -> BackendRegionType:
+        """Add a region to a cloud backend."""
+        await check_graphql_permission(info, "cloud:region:create", str(tenant_id))
+
+        from app.services.cloud.backend_service import CloudBackendService
+
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        region = await service.add_region(
+            backend_id,
+            tenant_id,
+            region_identifier=input.region_identifier,
+            display_name=input.display_name,
+            provider_region_code=input.provider_region_code,
+            is_enabled=input.is_enabled,
+            availability_zones=input.availability_zones,
+            settings=input.settings,
+        )
+        await db.commit()
+        await db.refresh(region)
+        return _region_to_gql(region)
+
+    @strawberry.mutation
+    async def update_backend_region(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        region_id: uuid.UUID,
+        input: BackendRegionUpdateInput,
+    ) -> BackendRegionType | None:
+        """Update a backend region."""
+        await check_graphql_permission(info, "cloud:region:update", str(tenant_id))
+
+        from app.services.cloud.backend_service import CloudBackendService
+
+        kwargs = {}
+        if input.display_name is not None:
+            kwargs["display_name"] = input.display_name
+        if input.provider_region_code is not strawberry.UNSET:
+            kwargs["provider_region_code"] = input.provider_region_code
+        if input.is_enabled is not None:
+            kwargs["is_enabled"] = input.is_enabled
+        if input.availability_zones is not strawberry.UNSET:
+            kwargs["availability_zones"] = input.availability_zones
+        if input.settings is not strawberry.UNSET:
+            kwargs["settings"] = input.settings
+
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        region = await service.update_region(region_id, **kwargs)
+        if not region:
+            return None
+        await db.commit()
+        await db.refresh(region)
+        return _region_to_gql(region)
+
+    @strawberry.mutation
+    async def remove_backend_region(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        region_id: uuid.UUID,
+    ) -> bool:
+        """Remove a backend region (soft delete)."""
+        await check_graphql_permission(info, "cloud:region:delete", str(tenant_id))
+
+        from app.services.cloud.backend_service import CloudBackendService
+
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        deleted = await service.remove_region(region_id)
+        await db.commit()
+        return deleted
 
     # -- Connectivity testing -----------------------------------------------
 
@@ -254,18 +347,17 @@ class CloudBackendMutation:
         """Test connectivity to a cloud backend."""
         await check_graphql_permission(info, "cloud:backend:test", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            result = await service.test_connectivity(id, tenant_id)
-            await db.commit()
-            return ConnectivityTestResult(
-                success=result["success"],
-                message=result["message"],
-                checked_at=result.get("checked_at"),
-            )
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        result = await service.test_connectivity(id, tenant_id)
+        await db.commit()
+        return ConnectivityTestResult(
+            success=result["success"],
+            message=result["message"],
+            checked_at=result.get("checked_at"),
+        )
 
     # -- IAM Mapping CRUD ---------------------------------------------------
 
@@ -280,24 +372,23 @@ class CloudBackendMutation:
         """Create an IAM mapping for a cloud backend."""
         await check_graphql_permission(info, "cloud:backend:manage_iam", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            mapping = await service.create_iam_mapping(
-                backend_id,
-                tenant_id,
-                role_id=input.role_id,
-                cloud_identity=input.cloud_identity,
-                description=input.description,
-                is_active=input.is_active,
-            )
-            if not mapping:
-                return None
-            await db.commit()
-            await db.refresh(mapping, ["role"])
-            return _iam_mapping_to_gql(mapping)
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        mapping = await service.create_iam_mapping(
+            backend_id,
+            tenant_id,
+            role_id=input.role_id,
+            cloud_identity=input.cloud_identity,
+            description=input.description,
+            is_active=input.is_active,
+        )
+        if not mapping:
+            return None
+        await db.commit()
+        await db.refresh(mapping, ["role"])
+        return _iam_mapping_to_gql(mapping)
 
     @strawberry.mutation
     async def update_cloud_backend_iam_mapping(
@@ -311,7 +402,6 @@ class CloudBackendMutation:
         """Update an IAM mapping."""
         await check_graphql_permission(info, "cloud:backend:manage_iam", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
         kwargs = {}
@@ -322,15 +412,16 @@ class CloudBackendMutation:
         if input.is_active is not None:
             kwargs["is_active"] = input.is_active
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            mapping = await service.update_iam_mapping(
-                id, backend_id, tenant_id, **kwargs
-            )
-            if not mapping:
-                return None
-            await db.commit()
-            return _iam_mapping_to_gql(mapping)
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        mapping = await service.update_iam_mapping(
+            id, backend_id, tenant_id, **kwargs
+        )
+        if not mapping:
+            return None
+        await db.commit()
+        await db.refresh(mapping, ["role"])
+        return _iam_mapping_to_gql(mapping)
 
     @strawberry.mutation
     async def delete_cloud_backend_iam_mapping(
@@ -343,11 +434,10 @@ class CloudBackendMutation:
         """Delete an IAM mapping (soft delete)."""
         await check_graphql_permission(info, "cloud:backend:manage_iam", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.cloud.backend_service import CloudBackendService
 
-        async with async_session_factory() as db:
-            service = CloudBackendService(db)
-            deleted = await service.delete_iam_mapping(id, backend_id, tenant_id)
-            await db.commit()
-            return deleted
+        db = await _get_session(info)
+        service = CloudBackendService(db)
+        deleted = await service.delete_iam_mapping(id, backend_id, tenant_id)
+        await db.commit()
+        return deleted

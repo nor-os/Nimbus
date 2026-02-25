@@ -142,7 +142,12 @@ import { ConfirmService } from '@shared/services/confirm.service';
                   @for (link of sortedLinks(); track link.id) {
                     <tr>
                       <td>{{ link.sortOrder }}</td>
-                      <td class="name-cell">{{ activityNameForId(link.activityTemplateId) }}</td>
+                      <td class="name-cell">
+                        {{ activityNameForId(link.activityTemplateId) }}
+                        @if (activityHasAutomation(link.activityTemplateId)) {
+                          <span class="badge badge-automation" title="Has linked infrastructure automation">Automated</span>
+                        }
+                      </td>
                       <td>
                         <span
                           class="badge"
@@ -329,6 +334,11 @@ import { ConfirmService } from '@shared/services/confirm.service';
     }
     .badge-required { background: #dbeafe; color: #2563eb; }
     .badge-optional { background: #f0fdf4; color: #16a34a; }
+    .badge-automation {
+      background: #f0fdf4; color: #166534; font-size: 0.625rem;
+      padding: 1px 5px; border-radius: 3px; margin-left: 0.375rem;
+      vertical-align: middle; font-weight: 600;
+    }
 
     .no-items { color: #94a3b8; font-size: 0.8125rem; padding: 0.5rem 0; }
 
@@ -512,6 +522,11 @@ export class ProcessEditorComponent implements OnInit {
   activityNameForId(templateId: string): string {
     const tpl = this.activityTemplates().find((t) => t.id === templateId);
     return tpl ? tpl.name : templateId.substring(0, 8) + '...';
+  }
+
+  activityHasAutomation(templateId: string): boolean {
+    const tpl = this.activityTemplates().find((t) => t.id === templateId);
+    return !!tpl?.automatedActivityId;
   }
 
   goBack(): void {

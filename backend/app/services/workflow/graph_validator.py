@@ -300,7 +300,7 @@ class GraphValidator:
         incoming_ports: dict[str, set[str]] = {n["id"]: set() for n in nodes}
         for conn in connections:
             target_id = conn.get("target")
-            target_port = conn.get("target_port", "in")
+            target_port = conn.get("targetPort", conn.get("target_port", "in"))
             if target_id in incoming_ports:
                 incoming_ports[target_id].add(target_port)
 

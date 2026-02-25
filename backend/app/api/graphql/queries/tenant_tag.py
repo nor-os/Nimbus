@@ -35,6 +35,15 @@ def _tag_to_gql(tag, mask_secrets: bool = True) -> TenantTagType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class TenantTagQuery:
 
@@ -45,16 +54,15 @@ class TenantTagQuery:
         """List all tags for a tenant."""
         await check_graphql_permission(info, "settings:tag:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.tenant.tag_service import TenantTagService
 
-        async with async_session_factory() as db:
-            service = TenantTagService(db)
-            tags = await service.list_tags(str(tenant_id), search)
-            return TenantTagListType(
-                items=[_tag_to_gql(t) for t in tags],
-                total=len(tags),
-            )
+        db = await _get_session(info)
+        service = TenantTagService(db)
+        tags = await service.list_tags(str(tenant_id), search)
+        return TenantTagListType(
+            items=[_tag_to_gql(t) for t in tags],
+            total=len(tags),
+        )
 
     @strawberry.field
     async def tenant_tag(
@@ -63,15 +71,14 @@ class TenantTagQuery:
         """Get a single tag by ID."""
         await check_graphql_permission(info, "settings:tag:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.tenant.tag_service import TenantTagService
 
-        async with async_session_factory() as db:
-            service = TenantTagService(db)
-            tag = await service.get_tag(id, str(tenant_id))
-            if not tag:
-                return None
-            return _tag_to_gql(tag)
+        db = await _get_session(info)
+        service = TenantTagService(db)
+        tag = await service.get_tag(id, str(tenant_id))
+        if not tag:
+            return None
+        return _tag_to_gql(tag)
 
     @strawberry.field
     async def tenant_tag_by_key(
@@ -80,12 +87,11 @@ class TenantTagQuery:
         """Get a tag by its unique key."""
         await check_graphql_permission(info, "settings:tag:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.tenant.tag_service import TenantTagService
 
-        async with async_session_factory() as db:
-            service = TenantTagService(db)
-            tag = await service.get_tag_by_key(str(tenant_id), key)
-            if not tag:
-                return None
-            return _tag_to_gql(tag)
+        db = await _get_session(info)
+        service = TenantTagService(db)
+        tag = await service.get_tag_by_key(str(tenant_id), key)
+        if not tag:
+            return None
+        return _tag_to_gql(tag)

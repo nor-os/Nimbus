@@ -16,20 +16,23 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
 import { DeliveryService } from '@core/services/delivery.service';
 import { CatalogService } from '@core/services/catalog.service';
 import { CmdbService } from '@core/services/cmdb.service';
+import { AutomatedActivityService } from '@core/services/automated-activity.service';
 import {
   ActivityTemplate,
   ActivityDefinition,
   ActivityDefinitionCreateInput,
   ActivityDefinitionUpdateInput,
+  LinkedAutomatedActivity,
   StaffProfile,
 } from '@shared/models/delivery.model';
+import { AutomatedActivity } from '@shared/models/automated-activity.model';
 import { CIClass, CIClassActivityAssociation } from '@shared/models/cmdb.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { SearchableSelectComponent } from '@shared/components/searchable-select/searchable-select.component';
@@ -53,7 +56,7 @@ interface DefinitionRow {
 @Component({
   selector: 'nimbus-activity-template-editor',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule, LayoutComponent, HasPermissionDirective, SearchableSelectComponent],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, LayoutComponent, HasPermissionDirective, SearchableSelectComponent, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nimbus-layout>
@@ -174,6 +177,52 @@ interface DefinitionRow {
               </div>
             }
           </div>
+
+          <!-- Linked Automation (edit mode only) -->
+          @if (isEditMode() && templateId) {
+            <div class="assoc-section">
+              <div class="assoc-header">
+                <h2>Infrastructure Automation</h2>
+              </div>
+
+              @if (linkedAutomation()) {
+                <div class="automation-link-card">
+                  <div class="automation-info">
+                    <span class="automation-name">{{ linkedAutomation()!.name }}</span>
+                    <span class="badge badge-operation">{{ linkedAutomation()!.operationKind }}</span>
+                    <span class="badge badge-impl">{{ formatImplType(linkedAutomation()!.implementationType) }}</span>
+                    @if (linkedAutomation()!.isSystem) {
+                      <span class="badge badge-system">System</span>
+                    }
+                    <span class="automation-slug">{{ linkedAutomation()!.slug }}</span>
+                  </div>
+                  <div class="automation-actions">
+                    <a class="btn-link" [routerLink]="['/workflows/activities', linkedAutomation()!.id]">View</a>
+                    <button class="btn btn-sm btn-remove" (click)="unlinkAutomation()">Unlink</button>
+                  </div>
+                </div>
+              } @else {
+                <div class="automation-picker">
+                  <p class="picker-hint">Link an automated activity to enable infrastructure execution from this process step.</p>
+                  <div class="assoc-add-form">
+                    <div class="assoc-add-field">
+                      <label>Activity</label>
+                      <select class="form-input form-select" [(ngModel)]="linkActivityId">
+                        <option value="">Select automated activity...</option>
+                        @for (act of availableActivities(); track act.id) {
+                          <option [value]="act.id">{{ act.name }} ({{ act.operationKind | lowercase }}, {{ act.category || 'uncategorized' }})</option>
+                        }
+                      </select>
+                    </div>
+                    <div class="assoc-add-field assoc-add-action">
+                      <label>&nbsp;</label>
+                      <button class="btn btn-sm btn-add" [disabled]="!linkActivityId" (click)="linkAutomation()">Link</button>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
 
           <!-- CI Class Associations (edit mode only) -->
           @if (isEditMode() && templateId) {
@@ -404,12 +453,31 @@ interface DefinitionRow {
       text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;
     }
     .assoc-add-action { flex: 0; }
+
+    /* ── Automation link ───────────────────────────────────────────── */
+    .automation-link-card {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.75rem 1rem; background: #f0fdf4; border: 1px solid #bbf7d0;
+      border-radius: 8px;
+    }
+    .automation-info {
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    }
+    .automation-name { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
+    .automation-slug { font-size: 0.75rem; color: #94a3b8; font-family: monospace; }
+    .automation-actions { display: flex; gap: 0.5rem; align-items: center; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; }
+    .badge-operation { background: #dbeafe; color: #1d4ed8; }
+    .badge-impl { background: #fef3c7; color: #92400e; }
+    .badge-system { background: #e0e7ff; color: #3730a3; }
+    .picker-hint { font-size: 0.8125rem; color: #64748b; margin: 0 0 0.75rem; }
   `],
 })
 export class ActivityTemplateEditorComponent implements OnInit {
   private deliveryService = inject(DeliveryService);
   private catalogService = inject(CatalogService);
   private cmdbService = inject(CmdbService);
+  private automatedActivityService = inject(AutomatedActivityService);
   private fb = inject(FormBuilder);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -422,6 +490,11 @@ export class ActivityTemplateEditorComponent implements OnInit {
   staffProfiles = signal<StaffProfile[]>([]);
   definitions = signal<DefinitionRow[]>([]);
   existingTemplate = signal<ActivityTemplate | null>(null);
+
+  // Linked automation
+  linkedAutomation = signal<LinkedAutomatedActivity | null>(null);
+  availableActivities = signal<AutomatedActivity[]>([]);
+  linkActivityId = '';
 
   // CI Class Associations
   ciClassAssociations = signal<CIClassActivityAssociation[]>([]);
@@ -452,6 +525,7 @@ export class ActivityTemplateEditorComponent implements OnInit {
       this.loading.set(true);
       this.loadExistingTemplate(this.templateId);
       this.loadAssociationData(this.templateId);
+      this.loadAvailableActivities();
     }
   }
 
@@ -564,6 +638,46 @@ export class ActivityTemplateEditorComponent implements OnInit {
         this.toastService.error(err.message || 'Failed to remove association');
       },
     });
+  }
+
+  // ── Automation link ──────────────────────────────────────────────
+
+  linkAutomation(): void {
+    if (!this.linkActivityId || !this.templateId) return;
+    this.automatedActivityService.linkActivityTemplate(this.templateId, this.linkActivityId).subscribe({
+      next: () => {
+        const act = this.availableActivities().find(a => a.id === this.linkActivityId);
+        if (act) {
+          this.linkedAutomation.set({
+            id: act.id,
+            name: act.name,
+            slug: act.slug,
+            category: act.category,
+            operationKind: act.operationKind,
+            implementationType: act.implementationType,
+            isSystem: act.isSystem,
+          });
+        }
+        this.linkActivityId = '';
+        this.toastService.success('Automation linked');
+      },
+      error: (err) => this.toastService.error(err.message || 'Failed to link automation'),
+    });
+  }
+
+  unlinkAutomation(): void {
+    if (!this.templateId) return;
+    this.automatedActivityService.unlinkActivityTemplate(this.templateId).subscribe({
+      next: () => {
+        this.linkedAutomation.set(null);
+        this.toastService.success('Automation unlinked');
+      },
+      error: (err) => this.toastService.error(err.message || 'Failed to unlink automation'),
+    });
+  }
+
+  formatImplType(type: string): string {
+    return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bHttp\b/, 'HTTP');
   }
 
   // ── Save ─────────────────────────────────────────────────────────
@@ -701,6 +815,13 @@ export class ActivityTemplateEditorComponent implements OnInit {
     });
   }
 
+  private loadAvailableActivities(): void {
+    this.automatedActivityService.listActivities({ limit: 500 }).subscribe({
+      next: (list) => this.availableActivities.set(list),
+      error: () => {},
+    });
+  }
+
   private loadStaffProfiles(): void {
     this.deliveryService.listStaffProfiles().subscribe({
       next: (profiles) => this.staffProfiles.set(profiles),
@@ -721,6 +842,7 @@ export class ActivityTemplateEditorComponent implements OnInit {
         }
 
         this.existingTemplate.set(template);
+        this.linkedAutomation.set(template.automatedActivity || null);
         this.nameControl.setValue(template.name);
         this.descriptionControl.setValue(template.description || '');
 

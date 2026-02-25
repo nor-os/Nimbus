@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.cloud_backend import CloudBackend, CloudBackendIAMMapping
+from app.models.cloud_backend import BackendRegion, CloudBackend, CloudBackendIAMMapping
 from app.services.crypto.credential_encryption import (
     CredentialEncryptionError,
     decrypt_credentials,
@@ -129,14 +129,6 @@ class CloudBackendService:
         created_by: uuid.UUID | None = None,
     ) -> CloudBackend:
         """Create a new cloud backend, encrypting credentials if provided."""
-        # Enforce 1:1 tenant→backend constraint
-        existing = await self.get_tenant_backend(tenant_id)
-        if existing:
-            raise ValueError(
-                f"Tenant already has an active cloud backend '{existing.name}'. "
-                "Each tenant can only have one cloud backend."
-            )
-
         encrypted = None
         if credentials:
             encrypted = encrypt_credentials(credentials)
@@ -188,6 +180,83 @@ class CloudBackendService:
         if not backend:
             return False
         backend.deleted_at = datetime.now(timezone.utc)
+        await self.db.flush()
+        return True
+
+    # -- Region CRUD ---------------------------------------------------------
+
+    async def list_regions(
+        self, backend_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> list[BackendRegion]:
+        """List regions for a backend."""
+        stmt = (
+            select(BackendRegion)
+            .where(
+                BackendRegion.backend_id == backend_id,
+                BackendRegion.deleted_at.is_(None),
+            )
+            .order_by(BackendRegion.region_identifier)
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_region(
+        self, region_id: uuid.UUID
+    ) -> BackendRegion | None:
+        """Get a single region by ID."""
+        stmt = select(BackendRegion).where(
+            BackendRegion.id == region_id,
+            BackendRegion.deleted_at.is_(None),
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def add_region(
+        self,
+        backend_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        *,
+        region_identifier: str,
+        display_name: str,
+        provider_region_code: str | None = None,
+        is_enabled: bool = True,
+        availability_zones: list | None = None,
+        settings: dict | None = None,
+    ) -> BackendRegion:
+        """Add a region to a backend."""
+        region = BackendRegion(
+            tenant_id=tenant_id,
+            backend_id=backend_id,
+            region_identifier=region_identifier,
+            display_name=display_name,
+            provider_region_code=provider_region_code,
+            is_enabled=is_enabled,
+            availability_zones=availability_zones,
+            settings=settings,
+        )
+        self.db.add(region)
+        await self.db.flush()
+        return region
+
+    async def update_region(
+        self, region_id: uuid.UUID, **kwargs
+    ) -> BackendRegion | None:
+        """Update a backend region."""
+        region = await self.get_region(region_id)
+        if not region:
+            return None
+        for key, value in kwargs.items():
+            if hasattr(region, key) and key not in ("id", "tenant_id", "backend_id", "created_at"):
+                setattr(region, key, value)
+        await self.db.flush()
+        return region
+
+    async def remove_region(self, region_id: uuid.UUID) -> bool:
+        """Soft-delete a backend region."""
+        region = await self.get_region(region_id)
+        if not region:
+            return False
+        region.deleted_at = datetime.now(timezone.utc)
         await self.db.flush()
         return True
 

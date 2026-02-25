@@ -14,6 +14,16 @@ from app.api.graphql.auth import check_graphql_permission
 from app.api.graphql.types.user import UserDetailType, UserType
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+
+    return async_session_factory()
+
+
 @strawberry.type
 class UserQuery:
     @strawberry.field
@@ -27,28 +37,27 @@ class UserQuery:
     ) -> list[UserType]:
         """List users for a tenant."""
         await check_graphql_permission(info, "users:user:list", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.user.service import UserService
 
-        async with async_session_factory() as db:
-            service = UserService(db)
-            users, _total = await service.list_users(
-                str(tenant_id), offset, limit, search
+        db = await _get_session(info)
+        service = UserService(db)
+        users, _total = await service.list_users(
+            str(tenant_id), offset, limit, search
+        )
+        return [
+            UserType(
+                id=u.id,
+                email=u.email,
+                display_name=u.display_name,
+                is_active=u.is_active,
+                provider_id=u.provider_id,
+                identity_provider_id=u.identity_provider_id,
+                external_id=u.external_id,
+                created_at=u.created_at,
+                updated_at=u.updated_at,
             )
-            return [
-                UserType(
-                    id=u.id,
-                    email=u.email,
-                    display_name=u.display_name,
-                    is_active=u.is_active,
-                    provider_id=u.provider_id,
-                    identity_provider_id=u.identity_provider_id,
-                    external_id=u.external_id,
-                    created_at=u.created_at,
-                    updated_at=u.updated_at,
-                )
-                for u in users
-            ]
+            for u in users
+        ]
 
     @strawberry.field
     async def user(
@@ -56,22 +65,21 @@ class UserQuery:
     ) -> UserType | None:
         """Get a single user by ID."""
         await check_graphql_permission(info, "users:user:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.user.service import UserService
 
-        async with async_session_factory() as db:
-            service = UserService(db)
-            user = await service.get_user(str(user_id), str(tenant_id))
-            if not user:
-                return None
-            return UserType(
-                id=user.id,
-                email=user.email,
-                display_name=user.display_name,
-                is_active=user.is_active,
-                provider_id=user.provider_id,
-                identity_provider_id=user.identity_provider_id,
-                external_id=user.external_id,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-            )
+        db = await _get_session(info)
+        service = UserService(db)
+        user = await service.get_user(str(user_id), str(tenant_id))
+        if not user:
+            return None
+        return UserType(
+            id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            is_active=user.is_active,
+            provider_id=user.provider_id,
+            identity_provider_id=user.identity_provider_id,
+            external_id=user.external_id,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+        )

@@ -97,6 +97,15 @@ def _activity_type_to_gql(at) -> SemanticActivityTypeType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class SemanticQuery:
     @strawberry.field
@@ -106,32 +115,31 @@ class SemanticQuery:
         """List all semantic categories with nested types."""
         await check_graphql_permission(info, "semantic:type:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.service import SemanticService
 
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            categories = await service.list_categories()
-            return [
-                SemanticCategoryWithTypesType(
-                    id=c.id,
-                    name=c.name,
-                    display_name=c.display_name,
-                    description=c.description,
-                    icon=c.icon,
-                    sort_order=c.sort_order,
-                    is_system=c.is_system,
-                    is_infrastructure=c.is_infrastructure,
-                    types=[
-                        _type_to_gql(t)
-                        for t in sorted(c.types, key=lambda x: x.sort_order)
-                        if t.deleted_at is None
-                    ],
-                    created_at=c.created_at,
-                    updated_at=c.updated_at,
-                )
-                for c in categories
-            ]
+        db = await _get_session(info)
+        service = SemanticService(db)
+        categories = await service.list_categories()
+        return [
+            SemanticCategoryWithTypesType(
+                id=c.id,
+                name=c.name,
+                display_name=c.display_name,
+                description=c.description,
+                icon=c.icon,
+                sort_order=c.sort_order,
+                is_system=c.is_system,
+                is_infrastructure=c.is_infrastructure,
+                types=[
+                    _type_to_gql(t)
+                    for t in sorted(c.types, key=lambda x: x.sort_order)
+                    if t.deleted_at is None
+                ],
+                created_at=c.created_at,
+                updated_at=c.updated_at,
+            )
+            for c in categories
+        ]
 
     @strawberry.field
     async def semantic_types(
@@ -148,23 +156,22 @@ class SemanticQuery:
         """List semantic types with filtering and pagination."""
         await check_graphql_permission(info, "semantic:type:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.service import SemanticService
 
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            items, total = await service.list_types(
-                category=category,
-                is_abstract=is_abstract,
-                infrastructure_only=infrastructure_only,
-                search=search,
-                offset=offset,
-                limit=limit,
-            )
-            return SemanticResourceTypeListType(
-                items=[_type_to_gql(t) for t in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = SemanticService(db)
+        items, total = await service.list_types(
+            category=category,
+            is_abstract=is_abstract,
+            infrastructure_only=infrastructure_only,
+            search=search,
+            offset=offset,
+            limit=limit,
+        )
+        return SemanticResourceTypeListType(
+            items=[_type_to_gql(t) for t in items],
+            total=total,
+        )
 
     @strawberry.field
     async def semantic_type(
@@ -173,15 +180,14 @@ class SemanticQuery:
         """Get a single semantic type with its mappings."""
         await check_graphql_permission(info, "semantic:type:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.service import SemanticService
 
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            t = await service.get_type_with_mappings(id)
-            if not t:
-                return None
-            return _type_to_gql(t)
+        db = await _get_session(info)
+        service = SemanticService(db)
+        t = await service.get_type_with_mappings(id)
+        if not t:
+            return None
+        return _type_to_gql(t)
 
     @strawberry.field
     async def semantic_relationship_kinds(
@@ -190,25 +196,24 @@ class SemanticQuery:
         """List all semantic relationship kinds."""
         await check_graphql_permission(info, "semantic:type:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.service import SemanticService
 
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            kinds = await service.list_relationship_kinds()
-            return [
-                SemanticRelationshipKindType(
-                    id=k.id,
-                    name=k.name,
-                    display_name=k.display_name,
-                    description=k.description,
-                    inverse_name=k.inverse_name,
-                    is_system=k.is_system,
-                    created_at=k.created_at,
-                    updated_at=k.updated_at,
-                )
-                for k in kinds
-            ]
+        db = await _get_session(info)
+        service = SemanticService(db)
+        kinds = await service.list_relationship_kinds()
+        return [
+            SemanticRelationshipKindType(
+                id=k.id,
+                name=k.name,
+                display_name=k.display_name,
+                description=k.description,
+                inverse_name=k.inverse_name,
+                is_system=k.is_system,
+                created_at=k.created_at,
+                updated_at=k.updated_at,
+            )
+            for k in kinds
+        ]
 
     # -- Provider queries --------------------------------------------------
 
@@ -219,13 +224,12 @@ class SemanticQuery:
         """List all semantic providers."""
         await check_graphql_permission(info, "semantic:provider:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.service import SemanticService
 
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            providers = await service.list_providers()
-            return [_provider_to_gql(p) for p in providers]
+        db = await _get_session(info)
+        service = SemanticService(db)
+        providers = await service.list_providers()
+        return [_provider_to_gql(p) for p in providers]
 
     @strawberry.field
     async def semantic_provider(
@@ -234,15 +238,14 @@ class SemanticQuery:
         """Get a single provider by ID."""
         await check_graphql_permission(info, "semantic:provider:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.service import SemanticService
 
-        async with async_session_factory() as db:
-            service = SemanticService(db)
-            p = await service.get_provider(id)
-            if not p:
-                return None
-            return _provider_to_gql(p)
+        db = await _get_session(info)
+        service = SemanticService(db)
+        p = await service.get_provider(id)
+        if not p:
+            return None
+        return _provider_to_gql(p)
 
     # -- Activity type queries ---------------------------------------------
 
@@ -256,13 +259,12 @@ class SemanticQuery:
         """List semantic activity types, optionally filtered by category."""
         await check_graphql_permission(info, "semantic:activity-type:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.activity_type_service import ActivityTypeService
 
-        async with async_session_factory() as db:
-            service = ActivityTypeService(db)
-            types = await service.list_activity_types(category)
-            return [_activity_type_to_gql(t) for t in types]
+        db = await _get_session(info)
+        service = ActivityTypeService(db)
+        types = await service.list_activity_types(category)
+        return [_activity_type_to_gql(t) for t in types]
 
     @strawberry.field
     async def semantic_activity_type(
@@ -274,10 +276,9 @@ class SemanticQuery:
         """Get a single semantic activity type by ID."""
         await check_graphql_permission(info, "semantic:activity-type:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.activity_type_service import ActivityTypeService
 
-        async with async_session_factory() as db:
-            service = ActivityTypeService(db)
-            at = await service.get_activity_type(str(id))
-            return _activity_type_to_gql(at) if at else None
+        db = await _get_session(info)
+        service = ActivityTypeService(db)
+        at = await service.get_activity_type(str(id))
+        return _activity_type_to_gql(at) if at else None

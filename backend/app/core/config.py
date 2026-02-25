@@ -20,6 +20,10 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://nimbus:nimbus_dev@localhost:5432/nimbus"
+    db_pool_size: int = 20
+    db_max_overflow: int = 10
+    db_pool_timeout: int = 30
+    db_pool_recycle: int = 3600
 
     # JWT
     jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"

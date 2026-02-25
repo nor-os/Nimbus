@@ -44,11 +44,9 @@ export class CustomConnectionComponent implements OnChanges {
   @Input() end: any;
   @Input() path!: string;
 
-  constructor(private cdr: ChangeDetectorRef) {
-    this.cdr.detach();
-  }
+  constructor(private cdr: ChangeDetectorRef) {}
 
   ngOnChanges(): void {
-    this.cdr.detectChanges();
+    this.cdr.markForCheck();
   }
 }

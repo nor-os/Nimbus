@@ -1,0 +1,7 @@
+missing: Deployment activities are not yet created via
+Components -> Activities
+
+- Operations must contain parameters (just as activities)
+- Operations must declare them 
+  - explicitly (for the user to enter at execution)
+  - implicitly (link to containing component via semantic model

@@ -2,6 +2,9 @@ A Pulimi based SaaS Control Panel for Multi-User and Multi Tenancy Cloud Backend
 
 
 +++
+
+- interal API testing suite integrated into MCP server. for graphql queries being then automatically in the graphql console
+
  - PAM incl. session recording
  - Log-Collection incl. syslog integration
  - Arc-Funktion via usb-stick as basis for PaaS (incl. hypervisor controller like Proxmox) and PaaS for Databases

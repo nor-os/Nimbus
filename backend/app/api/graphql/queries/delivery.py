@@ -16,6 +16,7 @@ from app.api.graphql.types.delivery import (
     ActivityDefinitionType,
     ActivityTemplateListType,
     ActivityTemplateType,
+    LinkedAutomatedActivityType,
     DeliveryRegionListType,
     DeliveryRegionType,
     EffectiveRegionAcceptanceType,
@@ -162,12 +163,26 @@ def _activity_definition_to_gql(d) -> ActivityDefinitionType:
 
 
 def _activity_template_to_gql(t) -> ActivityTemplateType:
+    linked = None
+    aa = getattr(t, "automated_activity", None)
+    if aa:
+        linked = LinkedAutomatedActivityType(
+            id=aa.id,
+            name=aa.name,
+            slug=aa.slug,
+            category=aa.category,
+            operation_kind=aa.operation_kind.value if hasattr(aa.operation_kind, "value") else str(aa.operation_kind),
+            implementation_type=aa.implementation_type.value if hasattr(aa.implementation_type, "value") else str(aa.implementation_type),
+            is_system=aa.is_system,
+        )
     return ActivityTemplateType(
         id=t.id,
         tenant_id=t.tenant_id,
         name=t.name,
         description=t.description,
         version=t.version,
+        automated_activity_id=t.automated_activity_id,
+        automated_activity=linked,
         definitions=[
             _activity_definition_to_gql(d)
             for d in (t.definitions or [])
@@ -308,6 +323,15 @@ def _price_list_template_to_gql(t) -> PriceListTemplateType:
 # ── Query class ──────────────────────────────────────────────────────
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class DeliveryQuery:
     # ── Delivery Regions ──────────────────────────────────────────────
@@ -327,24 +351,23 @@ class DeliveryQuery:
             info, "catalog:region:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.region_service import DeliveryRegionService
 
         active_only = is_active if is_active is not None else True
 
-        async with async_session_factory() as db:
-            service = DeliveryRegionService(db)
-            items, total = await service.list_regions(
-                tenant_id=str(tenant_id),
-                parent_region_id=str(parent_region_id) if parent_region_id else None,
-                active_only=active_only,
-                offset=offset,
-                limit=limit,
-            )
-            return DeliveryRegionListType(
-                items=[_region_to_gql(r) for r in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = DeliveryRegionService(db)
+        items, total = await service.list_regions(
+            tenant_id=str(tenant_id),
+            parent_region_id=str(parent_region_id) if parent_region_id else None,
+            active_only=active_only,
+            offset=offset,
+            limit=limit,
+        )
+        return DeliveryRegionListType(
+            items=[_region_to_gql(r) for r in items],
+            total=total,
+        )
 
     @strawberry.field
     async def delivery_region(
@@ -358,13 +381,12 @@ class DeliveryQuery:
             info, "catalog:region:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.region_service import DeliveryRegionService
 
-        async with async_session_factory() as db:
-            service = DeliveryRegionService(db)
-            r = await service.get_region(str(id))
-            return _region_to_gql(r) if r else None
+        db = await _get_session(info)
+        service = DeliveryRegionService(db)
+        r = await service.get_region(str(id))
+        return _region_to_gql(r) if r else None
 
     @strawberry.field
     async def region_children(
@@ -378,13 +400,12 @@ class DeliveryQuery:
             info, "catalog:region:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.region_service import DeliveryRegionService
 
-        async with async_session_factory() as db:
-            service = DeliveryRegionService(db)
-            children = await service.get_children(str(id))
-            return [_region_to_gql(r) for r in children]
+        db = await _get_session(info)
+        service = DeliveryRegionService(db)
+        children = await service.get_children(str(id))
+        return [_region_to_gql(r) for r in children]
 
     # ── Region Acceptance ─────────────────────────────────────────────
 
@@ -399,13 +420,12 @@ class DeliveryQuery:
             info, "catalog:compliance:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.region_acceptance_service import RegionAcceptanceService
 
-        async with async_session_factory() as db:
-            service = RegionAcceptanceService(db)
-            templates = await service.list_templates(str(tenant_id))
-            return [_acceptance_template_to_gql(t) for t in templates]
+        db = await _get_session(info)
+        service = RegionAcceptanceService(db)
+        templates = await service.list_templates(str(tenant_id))
+        return [_acceptance_template_to_gql(t) for t in templates]
 
     @strawberry.field
     async def region_acceptance_template_rules(
@@ -419,13 +439,12 @@ class DeliveryQuery:
             info, "catalog:compliance:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.region_acceptance_service import RegionAcceptanceService
 
-        async with async_session_factory() as db:
-            service = RegionAcceptanceService(db)
-            rules = await service.list_template_rules(str(template_id))
-            return [_template_rule_to_gql(r) for r in rules]
+        db = await _get_session(info)
+        service = RegionAcceptanceService(db)
+        rules = await service.list_template_rules(str(template_id))
+        return [_template_rule_to_gql(r) for r in rules]
 
     @strawberry.field
     async def tenant_region_acceptances(
@@ -438,13 +457,12 @@ class DeliveryQuery:
             info, "catalog:compliance:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.region_acceptance_service import RegionAcceptanceService
 
-        async with async_session_factory() as db:
-            service = RegionAcceptanceService(db)
-            acceptances = await service.list_tenant_acceptances(str(tenant_id))
-            return [_tenant_acceptance_to_gql(a) for a in acceptances]
+        db = await _get_session(info)
+        service = RegionAcceptanceService(db)
+        acceptances = await service.list_tenant_acceptances(str(tenant_id))
+        return [_tenant_acceptance_to_gql(a) for a in acceptances]
 
     @strawberry.field
     async def effective_region_acceptance(
@@ -458,20 +476,19 @@ class DeliveryQuery:
             info, "catalog:compliance:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.region_acceptance_service import RegionAcceptanceService
 
-        async with async_session_factory() as db:
-            service = RegionAcceptanceService(db)
-            result = await service.get_effective_region_acceptance(
-                str(tenant_id), str(region_id)
-            )
-            return EffectiveRegionAcceptanceType(
-                acceptance_type=result["acceptance_type"],
-                reason=result["reason"],
-                is_compliance_enforced=result["is_compliance_enforced"],
-                source=result["source"],
-            )
+        db = await _get_session(info)
+        service = RegionAcceptanceService(db)
+        result = await service.get_effective_region_acceptance(
+            str(tenant_id), str(region_id)
+        )
+        return EffectiveRegionAcceptanceType(
+            acceptance_type=result["acceptance_type"],
+            reason=result["reason"],
+            is_compliance_enforced=result["is_compliance_enforced"],
+            source=result["source"],
+        )
 
     # ── Organizational Units ──────────────────────────────────────────
 
@@ -486,13 +503,12 @@ class DeliveryQuery:
             info, "catalog:orgunit:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.rate_card_service import RateCardService
 
-        async with async_session_factory() as db:
-            service = RateCardService(db)
-            units = await service.list_org_units(str(tenant_id))
-            return [_org_unit_to_gql(ou) for ou in units]
+        db = await _get_session(info)
+        service = RateCardService(db)
+        units = await service.list_org_units(str(tenant_id))
+        return [_org_unit_to_gql(ou) for ou in units]
 
     # ── Staff Profiles ────────────────────────────────────────────────
 
@@ -507,13 +523,12 @@ class DeliveryQuery:
             info, "catalog:staff:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.rate_card_service import RateCardService
 
-        async with async_session_factory() as db:
-            service = RateCardService(db)
-            profiles = await service.list_profiles(str(tenant_id))
-            return [_staff_profile_to_gql(p) for p in profiles]
+        db = await _get_session(info)
+        service = RateCardService(db)
+        profiles = await service.list_profiles(str(tenant_id))
+        return [_staff_profile_to_gql(p) for p in profiles]
 
     @strawberry.field
     async def staff_profile_activities(
@@ -527,15 +542,14 @@ class DeliveryQuery:
             info, "catalog:staff:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.activity_service import ActivityService
 
-        async with async_session_factory() as db:
-            service = ActivityService(db)
-            defs = await service.list_definitions_by_staff_profile(
-                str(staff_profile_id)
-            )
-            return [_activity_definition_to_gql(d) for d in defs]
+        db = await _get_session(info)
+        service = ActivityService(db)
+        defs = await service.list_definitions_by_staff_profile(
+            str(staff_profile_id)
+        )
+        return [_activity_definition_to_gql(d) for d in defs]
 
     # ── Rate Cards ────────────────────────────────────────────────────
 
@@ -552,17 +566,16 @@ class DeliveryQuery:
             info, "catalog:staff:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.rate_card_service import RateCardService
 
-        async with async_session_factory() as db:
-            service = RateCardService(db)
-            cards = await service.list_rate_cards(
-                str(tenant_id),
-                staff_profile_id=str(staff_profile_id) if staff_profile_id else None,
-                delivery_region_id=str(delivery_region_id) if delivery_region_id else None,
-            )
-            return [_rate_card_to_gql(c) for c in cards]
+        db = await _get_session(info)
+        service = RateCardService(db)
+        cards = await service.list_rate_cards(
+            str(tenant_id),
+            staff_profile_id=str(staff_profile_id) if staff_profile_id else None,
+            delivery_region_id=str(delivery_region_id) if delivery_region_id else None,
+        )
+        return [_rate_card_to_gql(c) for c in cards]
 
     # ── Activity Templates ────────────────────────────────────────────
 
@@ -579,18 +592,17 @@ class DeliveryQuery:
             info, "catalog:activity:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.activity_service import ActivityService
 
-        async with async_session_factory() as db:
-            service = ActivityService(db)
-            items, total = await service.list_templates(
-                str(tenant_id), offset=offset, limit=limit
-            )
-            return ActivityTemplateListType(
-                items=[_activity_template_to_gql(t) for t in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = ActivityService(db)
+        items, total = await service.list_templates(
+            str(tenant_id), offset=offset, limit=limit
+        )
+        return ActivityTemplateListType(
+            items=[_activity_template_to_gql(t) for t in items],
+            total=total,
+        )
 
     @strawberry.field
     async def activity_template(
@@ -604,13 +616,12 @@ class DeliveryQuery:
             info, "catalog:activity:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.activity_service import ActivityService
 
-        async with async_session_factory() as db:
-            service = ActivityService(db)
-            t = await service.get_template(str(id))
-            return _activity_template_to_gql(t) if t else None
+        db = await _get_session(info)
+        service = ActivityService(db)
+        t = await service.get_template(str(id))
+        return _activity_template_to_gql(t) if t else None
 
     # ── Service Processes ────────────────────────────────────────────
 
@@ -627,18 +638,17 @@ class DeliveryQuery:
             info, "catalog:process:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.activity_service import ActivityService
 
-        async with async_session_factory() as db:
-            service = ActivityService(db)
-            items, total = await service.list_processes(
-                str(tenant_id), offset=offset, limit=limit
-            )
-            return ServiceProcessListType(
-                items=[_process_to_gql(p) for p in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = ActivityService(db)
+        items, total = await service.list_processes(
+            str(tenant_id), offset=offset, limit=limit
+        )
+        return ServiceProcessListType(
+            items=[_process_to_gql(p) for p in items],
+            total=total,
+        )
 
     @strawberry.field
     async def service_process(
@@ -652,13 +662,12 @@ class DeliveryQuery:
             info, "catalog:process:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.activity_service import ActivityService
 
-        async with async_session_factory() as db:
-            service = ActivityService(db)
-            p = await service.get_process(str(id))
-            return _process_to_gql(p) if p else None
+        db = await _get_session(info)
+        service = ActivityService(db)
+        p = await service.get_process(str(id))
+        return _process_to_gql(p) if p else None
 
     # ── Service Process Assignments ──────────────────────────────────
 
@@ -674,16 +683,15 @@ class DeliveryQuery:
             info, "catalog:process:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.activity_service import ActivityService
 
-        async with async_session_factory() as db:
-            service = ActivityService(db)
-            assignments = await service.list_assignments(
-                str(tenant_id),
-                service_offering_id=str(service_offering_id) if service_offering_id else None,
-            )
-            return [_assignment_to_gql(a) for a in assignments]
+        db = await _get_session(info)
+        service = ActivityService(db)
+        assignments = await service.list_assignments(
+            str(tenant_id),
+            service_offering_id=str(service_offering_id) if service_offering_id else None,
+        )
+        return [_assignment_to_gql(a) for a in assignments]
 
     # ── Estimations ───────────────────────────────────────────────────
 
@@ -703,23 +711,22 @@ class DeliveryQuery:
             info, "catalog:estimation:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.estimation_service import EstimationService
 
-        async with async_session_factory() as db:
-            service = EstimationService(db)
-            items, total = await service.list_estimations(
-                str(tenant_id),
-                client_tenant_id=str(client_tenant_id) if client_tenant_id else None,
-                service_offering_id=str(service_offering_id) if service_offering_id else None,
-                status=status,
-                offset=offset,
-                limit=limit,
-            )
-            return EstimationListType(
-                items=[_estimation_to_gql(e) for e in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = EstimationService(db)
+        items, total = await service.list_estimations(
+            str(tenant_id),
+            client_tenant_id=str(client_tenant_id) if client_tenant_id else None,
+            service_offering_id=str(service_offering_id) if service_offering_id else None,
+            status=status,
+            offset=offset,
+            limit=limit,
+        )
+        return EstimationListType(
+            items=[_estimation_to_gql(e) for e in items],
+            total=total,
+        )
 
     @strawberry.field
     async def estimation(
@@ -733,13 +740,12 @@ class DeliveryQuery:
             info, "catalog:estimation:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.estimation_service import EstimationService
 
-        async with async_session_factory() as db:
-            service = EstimationService(db)
-            e = await service.get_estimation(str(id), str(tenant_id))
-            return _estimation_to_gql(e) if e else None
+        db = await _get_session(info)
+        service = EstimationService(db)
+        e = await service.get_estimation(str(id), str(tenant_id))
+        return _estimation_to_gql(e) if e else None
 
     # ── Price List Templates ──────────────────────────────────────────
 
@@ -757,18 +763,17 @@ class DeliveryQuery:
             info, "catalog:estimation:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.price_list_template_service import PriceListTemplateService
 
-        async with async_session_factory() as db:
-            service = PriceListTemplateService(db)
-            items, total = await service.list_templates(
-                str(tenant_id), status=status, offset=offset, limit=limit
-            )
-            return PriceListTemplateListType(
-                items=[_price_list_template_to_gql(t) for t in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = PriceListTemplateService(db)
+        items, total = await service.list_templates(
+            str(tenant_id), status=status, offset=offset, limit=limit
+        )
+        return PriceListTemplateListType(
+            items=[_price_list_template_to_gql(t) for t in items],
+            total=total,
+        )
 
     @strawberry.field
     async def price_list_template(
@@ -782,13 +787,12 @@ class DeliveryQuery:
             info, "catalog:estimation:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.price_list_template_service import PriceListTemplateService
 
-        async with async_session_factory() as db:
-            service = PriceListTemplateService(db)
-            t = await service.get_template(str(id))
-            return _price_list_template_to_gql(t) if t else None
+        db = await _get_session(info)
+        service = PriceListTemplateService(db)
+        t = await service.get_template(str(id))
+        return _price_list_template_to_gql(t) if t else None
 
     # ── Profitability ─────────────────────────────────────────────────
 
@@ -803,19 +807,18 @@ class DeliveryQuery:
             info, "catalog:profitability:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.profitability_service import ProfitabilityService
 
-        async with async_session_factory() as db:
-            service = ProfitabilityService(db)
-            result = await service.get_overview(str(tenant_id))
-            return ProfitabilityOverviewType(
-                total_revenue=result["total_revenue"],
-                total_cost=result["total_cost"],
-                total_margin=result["total_margin"],
-                margin_percent=result["margin_percent"],
-                estimation_count=result["estimation_count"],
-            )
+        db = await _get_session(info)
+        service = ProfitabilityService(db)
+        result = await service.get_overview(str(tenant_id))
+        return ProfitabilityOverviewType(
+            total_revenue=result["total_revenue"],
+            total_cost=result["total_cost"],
+            total_margin=result["total_margin"],
+            margin_percent=result["margin_percent"],
+            estimation_count=result["estimation_count"],
+        )
 
     @strawberry.field
     async def profitability_by_client(
@@ -828,24 +831,23 @@ class DeliveryQuery:
             info, "catalog:profitability:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.profitability_service import ProfitabilityService
 
-        async with async_session_factory() as db:
-            service = ProfitabilityService(db)
-            items = await service.get_by_client(str(tenant_id))
-            return [
-                ProfitabilityByEntityType(
-                    entity_id=item["entity_id"],
-                    entity_name=item["entity_name"],
-                    total_revenue=item["total_revenue"],
-                    total_cost=item["total_cost"],
-                    margin_amount=item["margin_amount"],
-                    margin_percent=item["margin_percent"],
-                    estimation_count=item["estimation_count"],
-                )
-                for item in items
-            ]
+        db = await _get_session(info)
+        service = ProfitabilityService(db)
+        items = await service.get_by_client(str(tenant_id))
+        return [
+            ProfitabilityByEntityType(
+                entity_id=item["entity_id"],
+                entity_name=item["entity_name"],
+                total_revenue=item["total_revenue"],
+                total_cost=item["total_cost"],
+                margin_amount=item["margin_amount"],
+                margin_percent=item["margin_percent"],
+                estimation_count=item["estimation_count"],
+            )
+            for item in items
+        ]
 
     @strawberry.field
     async def profitability_by_region(
@@ -858,24 +860,23 @@ class DeliveryQuery:
             info, "catalog:profitability:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.profitability_service import ProfitabilityService
 
-        async with async_session_factory() as db:
-            service = ProfitabilityService(db)
-            items = await service.get_by_region(str(tenant_id))
-            return [
-                ProfitabilityByEntityType(
-                    entity_id=item["entity_id"],
-                    entity_name=item["entity_name"],
-                    total_revenue=item["total_revenue"],
-                    total_cost=item["total_cost"],
-                    margin_amount=item["margin_amount"],
-                    margin_percent=item["margin_percent"],
-                    estimation_count=item["estimation_count"],
-                )
-                for item in items
-            ]
+        db = await _get_session(info)
+        service = ProfitabilityService(db)
+        items = await service.get_by_region(str(tenant_id))
+        return [
+            ProfitabilityByEntityType(
+                entity_id=item["entity_id"],
+                entity_name=item["entity_name"],
+                total_revenue=item["total_revenue"],
+                total_cost=item["total_cost"],
+                margin_amount=item["margin_amount"],
+                margin_percent=item["margin_percent"],
+                estimation_count=item["estimation_count"],
+            )
+            for item in items
+        ]
 
     @strawberry.field
     async def resolve_effective_rate(
@@ -890,15 +891,14 @@ class DeliveryQuery:
             info, "catalog:staff:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.rate_card_service import RateCardService
 
-        async with async_session_factory() as db:
-            service = RateCardService(db)
-            card = await service.get_effective_rate(
-                str(tenant_id), str(staff_profile_id), str(delivery_region_id)
-            )
-            return _rate_card_to_gql(card) if card else None
+        db = await _get_session(info)
+        service = RateCardService(db)
+        card = await service.get_effective_rate(
+            str(tenant_id), str(staff_profile_id), str(delivery_region_id)
+        )
+        return _rate_card_to_gql(card) if card else None
 
     @strawberry.field
     async def profitability_by_service(
@@ -911,21 +911,20 @@ class DeliveryQuery:
             info, "catalog:profitability:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.profitability_service import ProfitabilityService
 
-        async with async_session_factory() as db:
-            service = ProfitabilityService(db)
-            items = await service.get_by_service(str(tenant_id))
-            return [
-                ProfitabilityByEntityType(
-                    entity_id=item["entity_id"],
-                    entity_name=item["entity_name"],
-                    total_revenue=item["total_revenue"],
-                    total_cost=item["total_cost"],
-                    margin_amount=item["margin_amount"],
-                    margin_percent=item["margin_percent"],
-                    estimation_count=item["estimation_count"],
-                )
-                for item in items
-            ]
+        db = await _get_session(info)
+        service = ProfitabilityService(db)
+        items = await service.get_by_service(str(tenant_id))
+        return [
+            ProfitabilityByEntityType(
+                entity_id=item["entity_id"],
+                entity_name=item["entity_name"],
+                total_revenue=item["total_revenue"],
+                total_cost=item["total_cost"],
+                margin_amount=item["margin_amount"],
+                margin_percent=item["margin_percent"],
+                estimation_count=item["estimation_count"],
+            )
+            for item in items
+        ]

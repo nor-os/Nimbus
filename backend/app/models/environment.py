@@ -78,6 +78,13 @@ class TenantEnvironment(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     iam_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     security_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     monitoring_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    region_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("backend_regions.id"), nullable=True
+    )
+    dr_source_env_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenant_environments.id"), nullable=True
+    )
+    dr_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -87,9 +94,16 @@ class TenantEnvironment(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     landing_zone: Mapped["LandingZone"] = relationship(lazy="joined")  # noqa: F821
     template: Mapped["EnvironmentTemplate | None"] = relationship(lazy="joined")
     root_compartment: Mapped["Compartment | None"] = relationship(lazy="joined")  # noqa: F821
+    region: Mapped["BackendRegion | None"] = relationship(lazy="joined", foreign_keys=[region_id])  # noqa: F821
+    dr_source_env: Mapped["TenantEnvironment | None"] = relationship(
+        "TenantEnvironment", remote_side="TenantEnvironment.id",
+        foreign_keys=[dr_source_env_id], lazy="joined",
+    )
 
     __table_args__ = (
         Index("ix_tenant_envs_tenant", "tenant_id"),
         Index("ix_tenant_envs_lz", "landing_zone_id"),
         Index("ix_tenant_envs_status", "tenant_id", "status"),
+        Index("ix_tenant_envs_region", "region_id"),
+        Index("ix_tenant_envs_dr_source", "dr_source_env_id"),
     )

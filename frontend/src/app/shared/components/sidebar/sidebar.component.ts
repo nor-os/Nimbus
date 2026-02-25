@@ -84,7 +84,6 @@ interface NavItem {
             @if (group.children) {
               <button
                 class="nav-group-header"
-                [class.locked]="isActiveGroup(group.label)"
                 [class.active]="isActiveGroup(group.label)"
                 (click)="toggleGroup(group.label)"
                 [attr.aria-expanded]="isExpanded(group.label)"
@@ -234,12 +233,7 @@ interface NavItem {
     .nav-group-header.active {
       color: #60a5fa;
     }
-    .nav-group-header.locked {
-      cursor: default;
-    }
-    .nav-group-header.locked .nav-chevron {
-      opacity: 0.3;
-    }
+
 
     .nav-chevron {
       margin-left: auto;
@@ -364,7 +358,7 @@ export class SidebarComponent {
         { label: 'Groups', icon: '', route: '/catalog/groups', permission: 'cmdb:catalog:read' },
         { label: 'Services', icon: '', route: '/catalog/services', permission: 'cmdb:catalog:read' },
         { label: 'Processes', icon: '', route: '/catalog/processes', permission: 'catalog:process:read' },
-        { label: 'Activities', icon: '', route: '/catalog/activities', permission: 'catalog:activity:read' },
+        { label: 'Process Activities', icon: '', route: '/catalog/activities', permission: 'catalog:activity:read' },
         { label: 'SKUs', icon: '', route: '/catalog/skus', permission: 'catalog:sku:read' },
         { label: 'Price Lists', icon: '', route: '/catalog/pricing', permission: 'cmdb:catalog:manage' },
         { label: 'Estimations', icon: '', route: '/catalog/estimations', permission: 'catalog:estimation:read' },
@@ -381,6 +375,7 @@ export class SidebarComponent {
       children: [
         { label: 'Landing Zones', icon: '', route: '/landing-zones', exact: true, permission: 'landingzone:zone:read' },
         { label: 'Components', icon: '', route: '/provider/components', exact: true, permission: 'component:definition:create' },
+        { label: 'Component Activities', icon: '', route: '/provider/activities', exact: true, permission: 'automation:activity:read' },
         { label: 'Resolvers', icon: '', route: '/provider/resolvers', exact: true, permission: 'component:definition:create' },
       ],
     },
@@ -429,6 +424,7 @@ export class SidebarComponent {
       children: [
         { label: 'Environments', icon: '', route: '/environments', permission: 'landingzone:environment:read' },
         { label: 'Components', icon: '', route: '/components', permission: 'component:definition:read' },
+        { label: 'Component Activities', icon: '', route: '/activities', permission: 'automation:activity:read' },
       ],
     },
     {
@@ -460,8 +456,12 @@ export class SidebarComponent {
       children: [
         { label: 'Definitions', icon: '', route: '/workflows/definitions', exact: true, permission: 'workflow:definition:read' },
         { label: 'Executions', icon: '', route: '/workflows/executions', exact: true, permission: 'workflow:execution:read' },
+        { label: 'Automation Catalog', icon: '', route: '/workflows/activities', exact: true, permission: 'automation:activity:read' },
         { label: 'Approvals', icon: '', route: '/workflows/approvals', permission: 'approval:decision:submit' },
         { label: 'Manage', icon: '', route: '/workflows/manage', permission: 'approval:policy:manage' },
+        { label: 'Event Types', icon: '', route: '/events/types', permission: 'events:type:read' },
+        { label: 'Subscriptions', icon: '', route: '/events/subscriptions', permission: 'events:subscription:read' },
+        { label: 'Event Log', icon: '', route: '/events/log', permission: 'events:log:read' },
       ],
     },
     {
@@ -549,7 +549,6 @@ export class SidebarComponent {
   }
 
   toggleGroup(label: string): void {
-    if (this.activeGroup() === label) return;
     const current = this.expandedGroups();
     const next = new Set(current);
     if (next.has(label)) {

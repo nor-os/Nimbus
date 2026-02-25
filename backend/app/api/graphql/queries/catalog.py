@@ -170,6 +170,15 @@ def _assoc_to_gql(a) -> CIClassActivityAssociationType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class CatalogQuery:
     @strawberry.field
@@ -186,18 +195,17 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            items, total = await service.list_offerings(
-                str(tenant_id), category, offset=offset, limit=limit
-            )
-            return ServiceOfferingListType(
-                items=[_offering_to_gql(o) for o in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = CatalogService(db)
+        items, total = await service.list_offerings(
+            str(tenant_id), category, offset=offset, limit=limit
+        )
+        return ServiceOfferingListType(
+            items=[_offering_to_gql(o) for o in items],
+            total=total,
+        )
 
     @strawberry.field
     async def service_offering(
@@ -211,13 +219,12 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            o = await service.get_offering(str(id), str(tenant_id))
-            return _offering_to_gql(o) if o else None
+        db = await _get_session(info)
+        service = CatalogService(db)
+        o = await service.get_offering(str(id), str(tenant_id))
+        return _offering_to_gql(o) if o else None
 
     @strawberry.field
     async def service_offering_categories(
@@ -230,12 +237,11 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            return await service.list_distinct_categories(str(tenant_id))
+        db = await _get_session(info)
+        service = CatalogService(db)
+        return await service.list_distinct_categories(str(tenant_id))
 
     @strawberry.field
     async def price_lists(
@@ -252,20 +258,19 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            items, total = await service.list_price_lists(
-                str(tenant_id), offset, limit,
-                status=status,
-                delivery_region_id=str(delivery_region_id) if delivery_region_id else None,
-            )
-            return PriceListSummaryType(
-                items=[_price_list_to_gql(pl) for pl in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = CatalogService(db)
+        items, total = await service.list_price_lists(
+            str(tenant_id), offset, limit,
+            status=status,
+            delivery_region_id=str(delivery_region_id) if delivery_region_id else None,
+        )
+        return PriceListSummaryType(
+            items=[_price_list_to_gql(pl) for pl in items],
+            total=total,
+        )
 
     @strawberry.field
     async def price_list_versions(
@@ -279,13 +284,12 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            versions = await service.list_price_list_versions(str(group_id))
-            return [_price_list_to_gql(pl) for pl in versions]
+        db = await _get_session(info)
+        service = CatalogService(db)
+        versions = await service.list_price_list_versions(str(group_id))
+        return [_price_list_to_gql(pl) for pl in versions]
 
     @strawberry.field
     async def tenant_price_list_pins(
@@ -298,13 +302,12 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            pins = await service.get_tenant_pins(str(tenant_id))
-            return [_pin_to_gql(p) for p in pins]
+        db = await _get_session(info)
+        service = CatalogService(db)
+        pins = await service.get_tenant_pins(str(tenant_id))
+        return [_pin_to_gql(p) for p in pins]
 
     @strawberry.field
     async def effective_price(
@@ -321,35 +324,34 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            price = await service.get_effective_price(
-                str(tenant_id),
-                str(service_offering_id),
-                delivery_region_id=str(delivery_region_id) if delivery_region_id else None,
-                coverage_model=coverage_model,
-                price_list_id=str(price_list_id) if price_list_id else None,
-            )
-            if not price:
-                return None
-            return EffectivePriceType(
-                service_offering_id=price["service_offering_id"],
-                service_name=price["service_name"],
-                price_per_unit=price["price_per_unit"],
-                currency=price["currency"],
-                measuring_unit=price["measuring_unit"],
-                has_override=price["has_override"],
-                discount_percent=price["discount_percent"],
-                delivery_region_id=price.get("delivery_region_id"),
-                coverage_model=price.get("coverage_model"),
-                compliance_status=price.get("compliance_status"),
-                source_type=price.get("source_type"),
-                markup_percent=price.get("markup_percent"),
-                price_list_id=price.get("price_list_id"),
-            )
+        db = await _get_session(info)
+        service = CatalogService(db)
+        price = await service.get_effective_price(
+            str(tenant_id),
+            str(service_offering_id),
+            delivery_region_id=str(delivery_region_id) if delivery_region_id else None,
+            coverage_model=coverage_model,
+            price_list_id=str(price_list_id) if price_list_id else None,
+        )
+        if not price:
+            return None
+        return EffectivePriceType(
+            service_offering_id=price["service_offering_id"],
+            service_name=price["service_name"],
+            price_per_unit=price["price_per_unit"],
+            currency=price["currency"],
+            measuring_unit=price["measuring_unit"],
+            has_override=price["has_override"],
+            discount_percent=price["discount_percent"],
+            delivery_region_id=price.get("delivery_region_id"),
+            coverage_model=price.get("coverage_model"),
+            compliance_status=price.get("compliance_status"),
+            source_type=price.get("source_type"),
+            markup_percent=price.get("markup_percent"),
+            price_list_id=price.get("price_list_id"),
+        )
 
     @strawberry.field
     async def pinned_tenants_for_price_list(
@@ -363,13 +365,12 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            pins = await service.get_pinned_tenants(str(price_list_id))
-            return [_pin_to_gql(p) for p in pins]
+        db = await _get_session(info)
+        service = CatalogService(db)
+        pins = await service.get_pinned_tenants(str(price_list_id))
+        return [_pin_to_gql(p) for p in pins]
 
     @strawberry.field
     async def ci_class_activity_associations(
@@ -384,20 +385,19 @@ class CatalogQuery:
             info, "cmdb:activity-association:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.ci_class_activity_service import CIClassActivityService
 
-        async with async_session_factory() as db:
-            service = CIClassActivityService(db)
-            if ci_class_id:
-                items = await service.list_for_ci_class(str(tenant_id), str(ci_class_id))
-            elif activity_template_id:
-                items = await service.list_for_activity_template(
-                    str(tenant_id), str(activity_template_id)
-                )
-            else:
-                items = await service.list_for_ci_class(str(tenant_id), "")
-            return [_assoc_to_gql(a) for a in items]
+        db = await _get_session(info)
+        service = CIClassActivityService(db)
+        if ci_class_id:
+            items = await service.list_for_ci_class(str(tenant_id), str(ci_class_id))
+        elif activity_template_id:
+            items = await service.list_for_activity_template(
+                str(tenant_id), str(activity_template_id)
+            )
+        else:
+            items = await service.list_for_ci_class(str(tenant_id), "")
+        return [_assoc_to_gql(a) for a in items]
 
     @strawberry.field
     async def tenant_price_list_assignments(
@@ -411,28 +411,27 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            assignments = await service.get_price_list_tenant_assignments(
-                str(price_list_id)
+        db = await _get_session(info)
+        service = CatalogService(db)
+        assignments = await service.get_price_list_tenant_assignments(
+            str(price_list_id)
+        )
+        return [
+            TenantPriceListAssignmentType(
+                tenant_id=uuid.UUID(a["tenant_id"]),
+                assignment_type=a["assignment_type"],
+                price_list_id=uuid.UUID(a["price_list_id"]),
+                clone_price_list_id=uuid.UUID(a["clone_price_list_id"])
+                if a["clone_price_list_id"]
+                else None,
+                additions=a["additions"],
+                deletions=a["deletions"],
+                is_customized=a["is_customized"],
             )
-            return [
-                TenantPriceListAssignmentType(
-                    tenant_id=uuid.UUID(a["tenant_id"]),
-                    assignment_type=a["assignment_type"],
-                    price_list_id=uuid.UUID(a["price_list_id"]),
-                    clone_price_list_id=uuid.UUID(a["clone_price_list_id"])
-                    if a["clone_price_list_id"]
-                    else None,
-                    additions=a["additions"],
-                    deletions=a["deletions"],
-                    is_customized=a["is_customized"],
-                )
-                for a in assignments
-            ]
+            for a in assignments
+        ]
 
     @strawberry.field
     async def price_list_diff(
@@ -447,40 +446,39 @@ class CatalogQuery:
             info, "cmdb:catalog:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.catalog_service import CatalogService
 
-        async with async_session_factory() as db:
-            service = CatalogService(db)
-            diff = await service.get_price_list_diff(
-                str(source_price_list_id), str(clone_price_list_id)
+        db = await _get_session(info)
+        service = CatalogService(db)
+        diff = await service.get_price_list_diff(
+            str(source_price_list_id), str(clone_price_list_id)
+        )
+
+        def _to_diff_item(item) -> PriceListDiffItemType:
+            return PriceListDiffItemType(
+                id=item.id,
+                price_list_id=item.price_list_id,
+                service_offering_id=item.service_offering_id,
+                provider_sku_id=getattr(item, "provider_sku_id", None),
+                activity_definition_id=getattr(item, "activity_definition_id", None),
+                delivery_region_id=item.delivery_region_id,
+                coverage_model=item.coverage_model,
+                price_per_unit=item.price_per_unit,
+                markup_percent=getattr(item, "markup_percent", None),
+                currency=item.currency,
+                min_quantity=item.min_quantity,
+                max_quantity=item.max_quantity,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
             )
 
-            def _to_diff_item(item) -> PriceListDiffItemType:
-                return PriceListDiffItemType(
-                    id=item.id,
-                    price_list_id=item.price_list_id,
-                    service_offering_id=item.service_offering_id,
-                    provider_sku_id=getattr(item, "provider_sku_id", None),
-                    activity_definition_id=getattr(item, "activity_definition_id", None),
-                    delivery_region_id=item.delivery_region_id,
-                    coverage_model=item.coverage_model,
-                    price_per_unit=item.price_per_unit,
-                    markup_percent=getattr(item, "markup_percent", None),
-                    currency=item.currency,
-                    min_quantity=item.min_quantity,
-                    max_quantity=item.max_quantity,
-                    created_at=item.created_at,
-                    updated_at=item.updated_at,
-                )
-
-            return PriceListDiffType(
-                source_price_list_id=uuid.UUID(diff["source_price_list_id"]),
-                clone_price_list_id=uuid.UUID(diff["clone_price_list_id"]),
-                additions=[_to_diff_item(i) for i in diff["additions"]],
-                deletions=[_to_diff_item(i) for i in diff["deletions"]],
-                common=[_to_diff_item(i) for i in diff["common"]],
-            )
+        return PriceListDiffType(
+            source_price_list_id=uuid.UUID(diff["source_price_list_id"]),
+            clone_price_list_id=uuid.UUID(diff["clone_price_list_id"]),
+            additions=[_to_diff_item(i) for i in diff["additions"]],
+            deletions=[_to_diff_item(i) for i in diff["deletions"]],
+            common=[_to_diff_item(i) for i in diff["common"]],
+        )
 
     @strawberry.field
     async def relationship_type_suggestions(
@@ -493,9 +491,8 @@ class CatalogQuery:
             info, "cmdb:activity-association:read", str(tenant_id)
         )
 
-        from app.db.session import async_session_factory
         from app.services.cmdb.ci_class_activity_service import CIClassActivityService
 
-        async with async_session_factory() as db:
-            service = CIClassActivityService(db)
-            return await service.list_relationship_type_suggestions(str(tenant_id))
+        db = await _get_session(info)
+        service = CIClassActivityService(db)
+        return await service.list_relationship_type_suggestions(str(tenant_id))

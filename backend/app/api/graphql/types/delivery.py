@@ -267,12 +267,26 @@ class ActivityDefinitionType:
 
 
 @strawberry.type
+class LinkedAutomatedActivityType:
+    """Summary of a linked automated activity (for embedding in ActivityTemplate)."""
+    id: uuid.UUID
+    name: str
+    slug: str
+    category: str | None
+    operation_kind: str
+    implementation_type: str
+    is_system: bool
+
+
+@strawberry.type
 class ActivityTemplateType:
     id: uuid.UUID
     tenant_id: uuid.UUID
     name: str
     description: str | None
     version: int
+    automated_activity_id: uuid.UUID | None
+    automated_activity: LinkedAutomatedActivityType | None
     definitions: list[ActivityDefinitionType]
     created_at: datetime
     updated_at: datetime

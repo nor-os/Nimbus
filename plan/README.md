@@ -268,6 +268,21 @@ Core deliverables:
 
 ---
 
+### Phase 13b: Backend Performance Optimization
+**Status**: Backlog
+**Goal**: Maximize Python backend throughput without a language rewrite
+**Depends on**: Phase 13 (Valkey caching for Tier 3 tasks), Phase 4
+
+Core deliverables:
+- **Tier 1 (days)**: uvloop, orjson, connection pool tuning — 3-5x I/O improvement
+- **Tier 2 (1-2 weeks)**: GraphQL dataloaders — eliminate N+1 queries (biggest single win)
+- **Tier 3 (requires Valkey)**: Permission cache, tenant config cache, query result cache — 90%+ cache hit rates
+- **Tier 4 (if needed)**: Granian ASGI server, asyncpg prepared statements, read replica support
+
+*Language rewrite was evaluated (C#, TypeScript, Rust) and rejected. Python optimizations achieve 5-10x gains in weeks vs 4-12 months for a rewrite of 133K lines.*
+
+---
+
 ### Phase 14: Advanced Audit
 **Status**: Backlog
 **Goal**: Audit features that need Valkey + Socket.IO
@@ -425,6 +440,7 @@ Phase 3 (done)
   │     │     │     │     └─► Phase 12: Pulumi
   │     │     │     │           └─► Phase 17: Drift (also needs Phase 10)
   │     │     │     └─► Phase 13: Real-time + Valkey (also needs Phase 9)
+  │     │     │           ├─► Phase 13b: Backend Performance (Tier 3 needs Valkey; Tier 1-2 can start earlier)
   │     │     │           └─► Phase 14: Advanced Audit
   │     │     └─► Phase 18: Cloud Providers (also needs Phase 11)
   │     └─► Phase 16: Impersonation (also needs Phase 10)

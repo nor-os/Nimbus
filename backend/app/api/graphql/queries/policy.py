@@ -37,6 +37,15 @@ def _entry_to_type(e) -> PolicyLibraryEntryType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class PolicyQuery:
 
@@ -53,13 +62,12 @@ class PolicyQuery:
         """List policy library entries for a tenant (including system policies)."""
         await check_graphql_permission(info, "policy:library:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.policy.policy_library_service import PolicyLibraryService
 
-        async with async_session_factory() as db:
-            svc = PolicyLibraryService(db)
-            entries = await svc.list(str(tenant_id), category, search, offset, limit)
-            return [_entry_to_type(e) for e in entries]
+        db = await _get_session(info)
+        svc = PolicyLibraryService(db)
+        entries = await svc.list(str(tenant_id), category, search, offset, limit)
+        return [_entry_to_type(e) for e in entries]
 
     @strawberry.field
     async def policy_library_entry(
@@ -71,13 +79,12 @@ class PolicyQuery:
         """Get a single policy library entry by ID."""
         await check_graphql_permission(info, "policy:library:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.policy.policy_library_service import PolicyLibraryService
 
-        async with async_session_factory() as db:
-            svc = PolicyLibraryService(db)
-            entry = await svc.get(str(tenant_id), str(policy_id))
-            return _entry_to_type(entry) if entry else None
+        db = await _get_session(info)
+        svc = PolicyLibraryService(db)
+        entry = await svc.get(str(tenant_id), str(policy_id))
+        return _entry_to_type(entry) if entry else None
 
     @strawberry.field
     async def resolve_compartment_policies(
@@ -90,27 +97,26 @@ class PolicyQuery:
         """Resolve all effective policies for a compartment with inheritance."""
         await check_graphql_permission(info, "policy:resolution:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.policy.policy_resolution_service import PolicyResolutionService
 
-        async with async_session_factory() as db:
-            svc = PolicyResolutionService(db)
-            resolved = await svc.resolve_compartment_policies(
-                str(tenant_id), str(topology_id), compartment_id
+        db = await _get_session(info)
+        svc = PolicyResolutionService(db)
+        resolved = await svc.resolve_compartment_policies(
+            str(tenant_id), str(topology_id), compartment_id
+        )
+        return [
+            ResolvedPolicyType(
+                policy_id=r.policy_id,
+                name=r.name,
+                source=r.source,
+                source_compartment_id=r.source_compartment_id,
+                statements=r.statements,
+                severity=r.severity,
+                category=r.category,
+                can_suppress=r.can_suppress,
             )
-            return [
-                ResolvedPolicyType(
-                    policy_id=r.policy_id,
-                    name=r.name,
-                    source=r.source,
-                    source_compartment_id=r.source_compartment_id,
-                    statements=r.statements,
-                    severity=r.severity,
-                    category=r.category,
-                    can_suppress=r.can_suppress,
-                )
-                for r in resolved
-            ]
+            for r in resolved
+        ]
 
     @strawberry.field
     async def compartment_policy_summary(
@@ -123,19 +129,18 @@ class PolicyQuery:
         """Get aggregated policy statistics for a compartment."""
         await check_graphql_permission(info, "policy:resolution:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.policy.policy_resolution_service import PolicyResolutionService
 
-        async with async_session_factory() as db:
-            svc = PolicyResolutionService(db)
-            summary = await svc.get_policy_summary(
-                str(tenant_id), str(topology_id), compartment_id
-            )
-            return PolicySummaryType(
-                compartment_id=summary.compartment_id,
-                direct_policies=summary.direct_policies,
-                inherited_policies=summary.inherited_policies,
-                total_statements=summary.total_statements,
-                deny_count=summary.deny_count,
-                allow_count=summary.allow_count,
-            )
+        db = await _get_session(info)
+        svc = PolicyResolutionService(db)
+        summary = await svc.get_policy_summary(
+            str(tenant_id), str(topology_id), compartment_id
+        )
+        return PolicySummaryType(
+            compartment_id=summary.compartment_id,
+            direct_policies=summary.direct_policies,
+            inherited_policies=summary.inherited_policies,
+            total_statements=summary.total_statements,
+            deny_count=summary.deny_count,
+            allow_count=summary.allow_count,
+        )

@@ -12,6 +12,8 @@ from enum import Enum
 import strawberry
 import strawberry.scalars
 
+from app.api.graphql.types.automation import OperationKindGQL
+
 
 # ── Enums ──────────────────────────────────────────────────────────────
 
@@ -19,6 +21,12 @@ import strawberry.scalars
 class ComponentLanguageGQL(Enum):
     TYPESCRIPT = "typescript"
     PYTHON = "python"
+
+
+@strawberry.enum
+class OperationCategoryGQL(Enum):
+    DEPLOYMENT = "DEPLOYMENT"
+    DAY2 = "DAY2"
 
 
 @strawberry.enum
@@ -70,6 +78,8 @@ class ComponentOperationType:
     is_destructive: bool
     requires_approval: bool
     estimated_downtime: EstimatedDowntimeGQL
+    operation_category: OperationCategoryGQL
+    operation_kind: OperationKindGQL | None
     sort_order: int
     created_at: datetime
     updated_at: datetime
@@ -196,6 +206,8 @@ class ComponentOperationCreateInput:
     requires_approval: bool = False
     estimated_downtime: EstimatedDowntimeGQL = EstimatedDowntimeGQL.NONE
     sort_order: int = 0
+    operation_category: OperationCategoryGQL | None = None
+    operation_kind: OperationKindGQL | None = None
 
 
 @strawberry.input
@@ -240,3 +252,12 @@ class ComponentOperationUpdateInput:
     requires_approval: bool | None = None
     estimated_downtime: EstimatedDowntimeGQL | None = None
     sort_order: int | None = None
+
+
+@strawberry.input
+class ProviderWorkflowTemplateInput:
+    provider_id: uuid.UUID
+    operation_name: str
+    graph: strawberry.scalars.JSON
+    description: str | None = None
+    semantic_type_id: uuid.UUID | None = None

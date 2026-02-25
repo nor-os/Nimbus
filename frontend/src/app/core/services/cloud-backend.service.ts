@@ -11,6 +11,9 @@ import { ApiService } from './api.service';
 import { TenantContextService } from './tenant-context.service';
 import { environment } from '@env/environment';
 import {
+  BackendRegion,
+  BackendRegionInput,
+  BackendRegionUpdateInput,
   CloudBackend,
   CloudBackendIAMMapping,
   CloudBackendIAMMappingInput,
@@ -20,11 +23,17 @@ import {
   ConnectivityTestResult,
 } from '@shared/models/cloud-backend.model';
 
+const REGION_FIELDS = `
+  id tenantId backendId regionIdentifier displayName providerRegionCode
+  isEnabled availabilityZones settings createdAt updatedAt
+`;
+
 const BACKEND_FIELDS = `
   id tenantId providerId providerName providerDisplayName providerIcon
   name description status hasCredentials credentialsSchemaVersion
   scopeConfig endpointUrl isShared
   lastConnectivityCheck lastConnectivityStatus lastConnectivityError
+  regions { ${REGION_FIELDS} }
   iamMappingCount createdBy createdAt updatedAt
 `;
 
@@ -235,6 +244,60 @@ export class CloudBackendService {
       }
     `, { tenantId, backendId }).pipe(
       map((data) => data.initializeBackendLandingZone),
+    );
+  }
+
+  // -- Region queries -------------------------------------------------------
+
+  listRegions(backendId: string): Observable<BackendRegion[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ backendRegions: BackendRegion[] }>(`
+      query BackendRegions($tenantId: UUID!, $backendId: UUID!) {
+        backendRegions(tenantId: $tenantId, backendId: $backendId) {
+          ${REGION_FIELDS}
+        }
+      }
+    `, { tenantId, backendId }).pipe(
+      map((data) => data.backendRegions),
+    );
+  }
+
+  // -- Region mutations ----------------------------------------------------
+
+  addRegion(backendId: string, input: BackendRegionInput): Observable<BackendRegion> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ addBackendRegion: BackendRegion }>(`
+      mutation AddBackendRegion($tenantId: UUID!, $backendId: UUID!, $input: BackendRegionInput!) {
+        addBackendRegion(tenantId: $tenantId, backendId: $backendId, input: $input) {
+          ${REGION_FIELDS}
+        }
+      }
+    `, { tenantId, backendId, input }).pipe(
+      map((data) => data.addBackendRegion),
+    );
+  }
+
+  updateRegion(regionId: string, input: BackendRegionUpdateInput): Observable<BackendRegion | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ updateBackendRegion: BackendRegion | null }>(`
+      mutation UpdateBackendRegion($tenantId: UUID!, $regionId: UUID!, $input: BackendRegionUpdateInput!) {
+        updateBackendRegion(tenantId: $tenantId, regionId: $regionId, input: $input) {
+          ${REGION_FIELDS}
+        }
+      }
+    `, { tenantId, regionId, input }).pipe(
+      map((data) => data.updateBackendRegion),
+    );
+  }
+
+  removeRegion(regionId: string): Observable<boolean> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ removeBackendRegion: boolean }>(`
+      mutation RemoveBackendRegion($tenantId: UUID!, $regionId: UUID!) {
+        removeBackendRegion(tenantId: $tenantId, regionId: $regionId)
+      }
+    `, { tenantId, regionId }).pipe(
+      map((data) => data.removeBackendRegion),
     );
   }
 

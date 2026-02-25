@@ -27,6 +27,15 @@ from app.api.graphql.types.audit import (
 )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class AuditQuery:
     @strawberry.field
@@ -38,35 +47,34 @@ class AuditQuery:
     ) -> AuditLogListType:
         """Search audit logs with optional filters."""
         await check_graphql_permission(info, "audit:log:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.audit.query import AuditQueryService
 
         params = search or AuditSearchInput()
 
-        async with async_session_factory() as db:
-            service = AuditQueryService(db)
-            logs, total = await service.search(
-                str(tenant_id),
-                date_from=params.date_from,
-                date_to=params.date_to,
-                actor_id=str(params.actor_id) if params.actor_id else None,
-                action=params.action,
-                event_categories=[c.value for c in params.event_categories] if params.event_categories else None,
-                event_types=params.event_types,
-                resource_type=params.resource_type,
-                resource_id=params.resource_id,
-                priority=params.priority,
-                trace_id=params.trace_id,
-                full_text=params.full_text,
-                offset=params.offset,
-                limit=params.limit,
-            )
-            return AuditLogListType(
-                items=[_to_audit_log_type(log) for log in logs],
-                total=total,
-                offset=params.offset,
-                limit=params.limit,
-            )
+        db = await _get_session(info)
+        service = AuditQueryService(db)
+        logs, total = await service.search(
+            str(tenant_id),
+            date_from=params.date_from,
+            date_to=params.date_to,
+            actor_id=str(params.actor_id) if params.actor_id else None,
+            action=params.action,
+            event_categories=[c.value for c in params.event_categories] if params.event_categories else None,
+            event_types=params.event_types,
+            resource_type=params.resource_type,
+            resource_id=params.resource_id,
+            priority=params.priority,
+            trace_id=params.trace_id,
+            full_text=params.full_text,
+            offset=params.offset,
+            limit=params.limit,
+        )
+        return AuditLogListType(
+            items=[_to_audit_log_type(log) for log in logs],
+            total=total,
+            offset=params.offset,
+            limit=params.limit,
+        )
 
     @strawberry.field
     async def audit_log(
@@ -74,15 +82,14 @@ class AuditQuery:
     ) -> AuditLogType | None:
         """Get a single audit log entry."""
         await check_graphql_permission(info, "audit:log:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.audit.query import AuditQueryService
 
-        async with async_session_factory() as db:
-            service = AuditQueryService(db)
-            log = await service.get_by_id(str(log_id), str(tenant_id))
-            if not log:
-                return None
-            return _to_audit_log_type(log)
+        db = await _get_session(info)
+        service = AuditQueryService(db)
+        log = await service.get_by_id(str(log_id), str(tenant_id))
+        if not log:
+            return None
+        return _to_audit_log_type(log)
 
     @strawberry.field
     async def audit_logs_by_trace(
@@ -90,13 +97,12 @@ class AuditQuery:
     ) -> list[AuditLogType]:
         """Get all audit log entries for a trace ID."""
         await check_graphql_permission(info, "audit:log:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.audit.query import AuditQueryService
 
-        async with async_session_factory() as db:
-            service = AuditQueryService(db)
-            logs = await service.get_by_trace_id(trace_id, str(tenant_id))
-            return [_to_audit_log_type(log) for log in logs]
+        db = await _get_session(info)
+        service = AuditQueryService(db)
+        logs = await service.get_by_trace_id(trace_id, str(tenant_id))
+        return [_to_audit_log_type(log) for log in logs]
 
     @strawberry.field
     async def audit_taxonomy(self, info: Info) -> TaxonomyResponseGQL:
@@ -126,35 +132,34 @@ class AuditQuery:
     ) -> RetentionPolicyType:
         """Get the retention policy for a tenant, including per-category overrides."""
         await check_graphql_permission(info, "audit:retention:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.audit.retention import RetentionService
 
-        async with async_session_factory() as db:
-            service = RetentionService(db)
-            policy = await service.get_or_create_policy(str(tenant_id))
-            overrides = await service.list_category_overrides(str(tenant_id))
-            await db.commit()
-            return RetentionPolicyType(
-                id=policy.id,
-                tenant_id=policy.tenant_id,
-                hot_days=policy.hot_days,
-                cold_days=policy.cold_days,
-                archive_enabled=policy.archive_enabled,
-                category_overrides=[
-                    CategoryRetentionOverrideType(
-                        id=ov.id,
-                        tenant_id=ov.tenant_id,
-                        event_category=EventCategoryGQL(ov.event_category.value),
-                        hot_days=ov.hot_days,
-                        cold_days=ov.cold_days,
-                        created_at=ov.created_at,
-                        updated_at=ov.updated_at,
-                    )
-                    for ov in overrides
-                ],
-                created_at=policy.created_at,
-                updated_at=policy.updated_at,
-            )
+        db = await _get_session(info)
+        service = RetentionService(db)
+        policy = await service.get_or_create_policy(str(tenant_id))
+        overrides = await service.list_category_overrides(str(tenant_id))
+        await db.commit()
+        return RetentionPolicyType(
+            id=policy.id,
+            tenant_id=policy.tenant_id,
+            hot_days=policy.hot_days,
+            cold_days=policy.cold_days,
+            archive_enabled=policy.archive_enabled,
+            category_overrides=[
+                CategoryRetentionOverrideType(
+                    id=ov.id,
+                    tenant_id=ov.tenant_id,
+                    event_category=EventCategoryGQL(ov.event_category.value),
+                    hot_days=ov.hot_days,
+                    cold_days=ov.cold_days,
+                    created_at=ov.created_at,
+                    updated_at=ov.updated_at,
+                )
+                for ov in overrides
+            ],
+            created_at=policy.created_at,
+            updated_at=policy.updated_at,
+        )
 
     @strawberry.field
     async def redaction_rules(
@@ -162,25 +167,24 @@ class AuditQuery:
     ) -> list[RedactionRuleType]:
         """List redaction rules for a tenant."""
         await check_graphql_permission(info, "audit:redaction:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.audit.redaction import RedactionService
 
-        async with async_session_factory() as db:
-            service = RedactionService(db)
-            rules = await service.list_rules(str(tenant_id))
-            return [
-                RedactionRuleType(
-                    id=r.id,
-                    tenant_id=r.tenant_id,
-                    field_pattern=r.field_pattern,
-                    replacement=r.replacement,
-                    is_active=r.is_active,
-                    priority=r.priority,
-                    created_at=r.created_at,
-                    updated_at=r.updated_at,
-                )
-                for r in rules
-            ]
+        db = await _get_session(info)
+        service = RedactionService(db)
+        rules = await service.list_rules(str(tenant_id))
+        return [
+            RedactionRuleType(
+                id=r.id,
+                tenant_id=r.tenant_id,
+                field_pattern=r.field_pattern,
+                replacement=r.replacement,
+                is_active=r.is_active,
+                priority=r.priority,
+                created_at=r.created_at,
+                updated_at=r.updated_at,
+            )
+            for r in rules
+        ]
 
     @strawberry.field
     async def saved_queries(
@@ -188,25 +192,24 @@ class AuditQuery:
     ) -> list[SavedQueryType]:
         """List saved queries for a user (own + shared)."""
         await check_graphql_permission(info, "audit:query:read", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.audit.query import AuditQueryService
 
-        async with async_session_factory() as db:
-            service = AuditQueryService(db)
-            queries = await service.list_saved_queries(str(tenant_id), str(user_id))
-            return [
-                SavedQueryType(
-                    id=q.id,
-                    tenant_id=q.tenant_id,
-                    user_id=q.user_id,
-                    name=q.name,
-                    query_params=q.query_params,
-                    is_shared=q.is_shared,
-                    created_at=q.created_at,
-                    updated_at=q.updated_at,
-                )
-                for q in queries
-            ]
+        db = await _get_session(info)
+        service = AuditQueryService(db)
+        queries = await service.list_saved_queries(str(tenant_id), str(user_id))
+        return [
+            SavedQueryType(
+                id=q.id,
+                tenant_id=q.tenant_id,
+                user_id=q.user_id,
+                name=q.name,
+                query_params=q.query_params,
+                is_shared=q.is_shared,
+                created_at=q.created_at,
+                updated_at=q.updated_at,
+            )
+            for q in queries
+        ]
 
     @strawberry.field
     async def verify_audit_chain(
@@ -214,17 +217,16 @@ class AuditQuery:
     ) -> VerifyChainResultType:
         """Verify the hash chain integrity for a tenant."""
         await check_graphql_permission(info, "audit:chain:verify", str(tenant_id))
-        from app.db.session import async_session_factory
         from app.services.audit.hash_chain import HashChainService
 
-        async with async_session_factory() as db:
-            service = HashChainService(db)
-            result = await service.verify_chain(str(tenant_id), start=start, limit=limit)
-            return VerifyChainResultType(
-                valid=result.valid,
-                total_checked=result.total_checked,
-                broken_links=result.broken_links,
-            )
+        db = await _get_session(info)
+        service = HashChainService(db)
+        result = await service.verify_chain(str(tenant_id), start=start, limit=limit)
+        return VerifyChainResultType(
+            valid=result.valid,
+            total_checked=result.total_checked,
+            broken_links=result.broken_links,
+        )
 
 
 def _to_audit_log_type(log) -> AuditLogType:

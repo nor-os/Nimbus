@@ -14,8 +14,8 @@ import {
   LandingZoneHierarchy,
   HierarchyLevelDef,
   LandingZoneValidation,
-  LandingZoneRegion,
   LandingZoneTagPolicy,
+  BackendRegionRef,
 } from '@shared/models/landing-zone.model';
 
 interface LevelStat {
@@ -57,26 +57,19 @@ interface LevelStat {
         }
       </div>
 
-      <!-- Regions -->
+      <!-- Hub Region -->
       <div class="overview-section">
-        <h4 class="section-title">Regions</h4>
-        @if (regions.length > 0) {
+        <h4 class="section-title">Hub Region</h4>
+        @if (hubRegion) {
           <div class="region-list">
-            @for (region of regions; track region.id) {
-              <div class="region-row">
-                <span class="region-name">{{ region.displayName }}</span>
-                <code class="region-identifier">{{ region.regionIdentifier }}</code>
-                @if (region.isPrimary) {
-                  <span class="region-badge badge-primary">Primary</span>
-                }
-                @if (region.isDr) {
-                  <span class="region-badge badge-dr">DR</span>
-                }
-              </div>
-            }
+            <div class="region-row">
+              <span class="region-name">{{ hubRegion.displayName }}</span>
+              <code class="region-identifier">{{ hubRegion.regionIdentifier }}</code>
+              <span class="region-badge badge-primary">Hub</span>
+            </div>
           </div>
         } @else {
-          <p class="empty-hint">No regions configured.</p>
+          <p class="empty-hint">No hub region assigned.</p>
         }
       </div>
 
@@ -370,7 +363,7 @@ export class ZoneOverviewComponent {
   @Input() hierarchy: LandingZoneHierarchy | null = null;
   @Input() levelDefs: Map<string, HierarchyLevelDef> = new Map();
   @Input() validation: LandingZoneValidation | null = null;
-  @Input() regions: LandingZoneRegion[] = [];
+  @Input() hubRegion: BackendRegionRef | null = null;
   @Input() tagPolicies: LandingZoneTagPolicy[] = [];
 
   /** Count of nodes per level type. */

@@ -1,0 +1,223 @@
+# Overview: Production Docker Compose for Nimbus — all services in containers.
+# Architecture: Backend + Frontend + PostgreSQL + MinIO + Temporal + Valkey
+# Dependencies: Docker, Docker Compose
+# Concepts: Production deployment, service networking, health checks
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: nimbus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nimbus
+      POSTGRES_USER: ${POSTGRES_USER:-nimbus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nimbus} -d nimbus"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - nimbus
+
+  # ── MinIO (S3-compatible object storage) ────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: nimbus-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-nimbus}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - nimbus
+
+  # Create default bucket on startup
+  minio-init:
+    image: minio/mc:latest
+    container_name: nimbus-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set nimbus http://minio:9000 $${MINIO_ROOT_USER:-nimbus} $${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing nimbus/nimbus &&
+      echo 'Bucket created'
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-nimbus}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    restart: "no"
+    networks:
+      - nimbus
+
+  # ── Valkey (Redis-compatible) ───────────────────────────────────
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: nimbus-valkey
+    restart: unless-stopped
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - nimbus
+
+  # ── Temporal Server ─────────────────────────────────────────────
+  temporal:
+    image: temporalio/auto-setup:latest
+    container_name: nimbus-temporal
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-nimbus}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      - POSTGRES_SEEDS=postgres
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+      - DBNAME=nimbus_temporal
+      - VISIBILITY_DBNAME=nimbus_temporal_visibility
+      - TEMPORAL_NAMESPACE=nimbus
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - nimbus
+
+  # ── Temporal UI (optional — expose only if needed) ──────────────
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: nimbus-temporal-ui
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    ports:
+      - "${TEMPORAL_UI_PORT:-8233}:8080"
+    networks:
+      - nimbus
+
+  # ── Backend (FastAPI) ───────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nimbus-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NIMBUS_DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-nimbus}:${POSTGRES_PASSWORD}@postgres:5432/nimbus"
+      NIMBUS_TEMPORAL_HOST: temporal
+      NIMBUS_TEMPORAL_PORT: "7233"
+      NIMBUS_MINIO_ENDPOINT: "minio:9000"
+      NIMBUS_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-nimbus}
+      NIMBUS_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      NIMBUS_MINIO_USE_SSL: "false"
+      NIMBUS_JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      NIMBUS_DEBUG: "false"
+      NIMBUS_SMTP_HOST: ${SMTP_HOST:-}
+      NIMBUS_SMTP_PORT: ${SMTP_PORT:-587}
+      NIMBUS_SMTP_USERNAME: ${SMTP_USERNAME:-}
+      NIMBUS_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      NIMBUS_SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@nimbus.local}
+    networks:
+      - nimbus
+
+  # ── Backend Migrations (run once, then exit) ────────────────────
+  migrations:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nimbus-migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NIMBUS_DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-nimbus}:${POSTGRES_PASSWORD}@postgres:5432/nimbus"
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    networks:
+      - nimbus
+
+  # ── Temporal Worker ─────────────────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nimbus-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    environment:
+      NIMBUS_DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-nimbus}:${POSTGRES_PASSWORD}@postgres:5432/nimbus"
+      NIMBUS_TEMPORAL_HOST: temporal
+      NIMBUS_TEMPORAL_PORT: "7233"
+      NIMBUS_MINIO_ENDPOINT: "minio:9000"
+      NIMBUS_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-nimbus}
+      NIMBUS_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      NIMBUS_MINIO_USE_SSL: "false"
+      NIMBUS_JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+    command: ["python", "-m", "app.workflows.worker"]
+    networks:
+      - nimbus
+
+  # ── Frontend (Angular + Nginx) ──────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nimbus-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-80}:80"
+    networks:
+      - nimbus
+
+volumes:
+  postgres_data:
+  minio_data:
+  valkey_data:
+
+networks:
+  nimbus:
+    driver: bridge

@@ -31,6 +31,7 @@ class PortType(str, Enum):
 class NodeCategory(str, Enum):
     FLOW_CONTROL = "Flow Control"
     ACTION = "Action"
+    ACTIVITY = "Activity"
     INTEGRATION = "Integration"
     DATA = "Data"
     UTILITY = "Utility"

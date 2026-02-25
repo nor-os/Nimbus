@@ -218,12 +218,24 @@ export interface InternalRateCardCreateInput {
 
 // ── Activity Templates ──────────────────────────────────────────────
 
+export interface LinkedAutomatedActivity {
+  id: string;
+  name: string;
+  slug: string;
+  category: string | null;
+  operationKind: string;
+  implementationType: string;
+  isSystem: boolean;
+}
+
 export interface ActivityTemplate {
   id: string;
   tenantId: string;
   name: string;
   description: string | null;
   version: number;
+  automatedActivityId: string | null;
+  automatedActivity: LinkedAutomatedActivity | null;
   definitions: ActivityDefinition[];
   createdAt: string;
   updatedAt: string;

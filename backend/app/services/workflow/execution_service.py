@@ -128,6 +128,15 @@ class WorkflowExecutionService:
             await self.db.flush()
             logger.exception("Failed to start Temporal workflow for execution %s", execution.id)
 
+        # Emit event
+        from app.services.events.event_bus import emit_event_async
+
+        status_event = "workflow.execution.started" if execution.status != WorkflowExecutionStatus.FAILED else "workflow.execution.failed"
+        emit_event_async(status_event, {
+            "execution_id": str(execution.id), "definition_id": definition_id,
+            "definition_name": definition.name if definition else "",
+        }, tenant_id, "workflow_execution_service", started_by)
+
         return execution
 
     async def cancel(

@@ -6,6 +6,37 @@
  *     to cloud-specific identities. Credentials are write-only (only hasCredentials exposed).
  */
 
+export interface BackendRegion {
+  id: string;
+  tenantId: string;
+  backendId: string;
+  regionIdentifier: string;
+  displayName: string;
+  providerRegionCode: string | null;
+  isEnabled: boolean;
+  availabilityZones: string[] | null;
+  settings: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BackendRegionInput {
+  regionIdentifier: string;
+  displayName: string;
+  providerRegionCode?: string | null;
+  isEnabled?: boolean;
+  availabilityZones?: string[] | null;
+  settings?: Record<string, unknown> | null;
+}
+
+export interface BackendRegionUpdateInput {
+  displayName?: string;
+  providerRegionCode?: string | null;
+  isEnabled?: boolean;
+  availabilityZones?: string[] | null;
+  settings?: Record<string, unknown> | null;
+}
+
 export interface CloudBackend {
   id: string;
   tenantId: string;
@@ -24,6 +55,7 @@ export interface CloudBackend {
   lastConnectivityCheck: string | null;
   lastConnectivityStatus: string | null;
   lastConnectivityError: string | null;
+  regions: BackendRegion[];
   iamMappingCount: number;
   createdBy: string | null;
   createdAt: string;

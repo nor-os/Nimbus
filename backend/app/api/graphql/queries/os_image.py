@@ -66,6 +66,15 @@ def _os_image_to_gql(img) -> OsImageType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class OsImageQuery:
     @strawberry.field
@@ -82,22 +91,21 @@ class OsImageQuery:
         """List OS images with filtering and pagination."""
         await check_graphql_permission(info, "semantic:image:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.image_service import ImageService
 
-        async with async_session_factory() as db:
-            service = ImageService(db)
-            items, total = await service.list_images(
-                os_family=os_family,
-                architecture=architecture,
-                search=search,
-                offset=offset,
-                limit=limit,
-            )
-            return OsImageListType(
-                items=[_os_image_to_gql(img) for img in items],
-                total=total,
-            )
+        db = await _get_session(info)
+        service = ImageService(db)
+        items, total = await service.list_images(
+            os_family=os_family,
+            architecture=architecture,
+            search=search,
+            offset=offset,
+            limit=limit,
+        )
+        return OsImageListType(
+            items=[_os_image_to_gql(img) for img in items],
+            total=total,
+        )
 
     @strawberry.field
     async def os_image(
@@ -106,12 +114,11 @@ class OsImageQuery:
         """Get a single OS image by ID."""
         await check_graphql_permission(info, "semantic:image:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.semantic.image_service import ImageService
 
-        async with async_session_factory() as db:
-            service = ImageService(db)
-            img = await service.get_image(id)
-            if not img:
-                return None
-            return _os_image_to_gql(img)
+        db = await _get_session(info)
+        service = ImageService(db)
+        img = await service.get_image(id)
+        if not img:
+            return None
+        return _os_image_to_gql(img)

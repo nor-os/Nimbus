@@ -85,6 +85,15 @@ def _execution_to_type(e) -> WorkflowExecutionType:
     )
 
 
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class WorkflowQuery:
 
@@ -103,23 +112,22 @@ class WorkflowQuery:
         """List workflow definitions for a tenant."""
         await check_graphql_permission(info, "workflow:definition:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.workflow.definition_service import WorkflowDefinitionService
 
-        async with async_session_factory() as db:
-            svc = WorkflowDefinitionService(db)
-            st_id = str(applicable_semantic_type_id) if applicable_semantic_type_id else None
-            p_id = str(applicable_provider_id) if applicable_provider_id else None
-            definitions = await svc.list(
-                str(tenant_id),
-                status,
-                workflow_type,
-                offset,
-                limit,
-                applicable_semantic_type_id=st_id,
-                applicable_provider_id=p_id,
-            )
-            return [_definition_to_type(d) for d in definitions]
+        db = await _get_session(info)
+        svc = WorkflowDefinitionService(db)
+        st_id = str(applicable_semantic_type_id) if applicable_semantic_type_id else None
+        p_id = str(applicable_provider_id) if applicable_provider_id else None
+        definitions = await svc.list(
+            str(tenant_id),
+            status,
+            workflow_type,
+            offset,
+            limit,
+            applicable_semantic_type_id=st_id,
+            applicable_provider_id=p_id,
+        )
+        return [_definition_to_type(d) for d in definitions]
 
     @strawberry.field
     async def deployment_workflows_for_topology(
@@ -131,13 +139,12 @@ class WorkflowQuery:
         """List deployment workflows linked to a specific topology."""
         await check_graphql_permission(info, "workflow:definition:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.workflow.definition_service import WorkflowDefinitionService
 
-        async with async_session_factory() as db:
-            svc = WorkflowDefinitionService(db)
-            definitions = await svc.list_by_topology(str(tenant_id), str(topology_id))
-            return [_definition_to_type(d) for d in definitions]
+        db = await _get_session(info)
+        svc = WorkflowDefinitionService(db)
+        definitions = await svc.list_by_topology(str(tenant_id), str(topology_id))
+        return [_definition_to_type(d) for d in definitions]
 
     @strawberry.field
     async def workflow_definition(
@@ -146,13 +153,12 @@ class WorkflowQuery:
         """Get a workflow definition by ID."""
         await check_graphql_permission(info, "workflow:definition:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.workflow.definition_service import WorkflowDefinitionService
 
-        async with async_session_factory() as db:
-            svc = WorkflowDefinitionService(db)
-            d = await svc.get(str(tenant_id), str(definition_id))
-            return _definition_to_type(d) if d else None
+        db = await _get_session(info)
+        svc = WorkflowDefinitionService(db)
+        d = await svc.get(str(tenant_id), str(definition_id))
+        return _definition_to_type(d) if d else None
 
     @strawberry.field
     async def workflow_definition_versions(
@@ -161,13 +167,12 @@ class WorkflowQuery:
         """Get all versions of a workflow definition by name."""
         await check_graphql_permission(info, "workflow:definition:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.workflow.definition_service import WorkflowDefinitionService
 
-        async with async_session_factory() as db:
-            svc = WorkflowDefinitionService(db)
-            versions = await svc.get_versions(str(tenant_id), name)
-            return [_definition_to_type(d) for d in versions]
+        db = await _get_session(info)
+        svc = WorkflowDefinitionService(db)
+        versions = await svc.get_versions(str(tenant_id), name)
+        return [_definition_to_type(d) for d in versions]
 
     @strawberry.field
     async def workflow_executions(
@@ -182,19 +187,18 @@ class WorkflowQuery:
         """List workflow executions for a tenant."""
         await check_graphql_permission(info, "workflow:execution:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.workflow.execution_service import WorkflowExecutionService
 
-        async with async_session_factory() as db:
-            svc = WorkflowExecutionService(db)
-            executions = await svc.list(
-                str(tenant_id),
-                str(definition_id) if definition_id else None,
-                status,
-                offset,
-                limit,
-            )
-            return [_execution_to_type(e) for e in executions]
+        db = await _get_session(info)
+        svc = WorkflowExecutionService(db)
+        executions = await svc.list(
+            str(tenant_id),
+            str(definition_id) if definition_id else None,
+            status,
+            offset,
+            limit,
+        )
+        return [_execution_to_type(e) for e in executions]
 
     @strawberry.field
     async def workflow_execution(
@@ -203,13 +207,12 @@ class WorkflowQuery:
         """Get a workflow execution by ID with node executions."""
         await check_graphql_permission(info, "workflow:execution:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.workflow.execution_service import WorkflowExecutionService
 
-        async with async_session_factory() as db:
-            svc = WorkflowExecutionService(db)
-            e = await svc.get(str(tenant_id), str(execution_id))
-            return _execution_to_type(e) if e else None
+        db = await _get_session(info)
+        svc = WorkflowExecutionService(db)
+        e = await svc.get(str(tenant_id), str(execution_id))
+        return _execution_to_type(e) if e else None
 
     @strawberry.field
     async def node_types(self, info: Info) -> list[NodeTypeInfoType]:
@@ -273,3 +276,39 @@ class WorkflowQuery:
                 for w in result.warnings
             ],
         )
+
+    @strawberry.field
+    async def activity_node_palette(
+        self, info: Info, tenant_id: uuid.UUID
+    ) -> list[NodeTypeInfoType]:
+        """Get dynamic activity nodes for the workflow palette."""
+        await check_graphql_permission(info, "automation:activity:read", str(tenant_id))
+
+        from app.services.automation.palette_provider import PaletteProvider
+
+        db = await _get_session(info)
+        provider = PaletteProvider(db)
+        definitions = await provider.get_activity_palette(str(tenant_id))
+        return [
+            NodeTypeInfoType(
+                type_id=d.type_id,
+                label=d.label,
+                category=d.category.value,
+                description=d.description,
+                icon=d.icon,
+                ports=[
+                    PortDefType(
+                        name=p.name,
+                        direction=p.direction.value,
+                        port_type=p.port_type.value,
+                        label=p.label,
+                        required=p.required,
+                        multiple=p.multiple,
+                    )
+                    for p in d.ports
+                ],
+                config_schema=d.config_schema,
+                is_marker=d.is_marker,
+            )
+            for d in definitions
+        ]

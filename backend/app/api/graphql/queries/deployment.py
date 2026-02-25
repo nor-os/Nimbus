@@ -54,6 +54,16 @@ def _deployment_to_type(d) -> DeploymentType:
 
 # ── Queries ────────────────────────────────────────────────────────────
 
+
+async def _get_session(info: Info):
+    """Get shared DB session from NimbusContext, falling back to new session."""
+    ctx = info.context
+    if hasattr(ctx, "session"):
+        return await ctx.session()
+    from app.db.session import async_session_factory
+    return async_session_factory()
+
+
 @strawberry.type
 class DeploymentQuery:
 
@@ -65,13 +75,12 @@ class DeploymentQuery:
         """List deployments for a tenant, optionally filtered by environment."""
         await check_graphql_permission(info, "deployment:deployment:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.deployment.deployment_service import DeploymentService
 
-        async with async_session_factory() as db:
-            svc = DeploymentService()
-            deployments = await svc.list_by_tenant(db, tenant_id, environment_id)
-            return [_deployment_to_type(d) for d in deployments]
+        db = await _get_session(info)
+        svc = DeploymentService()
+        deployments = await svc.list_by_tenant(db, tenant_id, environment_id)
+        return [_deployment_to_type(d) for d in deployments]
 
     @strawberry.field
     async def deployment(
@@ -80,13 +89,12 @@ class DeploymentQuery:
         """Get a deployment by ID."""
         await check_graphql_permission(info, "deployment:deployment:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.deployment.deployment_service import DeploymentService
 
-        async with async_session_factory() as db:
-            svc = DeploymentService()
-            d = await svc.get(db, deployment_id)
-            return _deployment_to_type(d) if d else None
+        db = await _get_session(info)
+        svc = DeploymentService()
+        d = await svc.get(db, deployment_id)
+        return _deployment_to_type(d) if d else None
 
     @strawberry.field
     async def deployment_cis(
@@ -95,10 +103,9 @@ class DeploymentQuery:
         """Get all CIs linked to a deployment."""
         await check_graphql_permission(info, "deployment:deployment:read", str(tenant_id))
 
-        from app.db.session import async_session_factory
         from app.services.deployment.deployment_service import DeploymentService
 
-        async with async_session_factory() as db:
-            svc = DeploymentService()
-            items = await svc.get_deployment_cis(db, deployment_id)
-            return [_deployment_ci_to_type(dc) for dc in items]
+        db = await _get_session(info)
+        svc = DeploymentService()
+        items = await svc.get_deployment_cis(db, deployment_id)
+        return [_deployment_ci_to_type(dc) for dc in items]

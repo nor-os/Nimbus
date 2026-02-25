@@ -305,7 +305,17 @@ class ApprovalService:
             .options(selectinload(ApprovalRequest.steps))
             .where(ApprovalRequest.id == request.id)
         )
-        return result.scalar_one()
+        created = result.scalar_one()
+
+        # Emit event
+        from app.services.events.event_bus import emit_event_async
+
+        emit_event_async("approval.requested", {
+            "request_id": str(created.id), "operation_type": created.operation_type,
+            "requester_id": str(created.requester_id), "title": created.title,
+        }, tenant_id, "approval_service", str(created.requester_id))
+
+        return created
 
     async def get_request(
         self, tenant_id: str, request_id: str
@@ -449,6 +459,14 @@ class ApprovalService:
                 request.resolved_at = datetime.now(UTC)
                 await self.db.flush()
 
+        # Emit event
+        from app.services.events.event_bus import emit_event_async
+
+        emit_event_async("approval.decided", {
+            "request_id": str(step.approval_request_id), "step_id": str(step.id),
+            "decision": step.status.value, "approver_id": approver_id,
+        }, tenant_id, "approval_service", approver_id)
+
         return step
 
     async def delegate_step(
@@ -517,6 +535,14 @@ class ApprovalService:
                 step.reason = "Request cancelled"
 
         await self.db.flush()
+
+        # Emit event
+        from app.services.events.event_bus import emit_event_async
+
+        emit_event_async("approval.cancelled", {
+            "request_id": request_id, "cancelled_by": cancelled_by,
+        }, tenant_id, "approval_service", cancelled_by)
+
         return True
 
     def check_resolution(

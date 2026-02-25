@@ -22,6 +22,9 @@ dependencies = [
     "jinja2>=3.1.0",
     "aiosmtplib>=2.0.0",
     "asyncssh>=2.14.0",
+    "valkey>=6.0.0",
+    "orjson>=3.10.0",
+    "uvloop>=0.21.0; sys_platform != 'win32'",
 ]
 
 [project.optional-dependencies]

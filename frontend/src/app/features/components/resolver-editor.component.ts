@@ -163,10 +163,10 @@ class ExampleResolver:
               </div>
               @if (editorVisible()) {
                 <nimbus-monaco-editor
-                  [code]="form.code"
+                  [value]="form.code"
                   [language]="'python'"
                   [height]="'calc(100vh - 440px)'"
-                  (codeChange)="form.code = $event"
+                  (valueChange)="form.code = $event"
                 />
               }
             </div>

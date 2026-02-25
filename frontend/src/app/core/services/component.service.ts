@@ -26,7 +26,7 @@ import {
 
 const VERSION_FIELDS = `id componentId version code inputSchema outputSchema resolverBindings changelog publishedAt publishedBy`;
 const GOVERNANCE_FIELDS = `id componentId tenantId isAllowed parameterConstraints maxInstances createdAt updatedAt`;
-const OPERATION_FIELDS = `id componentId name displayName description inputSchema outputSchema workflowDefinitionId workflowDefinitionName isDestructive requiresApproval estimatedDowntime sortOrder createdAt updatedAt`;
+const OPERATION_FIELDS = `id componentId name displayName description inputSchema outputSchema workflowDefinitionId workflowDefinitionName isDestructive requiresApproval estimatedDowntime operationCategory operationKind sortOrder createdAt updatedAt`;
 const COMPONENT_FIELDS = `id tenantId providerId semanticTypeId name displayName description language code inputSchema outputSchema resolverBindings version isPublished isSystem upgradeWorkflowId createdBy createdAt updatedAt providerName semanticTypeName versions { ${VERSION_FIELDS} } governanceRules { ${GOVERNANCE_FIELDS} } operations { ${OPERATION_FIELDS} }`;
 const RESOLVER_FIELDS = `id resolverType displayName description inputSchema outputSchema handlerClass isSystem instanceConfigSchema code category supportsRelease supportsUpdate compatibleProviderIds`;
 const RESOLVER_CONFIG_FIELDS = `id resolverId resolverType landingZoneId environmentId config createdAt updatedAt`;
@@ -332,6 +332,30 @@ export class ComponentService {
         deleteComponentOperation(tenantId: $tenantId, operationId: $operationId)
       }
     `, { tenantId, operationId }).pipe(map(d => d.deleteComponentOperation));
+  }
+
+  // ── Deployment Operations ──────────────────────────────────────────
+
+  initializeDeploymentOperations(componentId: string, providerMode = false): Observable<ComponentOperation[]> {
+    const tenantId = providerMode ? null : this.tenantContext.currentTenantId();
+    return this.gql<{ initializeDeploymentOperations: ComponentOperation[] }>(`
+      mutation InitializeDeploymentOperations($tenantId: UUID, $componentId: UUID!) {
+        initializeDeploymentOperations(tenantId: $tenantId, componentId: $componentId) {
+          ${OPERATION_FIELDS}
+        }
+      }
+    `, { tenantId, componentId }).pipe(map(d => d.initializeDeploymentOperations));
+  }
+
+  resetDeploymentWorkflow(operationId: string, providerMode = false): Observable<ComponentOperation> {
+    const tenantId = providerMode ? null : this.tenantContext.currentTenantId();
+    return this.gql<{ resetDeploymentWorkflow: ComponentOperation }>(`
+      mutation ResetDeploymentWorkflow($tenantId: UUID, $operationId: UUID!) {
+        resetDeploymentWorkflow(tenantId: $tenantId, operationId: $operationId) {
+          ${OPERATION_FIELDS}
+        }
+      }
+    `, { tenantId, operationId }).pipe(map(d => d.resetDeploymentWorkflow));
   }
 
   // ── GraphQL helper ────────────────────────────────────────────────

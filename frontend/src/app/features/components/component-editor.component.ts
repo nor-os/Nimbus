@@ -178,10 +178,10 @@ def create_resource(args: dict) -> dict:
               <div class="editor-pane">
                 @if (editorVisible()) {
                   <nimbus-monaco-editor
-                    [code]="form.code"
+                    [value]="form.code"
                     [language]="'python'"
                     [height]="'calc(100vh - 320px)'"
-                    (codeChange)="form.code = $event"
+                    (valueChange)="form.code = $event"
                   />
                 }
               </div>
@@ -356,17 +356,75 @@ def create_resource(args: dict) -> dict:
           <!-- ── Operations Tab ─────────────────────────── -->
           @if (activeTab() === 'operations') {
             <div class="operations-builder">
-              <div class="schema-header">
-                <h3>Day-2 Operations</h3>
-                <button class="btn btn-sm" (click)="showOpForm.set(true); resetOpForm()">+ Add Operation</button>
+              <!-- ── Deployment Operations ────────────────── -->
+              <div class="section-divider">
+                <h3>Deployment Operations</h3>
+                <p class="section-info">Standard lifecycle operations auto-provisioned for every component. Customize the linked workflow or reset to the default template.</p>
               </div>
-              <p class="section-info">Define workflow-backed actions available on deployed resources (e.g. extend disk, snapshot, restart).</p>
 
-              @if (operations().length === 0 && !showOpForm()) {
-                <div class="empty-schema">No operations defined. Add day-2 operations that users can trigger on deployed resources.</div>
+              @if (deploymentOps().length === 0) {
+                <div class="deploy-init-banner">
+                  <p>No deployment operations found. Initialize 6 standard deployment activities for this component.</p>
+                  <button class="btn btn-primary" (click)="initDeploymentOps()" [disabled]="deployInitializing()">
+                    {{ deployInitializing() ? 'Initializing...' : 'Initialize Deployment Operations' }}
+                  </button>
+                </div>
               }
 
-              @for (op of operations(); track op.id) {
+              <div class="deploy-grid">
+                @for (op of deploymentOps(); track op.id) {
+                  <div class="deploy-card">
+                    <div class="deploy-card-header">
+                      <div class="deploy-card-title">
+                        <span class="deploy-name">{{ op.displayName }}</span>
+                        @if (op.operationKind) {
+                          <span class="badge badge-kind">{{ op.operationKind }}</span>
+                        }
+                        @if (op.isDestructive) {
+                          <span class="badge badge-destructive">Destructive</span>
+                        }
+                      </div>
+                    </div>
+                    <div class="deploy-card-body">
+                      <div class="deploy-meta-row">
+                        <span class="meta-label">Workflow</span>
+                        <span class="deploy-wf-name">{{ op.workflowDefinitionName || '(draft)' }}</span>
+                      </div>
+                      <div class="deploy-meta-row">
+                        <span class="meta-label">Approval</span>
+                        <span [class.text-green]="!op.requiresApproval" [class.text-amber]="op.requiresApproval">
+                          {{ op.requiresApproval ? 'Required' : 'Not required' }}
+                        </span>
+                      </div>
+                      @if (op.estimatedDowntime && op.estimatedDowntime !== 'NONE') {
+                        <div class="deploy-meta-row">
+                          <span class="meta-label">Downtime</span>
+                          <span class="text-amber">{{ op.estimatedDowntime }}</span>
+                        </div>
+                      }
+                    </div>
+                    <div class="deploy-card-actions">
+                      <button class="btn btn-sm btn-secondary" (click)="editWorkflow(op.workflowDefinitionId)">Customize Workflow</button>
+                      <button class="btn btn-sm" (click)="resetDeployWorkflow(op)">Reset to Default</button>
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <!-- ── Day-2 Operations ─────────────────────── -->
+              <div class="section-divider" style="margin-top: 2rem;">
+                <div class="schema-header">
+                  <h3>Day-2 Operations</h3>
+                  <button class="btn btn-sm" (click)="showOpForm.set(true); resetOpForm()">+ Add Operation</button>
+                </div>
+                <p class="section-info">Define workflow-backed actions available on deployed resources (e.g. extend disk, snapshot, restart).</p>
+              </div>
+
+              @if (day2Ops().length === 0 && !showOpForm()) {
+                <div class="empty-schema">No day-2 operations defined. Add custom operations that users can trigger on deployed resources.</div>
+              }
+
+              @for (op of day2Ops(); track op.id) {
                 <!-- Collapsed card (shown when NOT editing this op) -->
                 @if (editingOpId() !== op.id) {
                   <div class="operation-card" [class.expanded]="expandedOpId() === op.id">
@@ -751,6 +809,40 @@ def create_resource(args: dict) -> dict:
     }
     .pipeline-arrow { color: #94a3b8; font-size: 0.75rem; }
 
+    /* ── Deployment Operations ──────────────── */
+    .section-divider { margin-bottom: 0.75rem; }
+    .section-divider h3 { font-size: 1rem; font-weight: 600; color: #1e293b; margin: 0 0 0.25rem; }
+    .deploy-init-banner {
+      text-align: center; padding: 1.5rem; background: #f0f7ff; border: 1px dashed #93c5fd;
+      border-radius: 8px; margin-bottom: 1rem;
+    }
+    .deploy-init-banner p { color: #475569; font-size: 0.875rem; margin: 0 0 0.75rem; }
+    .deploy-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.75rem; margin-bottom: 0.5rem;
+    }
+    .deploy-card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 0.875rem; display: flex; flex-direction: column; gap: 0.5rem;
+      transition: border-color 0.15s;
+    }
+    .deploy-card:hover { border-color: #cbd5e1; }
+    .deploy-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .deploy-card-title { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
+    .deploy-name { font-weight: 600; color: #1e293b; font-size: 0.9375rem; }
+    .badge-kind {
+      background: #eff6ff; color: #1e40af; font-size: 0.625rem; font-weight: 600;
+      padding: 0.125rem 0.375rem; border-radius: 3px; text-transform: uppercase;
+    }
+    .deploy-card-body { display: flex; flex-direction: column; gap: 0.25rem; }
+    .deploy-meta-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; }
+    .deploy-wf-name { color: #475569; font-weight: 500; }
+    .text-green { color: #16a34a; }
+    .text-amber { color: #d97706; }
+    .deploy-card-actions {
+      display: flex; gap: 0.375rem; margin-top: 0.25rem; padding-top: 0.5rem; border-top: 1px solid #f1f5f9;
+      flex-wrap: wrap;
+    }
     /* ── Dialog ──────────────────────────────── */
     .dialog-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.3); display: flex;
@@ -797,6 +889,11 @@ export class ComponentEditorComponent implements OnInit {
   expandedWorkflow = signal<WorkflowDefinition | null>(null);
   workflowLoading = signal(false);
   editorVisible = signal(false);
+  deployInitializing = signal(false);
+
+  // Computed: split operations by category
+  deploymentOps = computed(() => this.operations().filter(op => op.operationCategory === 'DEPLOYMENT'));
+  day2Ops = computed(() => this.operations().filter(op => op.operationCategory !== 'DEPLOYMENT'));
 
   // Dropdown options
   semanticTypeOptions = signal<SelectOption[]>([]);
@@ -1272,6 +1369,37 @@ export class ComponentEditorComponent implements OnInit {
       next: () => {
         this.operations.update(ops => ops.filter(o => o.id !== op.id));
         this.toastService.success('Operation deleted');
+        this.cdr.markForCheck();
+      },
+      error: (err) => this.toastService.error('Failed: ' + err.message),
+    });
+  }
+
+  initDeploymentOps(): void {
+    const comp = this.component();
+    if (!comp) return;
+    this.deployInitializing.set(true);
+    this.componentService.initializeDeploymentOperations(comp.id, this.isProviderMode()).subscribe({
+      next: (ops) => {
+        this.operations.update(existing => [...existing, ...ops]);
+        this.deployInitializing.set(false);
+        this.toastService.success('Deployment operations initialized');
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        this.deployInitializing.set(false);
+        this.toastService.error('Failed: ' + err.message);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  resetDeployWorkflow(op: ComponentOperation): void {
+    if (!confirm(`Reset "${op.displayName}" workflow to the default template? Any customizations will be lost.`)) return;
+    this.componentService.resetDeploymentWorkflow(op.id, this.isProviderMode()).subscribe({
+      next: (updated) => {
+        this.operations.update(ops => ops.map(o => o.id === updated.id ? updated : o));
+        this.toastService.success(`${op.displayName} workflow reset to default`);
         this.cdr.markForCheck();
       },
       error: (err) => this.toastService.error('Failed: ' + err.message),

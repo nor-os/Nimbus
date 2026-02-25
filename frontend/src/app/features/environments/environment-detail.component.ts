@@ -13,7 +13,7 @@ import { LandingZoneService } from '@core/services/landing-zone.service';
 import { DeploymentService } from '@core/services/deployment.service';
 import { ArchitectureService } from '@core/services/architecture.service';
 import { ComponentService } from '@core/services/component.service';
-import { TenantEnvironment } from '@shared/models/landing-zone.model';
+import { TenantEnvironment, LandingZone } from '@shared/models/landing-zone.model';
 import { Deployment } from '@shared/models/deployment.model';
 import { Resolver, ResolverConfiguration } from '@shared/models/component.model';
 import { ArchitectureTopology } from '@shared/models/architecture.model';
@@ -21,6 +21,16 @@ import { ToastService } from '@shared/services/toast.service';
 import { ConfirmService } from '@shared/services/confirm.service';
 import { HasPermissionDirective } from '@shared/directives/has-permission.directive';
 import { SchemaFormRendererComponent } from '@shared/components/schema-form/schema-form-renderer.component';
+import { EnvConfiguratorComponent } from './env-configurator/env-configurator.component';
+import { SubnetEditorComponent } from '@shared/components/subnet-editor/subnet-editor.component';
+import { NetworkingService } from '@core/services/networking.service';
+import {
+  EnvironmentPrivateEndpoint,
+  EnvironmentPrivateEndpointInput,
+  EnvironmentLoadBalancer,
+  EnvironmentLoadBalancerInput,
+  PeeringConfig,
+} from '@shared/models/networking.model';
 
 @Component({
   selector: 'nimbus-environment-detail',
@@ -33,6 +43,8 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
     LayoutComponent,
     HasPermissionDirective,
     SchemaFormRendererComponent,
+    EnvConfiguratorComponent,
+    SubnetEditorComponent,
   ],
   template: `
     <nimbus-layout>
@@ -49,6 +61,19 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
             </div>
           </div>
 
+          <!-- LZ Hierarchy Breadcrumb -->
+          @if (parentLz()) {
+            <div class="lz-breadcrumb">
+              <span class="bc-provider">{{ env()!.providerName }}</span>
+              <span class="bc-sep">&rsaquo;</span>
+              <a class="bc-link" [routerLink]="['/landing-zones', parentLz()!.id]">{{ parentLz()!.name }}</a>
+              @for (seg of hierarchyBreadcrumb(); track seg; let last = $last) {
+                <span class="bc-sep">&rsaquo;</span>
+                <span [class.bc-current]="last" class="bc-seg">{{ seg }}</span>
+              }
+            </div>
+          }
+
           <!-- Tab Bar -->
           <div class="tabs">
             <button
@@ -58,9 +83,9 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
             >Overview</button>
             <button
               class="tab"
-              [class.active]="activeTab() === 'network'"
-              (click)="switchTab('network')"
-            >Network</button>
+              [class.active]="activeTab() === 'netsec'"
+              (click)="switchTab('netsec')"
+            >Network & Security</button>
             <button
               class="tab"
               [class.active]="activeTab() === 'access'"
@@ -68,14 +93,24 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
             >Access Control</button>
             <button
               class="tab"
-              [class.active]="activeTab() === 'security'"
-              (click)="switchTab('security')"
-            >Security</button>
-            <button
-              class="tab"
               [class.active]="activeTab() === 'monitoring'"
               (click)="switchTab('monitoring')"
             >Monitoring</button>
+            <button
+              class="tab"
+              [class.active]="activeTab() === 'endpoints'"
+              (click)="switchTab('endpoints')"
+            >Endpoints</button>
+            <button
+              class="tab"
+              [class.active]="activeTab() === 'loadbalancers'"
+              (click)="switchTab('loadbalancers')"
+            >Load Balancers</button>
+            <button
+              class="tab"
+              [class.active]="activeTab() === 'peering'"
+              (click)="switchTab('peering')"
+            >Peering</button>
             <button
               class="tab"
               [class.active]="activeTab() === 'resolvers'"
@@ -126,6 +161,16 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
                     <span class="config-value">{{ env()!.templateId || '—' }}</span>
                   </div>
                   <div class="config-item">
+                    <span class="config-label">Region</span>
+                    <span class="config-value">
+                      @if (env()!.region) {
+                        {{ env()!.region!.displayName }} <code style="font-size: 11px; color: #64748b; margin-left: 4px">{{ env()!.region!.regionIdentifier }}</code>
+                      } @else {
+                        —
+                      }
+                    </span>
+                  </div>
+                  <div class="config-item">
                     <span class="config-label">Status</span>
                     <span class="config-value">
                       <span class="status-badge" [class]="'badge-' + env()!.status.toLowerCase()">{{ env()!.status }}</span>
@@ -154,31 +199,106 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
                   </div>
                 }
               </div>
+
+              <!-- DR Configuration -->
+              @if (env()!.drSourceEnvId || env()!.drConfig) {
+                <div class="section-card">
+                  <h2 class="section-title">Disaster Recovery Configuration</h2>
+                  <div class="config-grid">
+                    @if (env()!.drSourceEnvId) {
+                      <div class="config-item">
+                        <span class="config-label">DR Source Environment</span>
+                        <span class="config-value mono">{{ env()!.drSourceEnvId }}</span>
+                      </div>
+                    }
+                    @if (env()!.drConfig; as dr) {
+                      <div class="config-item">
+                        <span class="config-label">Failover Mode</span>
+                        <span class="config-value">{{ dr.failoverMode || '—' }}</span>
+                      </div>
+                      <div class="config-item">
+                        <span class="config-label">RPO (hours)</span>
+                        <span class="config-value">{{ dr.rpoHours || '—' }}</span>
+                      </div>
+                      <div class="config-item">
+                        <span class="config-label">RTO (hours)</span>
+                        <span class="config-value">{{ dr.rtoHours || '—' }}</span>
+                      </div>
+                      @if (dr.failoverPriority != null) {
+                        <div class="config-item">
+                          <span class="config-label">Failover Priority</span>
+                          <span class="config-value">{{ dr.failoverPriority }}</span>
+                        </div>
+                      }
+                      @if (dr.healthCheckUrl) {
+                        <div class="config-item full-width">
+                          <span class="config-label">Health Check URL</span>
+                          <span class="config-value mono">{{ dr.healthCheckUrl }}</span>
+                        </div>
+                      }
+                    }
+                  </div>
+                </div>
+              }
             </div>
           }
 
-          <!-- Tab: Network -->
-          @if (activeTab() === 'network') {
+          <!-- Tab: Network & Security -->
+          @if (activeTab() === 'netsec') {
             <div class="tab-content">
-              <div class="section-card">
-                <div class="section-header">
-                  <h2 class="section-title">Network Configuration</h2>
-                </div>
-                @if (!env()?.providerName) {
+              @if (!env()?.providerName) {
+                <div class="section-card">
                   <p class="empty-hint">No provider associated. Configure a cloud backend first.</p>
-                } @else if (networkSchema()) {
-                  <nimbus-schema-form-renderer
-                    [schema]="networkSchema()!"
-                    [values]="networkValues()"
-                    (valuesChange)="networkValues.set($event)"
-                  />
-                  <div class="form-actions">
-                    <button class="btn btn-primary btn-sm" (click)="saveNetworkConfig()">Save Network Config</button>
+                </div>
+              } @else {
+                <!-- Address Space & Global Network Settings -->
+                <div class="section-card">
+                  <div class="section-header">
+                    <h2 class="section-title">Address Space & Network Settings</h2>
                   </div>
-                } @else {
-                  <p class="empty-hint">Loading schema...</p>
-                }
-              </div>
+                  <nimbus-env-configurator
+                    domain="network"
+                    [providerName]="env()!.providerName!"
+                    [currentValues]="networkGlobalValues()"
+                    [schema]="networkSchema()"
+                    [excludeCategories]="['subnets']"
+                    (valuesChange)="onNetworkGlobalChange($event)"
+                  />
+                </div>
+
+                <!-- Subnets & Security Rules -->
+                <div class="section-card">
+                  <nimbus-subnet-editor
+                    [providerName]="env()!.providerName!"
+                    [networkConfig]="networkValues()"
+                    [securityConfig]="securityValues()"
+                    [addressSpaces]="addressSpaceList()"
+                    [environmentId]="envId"
+                    [existingAllocations]="envAllocations()"
+                    (networkConfigChange)="onSubnetNetworkChange($event)"
+                    (securityConfigChange)="onSubnetSecurityChange($event)"
+                  />
+                </div>
+
+                <!-- Encryption & Backup -->
+                <div class="section-card">
+                  <div class="section-header">
+                    <h2 class="section-title">Encryption & Backup</h2>
+                  </div>
+                  <nimbus-env-configurator
+                    domain="security"
+                    [providerName]="env()!.providerName!"
+                    [currentValues]="securityGlobalValues()"
+                    [schema]="securitySchema()"
+                    [excludeCategories]="['firewall']"
+                    (valuesChange)="onSecurityGlobalChange($event)"
+                  />
+                </div>
+
+                <div class="form-actions">
+                  <button class="btn btn-primary btn-sm" (click)="saveNetworkAndSecurityConfig()">Save Network & Security Config</button>
+                </div>
+              }
             </div>
           }
 
@@ -191,42 +311,17 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
                 </div>
                 @if (!env()?.providerName) {
                   <p class="empty-hint">No provider associated. Configure a cloud backend first.</p>
-                } @else if (iamSchema()) {
-                  <nimbus-schema-form-renderer
-                    [schema]="iamSchema()!"
-                    [values]="iamValues()"
+                } @else {
+                  <nimbus-env-configurator
+                    domain="iam"
+                    [providerName]="env()!.providerName!"
+                    [currentValues]="iamValues()"
+                    [schema]="iamSchema()"
                     (valuesChange)="iamValues.set($event)"
                   />
                   <div class="form-actions">
                     <button class="btn btn-primary btn-sm" (click)="saveIamConfig()">Save Access Control Config</button>
                   </div>
-                } @else {
-                  <p class="empty-hint">Loading schema...</p>
-                }
-              </div>
-            </div>
-          }
-
-          <!-- Tab: Security -->
-          @if (activeTab() === 'security') {
-            <div class="tab-content">
-              <div class="section-card">
-                <div class="section-header">
-                  <h2 class="section-title">Security Configuration</h2>
-                </div>
-                @if (!env()?.providerName) {
-                  <p class="empty-hint">No provider associated. Configure a cloud backend first.</p>
-                } @else if (securitySchema()) {
-                  <nimbus-schema-form-renderer
-                    [schema]="securitySchema()!"
-                    [values]="securityValues()"
-                    (valuesChange)="securityValues.set($event)"
-                  />
-                  <div class="form-actions">
-                    <button class="btn btn-primary btn-sm" (click)="saveSecurityConfig()">Save Security Config</button>
-                  </div>
-                } @else {
-                  <p class="empty-hint">Loading schema...</p>
                 }
               </div>
             </div>
@@ -241,17 +336,17 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
                 </div>
                 @if (!env()?.providerName) {
                   <p class="empty-hint">No provider associated. Configure a cloud backend first.</p>
-                } @else if (monitoringSchema()) {
-                  <nimbus-schema-form-renderer
-                    [schema]="monitoringSchema()!"
-                    [values]="monitoringValues()"
+                } @else {
+                  <nimbus-env-configurator
+                    domain="monitoring"
+                    [providerName]="env()!.providerName!"
+                    [currentValues]="monitoringValues()"
+                    [schema]="monitoringSchema()"
                     (valuesChange)="monitoringValues.set($event)"
                   />
                   <div class="form-actions">
                     <button class="btn btn-primary btn-sm" (click)="saveMonitoringConfig()">Save Monitoring Config</button>
                   </div>
-                } @else {
-                  <p class="empty-hint">Loading schema...</p>
                 }
               </div>
             </div>
@@ -324,6 +419,159 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
                       class="action-btn danger"
                       (click)="deleteResolverConfig(rc.id)"
                     >Delete</button>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- Tab: Endpoints -->
+          @if (activeTab() === 'endpoints') {
+            <div class="tab-content">
+              <div class="section-card">
+                <div class="section-header">
+                  <h2 class="section-title">Private Endpoints</h2>
+                  <button
+                    *nimbusHasPermission="'cloud:privateendpoint:create'"
+                    class="btn btn-primary btn-sm"
+                    (click)="showEpForm = true"
+                  >Add Endpoint</button>
+                </div>
+                <p class="section-desc">Per-environment private endpoint instances. Can inherit from landing zone policies.</p>
+
+                @if (showEpForm) {
+                  <div class="deploy-form">
+                    <div class="form-grid">
+                      <div class="form-group">
+                        <label class="form-label">Service Name</label>
+                        <input class="form-input" [(ngModel)]="epServiceName" placeholder="e.g. com.amazonaws.us-east-1.s3" />
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">Endpoint Type</label>
+                        <select class="form-input" [(ngModel)]="epEndpointType">
+                          <option value="">Select...</option>
+                          <option value="PRIVATE_LINK">Private Link</option>
+                          <option value="PRIVATE_ENDPOINT">Private Endpoint</option>
+                          <option value="PRIVATE_SERVICE_CONNECT">Private Service Connect</option>
+                          <option value="SERVICE_GATEWAY">Service Gateway</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="form-actions">
+                      <button class="btn btn-outline btn-sm" (click)="showEpForm = false">Cancel</button>
+                      <button class="btn btn-primary btn-sm" (click)="createEnvEndpoint()"
+                        [disabled]="!epServiceName.trim() || !epEndpointType">Create</button>
+                    </div>
+                  </div>
+                }
+
+                @if (envEndpoints().length === 0 && !showEpForm) {
+                  <p class="empty-hint">No private endpoints configured.</p>
+                }
+                @for (ep of envEndpoints(); track ep.id) {
+                  <div class="net-item">
+                    <div class="net-item-info">
+                      <span class="net-item-name">{{ ep.serviceName }}</span>
+                      <span class="status-badge badge-active">{{ ep.endpointType }}</span>
+                      <span class="status-badge" [class]="'badge-' + ep.status.toLowerCase()">{{ ep.status }}</span>
+                      @if (ep.cloudResourceId) {
+                        <span class="net-item-meta">{{ ep.cloudResourceId }}</span>
+                      }
+                    </div>
+                    <button
+                      *nimbusHasPermission="'cloud:privateendpoint:delete'"
+                      class="action-btn danger"
+                      (click)="deleteEnvEndpoint(ep.id)"
+                    >&times;</button>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- Tab: Load Balancers -->
+          @if (activeTab() === 'loadbalancers') {
+            <div class="tab-content">
+              <div class="section-card">
+                <div class="section-header">
+                  <h2 class="section-title">Load Balancers</h2>
+                  <button
+                    *nimbusHasPermission="'cloud:loadbalancer:create'"
+                    class="btn btn-primary btn-sm"
+                    (click)="showLbForm = true"
+                  >Add Load Balancer</button>
+                </div>
+                <p class="section-desc">Per-environment load balancers. Can be linked to shared LBs from the landing zone.</p>
+
+                @if (showLbForm) {
+                  <div class="deploy-form">
+                    <div class="form-grid">
+                      <div class="form-group">
+                        <label class="form-label">Name</label>
+                        <input class="form-input" [(ngModel)]="lbName" placeholder="e.g. App LB" />
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">LB Type</label>
+                        <select class="form-input" [(ngModel)]="lbType">
+                          <option value="">Select...</option>
+                          <option value="ALB">ALB</option>
+                          <option value="NLB">NLB</option>
+                          <option value="APP_GATEWAY">App Gateway</option>
+                          <option value="AZURE_LB">Azure LB</option>
+                          <option value="GCP_LB">GCP LB</option>
+                          <option value="OCI_LB">OCI LB</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="form-actions">
+                      <button class="btn btn-outline btn-sm" (click)="showLbForm = false">Cancel</button>
+                      <button class="btn btn-primary btn-sm" (click)="createEnvLb()"
+                        [disabled]="!lbName.trim() || !lbType">Create</button>
+                    </div>
+                  </div>
+                }
+
+                @if (envLoadBalancers().length === 0 && !showLbForm) {
+                  <p class="empty-hint">No load balancers configured.</p>
+                }
+                @for (lb of envLoadBalancers(); track lb.id) {
+                  <div class="net-item">
+                    <div class="net-item-info">
+                      <span class="net-item-name">{{ lb.name }}</span>
+                      <span class="status-badge badge-active">{{ lb.lbType }}</span>
+                      <span class="status-badge" [class]="'badge-' + lb.status.toLowerCase()">{{ lb.status }}</span>
+                      @if (lb.cloudResourceId) {
+                        <span class="net-item-meta">{{ lb.cloudResourceId }}</span>
+                      }
+                    </div>
+                    <button
+                      *nimbusHasPermission="'cloud:loadbalancer:delete'"
+                      class="action-btn danger"
+                      (click)="deleteEnvLb(lb.id)"
+                    >&times;</button>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- Tab: Peering (read-only) -->
+          @if (activeTab() === 'peering') {
+            <div class="tab-content">
+              <div class="section-card">
+                <h2 class="section-title">Peering</h2>
+                <p class="section-desc">How this environment connects to the landing zone hub. Peering is managed at the landing zone level.</p>
+
+                @if (envPeeringConfigs().length === 0) {
+                  <p class="empty-hint">No peering configurations associated with this environment.</p>
+                }
+                @for (p of envPeeringConfigs(); track p.id) {
+                  <div class="net-item">
+                    <div class="net-item-info">
+                      <span class="net-item-name">{{ p.name }}</span>
+                      <span class="status-badge badge-active">{{ p.peeringType }}</span>
+                      <span class="status-badge" [class]="'badge-' + p.status.toLowerCase()">{{ p.status }}</span>
+                    </div>
                   </div>
                 }
               </div>
@@ -574,6 +822,15 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
       padding: 32px 16px !important;
       color: #94a3b8;
     }
+    .section-desc { font-size: 0.8125rem; color: #64748b; margin: 0 0 16px; line-height: 1.5; }
+    .net-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px;
+      margin-bottom: 8px; background: #f8fafc;
+    }
+    .net-item-info { display: flex; align-items: center; gap: 8px; flex: 1; flex-wrap: wrap; }
+    .net-item-name { font-size: 0.8125rem; font-weight: 500; color: #1e293b; }
+    .net-item-meta { font-size: 0.75rem; color: #64748b; font-family: monospace; }
     .empty-hint { color: #94a3b8; font-size: 0.8125rem; padding: 16px 0; }
     .loading-text { color: #94a3b8; font-size: 0.875rem; padding: 32px 0; text-align: center; }
 
@@ -585,6 +842,24 @@ import { SchemaFormRendererComponent } from '@shared/components/schema-form/sche
     .resolver-item-header { display: flex; align-items: center; gap: 12px; flex: 1; flex-wrap: wrap; }
     .resolver-config-kv { display: flex; gap: 12px; flex-wrap: wrap; }
     .config-kv-pair { font-size: 0.75rem; color: #374151; background: #fff; padding: 2px 8px; border-radius: 4px; border: 1px solid #e2e8f0; }
+
+    /* LZ Hierarchy Breadcrumb */
+    .lz-breadcrumb {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      padding: 8px 12px; margin-bottom: 16px;
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+      font-size: 0.75rem;
+    }
+    .bc-provider {
+      font-weight: 600; color: #1d4ed8; background: #dbeafe;
+      padding: 2px 8px; border-radius: 4px; text-transform: uppercase;
+      font-size: 0.625rem; letter-spacing: 0.03em;
+    }
+    .bc-sep { color: #94a3b8; font-size: 0.875rem; }
+    .bc-link { color: #3b82f6; text-decoration: none; font-weight: 500; }
+    .bc-link:hover { text-decoration: underline; }
+    .bc-seg { color: #64748b; }
+    .bc-seg.bc-current { color: #1e293b; font-weight: 600; }
   `],
 })
 export class EnvironmentDetailComponent implements OnInit {
@@ -595,12 +870,48 @@ export class EnvironmentDetailComponent implements OnInit {
   private componentService = inject(ComponentService);
   private toast = inject(ToastService);
   private confirm = inject(ConfirmService);
+  private networkingService = inject(NetworkingService);
 
   /** Core state */
   env = signal<TenantEnvironment | null>(null);
   activeTab = signal<string>('overview');
   loading = signal(true);
   editing = signal(false);
+
+  /** Parent landing zone for breadcrumb */
+  parentLz = signal<LandingZone | null>(null);
+
+  /** Hierarchy breadcrumb segments */
+  hierarchyBreadcrumb = computed((): string[] => {
+    const lz = this.parentLz();
+    const e = this.env();
+    if (!lz?.hierarchy?.nodes || !e) return [];
+
+    // Find nodes that match the environment name or are ancestors
+    // Walk up from leaf nodes to build path segments
+    const nodes = lz.hierarchy.nodes;
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+    // Find best matching node: one with supportsEnvironment or last level
+    // For now, collect all root-to-leaf paths and show labels
+    const roots = nodes.filter(n => !n.parentId);
+    if (roots.length === 0) return [];
+
+    // Build path from root to deepest node
+    const segments: string[] = [];
+    let current = roots[0];
+    segments.push(current.label);
+
+    // Walk down to find the deepest path
+    let children = nodes.filter(n => n.parentId === current.id);
+    while (children.length > 0) {
+      current = children[0];
+      segments.push(current.label);
+      children = nodes.filter(n => n.parentId === current.id);
+    }
+
+    return segments;
+  });
 
   /** Schema signals for config tabs */
   networkSchema = signal<Record<string, unknown> | null>(null);
@@ -613,6 +924,36 @@ export class EnvironmentDetailComponent implements OnInit {
   iamValues = signal<Record<string, unknown>>({});
   securityValues = signal<Record<string, unknown>>({});
   monitoringValues = signal<Record<string, unknown>>({});
+
+  /** Subnet editor intermediate state (from SubnetEditorComponent outputs) */
+  private subnetNetworkPart = signal<Record<string, unknown>>({});
+  private subnetSecurityPart = signal<Record<string, unknown>>({});
+  private networkGlobalPart = signal<Record<string, unknown>>({});
+  private securityGlobalPart = signal<Record<string, unknown>>({});
+
+  /** Address spaces and IPAM allocations for the environment */
+  addressSpaceList = signal<{ id: string; name: string; cidr: string }[]>([]);
+  envAllocations = signal<{ id: string; name: string; cidr: string }[]>([]);
+
+  /** Computed: network values without subnets (for global network configurator) */
+  networkGlobalValues = computed(() => {
+    const all = this.networkValues();
+    const { subnets, ...rest } = all as Record<string, unknown> & { subnets?: unknown };
+    return rest;
+  });
+
+  /** Computed: security values without rule arrays (for encryption/backup configurator) */
+  securityGlobalValues = computed(() => {
+    const all = this.securityValues();
+    const copy: Record<string, unknown> = {};
+    const ruleKeys = ['security_groups', 'nsgs', 'firewall_rules', 'firewall_groups', 'security_lists'];
+    for (const [k, v] of Object.entries(all)) {
+      if (!ruleKeys.includes(k)) {
+        copy[k] = v;
+      }
+    }
+    return copy;
+  });
 
   /** Deployment state */
   deployments = signal<Deployment[]>([]);
@@ -645,10 +986,21 @@ export class EnvironmentDetailComponent implements OnInit {
     }));
   });
 
+  // Networking state
+  envEndpoints = signal<EnvironmentPrivateEndpoint[]>([]);
+  envLoadBalancers = signal<EnvironmentLoadBalancer[]>([]);
+  envPeeringConfigs = signal<PeeringConfig[]>([]);
+  showEpForm = false;
+  showLbForm = false;
+  epServiceName = '';
+  epEndpointType = '';
+  lbName = '';
+  lbType = '';
+
   editForm = { displayName: '', description: '' };
   deployForm = { topologyId: '', name: '', description: '' };
 
-  private envId = '';
+  envId = '';
 
   ngOnInit(): void {
     this.envId = this.route.snapshot.paramMap.get('id') ?? '';
@@ -670,6 +1022,12 @@ export class EnvironmentDetailComponent implements OnInit {
           this.monitoringValues.set(e.monitoringConfig ?? {});
           if (e.providerName) {
             this.loadAllSchemas(e.providerName);
+          }
+          // Load parent LZ for breadcrumb
+          if (e.landingZoneId) {
+            this.lzService.getLandingZone(e.landingZoneId).subscribe({
+              next: lz => this.parentLz.set(lz),
+            });
           }
         }
         this.loading.set(false);
@@ -737,26 +1095,25 @@ export class EnvironmentDetailComponent implements OnInit {
     if (!provider) return;
 
     switch (tab) {
-      case 'network':
+      case 'netsec':
         if (!this.networkSchema()) {
           this.lzService.getEnvNetworkConfigSchema(provider).subscribe({
             next: (s: Record<string, unknown> | null) => this.networkSchema.set(s),
             error: () => {},
           });
         }
+        if (!this.securitySchema()) {
+          this.lzService.getEnvSecurityConfigSchema(provider).subscribe({
+            next: (s: Record<string, unknown> | null) => this.securitySchema.set(s),
+            error: () => {},
+          });
+        }
+        this.loadAddressSpacesForEnv();
         break;
       case 'access':
         if (!this.iamSchema()) {
           this.lzService.getEnvIamConfigSchema(provider).subscribe({
             next: (s: Record<string, unknown> | null) => this.iamSchema.set(s),
-            error: () => {},
-          });
-        }
-        break;
-      case 'security':
-        if (!this.securitySchema()) {
-          this.lzService.getEnvSecurityConfigSchema(provider).subscribe({
-            next: (s: Record<string, unknown> | null) => this.securitySchema.set(s),
             error: () => {},
           });
         }
@@ -769,7 +1126,38 @@ export class EnvironmentDetailComponent implements OnInit {
           });
         }
         break;
+      case 'endpoints':
+        this.loadEnvEndpoints();
+        break;
+      case 'loadbalancers':
+        this.loadEnvLoadBalancers();
+        break;
+      case 'peering':
+        this.loadEnvPeering();
+        break;
     }
+  }
+
+  /** Load address spaces for the environment's landing zone */
+  private loadAddressSpacesForEnv(): void {
+    const e = this.env();
+    if (!e?.landingZoneId) return;
+    this.lzService.listAddressSpaces(e.landingZoneId).subscribe({
+      next: (spaces) => {
+        this.addressSpaceList.set(spaces.map(s => ({
+          id: s.id, name: s.name, cidr: s.cidr,
+        })));
+      },
+      error: () => {},
+    });
+    this.lzService.getEnvironmentIpamAllocations(this.envId).subscribe({
+      next: (allocs) => {
+        this.envAllocations.set(allocs.map(a => ({
+          id: a.id, name: a.name, cidr: a.cidr,
+        })));
+      },
+      error: () => {},
+    });
   }
 
   toggleEdit(): void {
@@ -803,12 +1191,63 @@ export class EnvironmentDetailComponent implements OnInit {
     });
   }
 
-  saveNetworkConfig(): void {
+  /** Handlers for unified Network & Security tab */
+  onNetworkGlobalChange(values: Record<string, unknown>): void {
+    this.networkGlobalPart.set(values);
+  }
+
+  onSecurityGlobalChange(values: Record<string, unknown>): void {
+    this.securityGlobalPart.set(values);
+  }
+
+  onSubnetNetworkChange(partial: Record<string, unknown>): void {
+    this.subnetNetworkPart.set(partial);
+  }
+
+  onSubnetSecurityChange(partial: Record<string, unknown>): void {
+    this.subnetSecurityPart.set(partial);
+  }
+
+  saveNetworkAndSecurityConfig(): void {
+    // Merge global network settings + subnet network part
+    const mergedNetwork = {
+      ...this.networkGlobalPart(),
+      ...this.subnetNetworkPart(),
+    };
+    // If global part is empty, use existing values minus subnets
+    if (Object.keys(this.networkGlobalPart()).length === 0) {
+      const existing = this.networkValues();
+      const { subnets, ...rest } = existing as Record<string, unknown> & { subnets?: unknown };
+      Object.assign(mergedNetwork, rest, this.subnetNetworkPart());
+    }
+
+    // Merge global security settings + subnet security part
+    const mergedSecurity = {
+      ...this.securityGlobalPart(),
+      ...this.subnetSecurityPart(),
+    };
+    // If global part is empty, use existing values minus rule arrays
+    if (Object.keys(this.securityGlobalPart()).length === 0) {
+      const existing = this.securityValues();
+      const ruleKeys = ['security_groups', 'nsgs', 'firewall_rules', 'firewall_groups', 'security_lists'];
+      for (const [k, v] of Object.entries(existing)) {
+        if (!ruleKeys.includes(k) && !(k in mergedSecurity)) {
+          mergedSecurity[k] = v;
+        }
+      }
+      Object.assign(mergedSecurity, this.subnetSecurityPart());
+    }
+
     this.lzService.updateTenantEnvironment(this.envId, {
-      networkConfig: this.networkValues(),
+      networkConfig: mergedNetwork,
+      securityConfig: mergedSecurity,
     }).subscribe({
-      next: () => this.toast.success('Network configuration saved'),
-      error: (e: { message?: string }) => this.toast.error(e.message || 'Failed to save network config'),
+      next: () => {
+        this.toast.success('Network & security configuration saved');
+        this.networkValues.set(mergedNetwork);
+        this.securityValues.set(mergedSecurity);
+      },
+      error: (e: { message?: string }) => this.toast.error(e.message || 'Failed to save config'),
     });
   }
 
@@ -818,15 +1257,6 @@ export class EnvironmentDetailComponent implements OnInit {
     }).subscribe({
       next: () => this.toast.success('Access control configuration saved'),
       error: (e: { message?: string }) => this.toast.error(e.message || 'Failed to save access control config'),
-    });
-  }
-
-  saveSecurityConfig(): void {
-    this.lzService.updateTenantEnvironment(this.envId, {
-      securityConfig: this.securityValues(),
-    }).subscribe({
-      next: () => this.toast.success('Security configuration saved'),
-      error: (e: { message?: string }) => this.toast.error(e.message || 'Failed to save security config'),
     });
   }
 
@@ -871,6 +1301,84 @@ export class EnvironmentDetailComponent implements OnInit {
         this.loadDeployments();
       },
       error: (e: Error) => this.toast.error(e.message || 'Failed to delete'),
+    });
+  }
+
+  // ── Networking methods ─────────────────────────────────────────
+
+  private loadEnvEndpoints(): void {
+    this.networkingService.listEnvironmentPrivateEndpoints(this.envId).subscribe({
+      next: eps => this.envEndpoints.set(eps),
+      error: () => this.toast.error('Failed to load private endpoints'),
+    });
+  }
+
+  createEnvEndpoint(): void {
+    const input: EnvironmentPrivateEndpointInput = {
+      serviceName: this.epServiceName.trim(),
+      endpointType: this.epEndpointType,
+    };
+    this.networkingService.createEnvironmentPrivateEndpoint(this.envId, input).subscribe({
+      next: () => {
+        this.showEpForm = false;
+        this.epServiceName = '';
+        this.epEndpointType = '';
+        this.loadEnvEndpoints();
+        this.toast.success('Private endpoint created');
+      },
+      error: err => this.toast.error(err.message || 'Failed to create endpoint'),
+    });
+  }
+
+  deleteEnvEndpoint(id: string): void {
+    this.networkingService.deleteEnvironmentPrivateEndpoint(id).subscribe({
+      next: () => { this.loadEnvEndpoints(); this.toast.success('Deleted'); },
+      error: err => this.toast.error(err.message || 'Failed to delete'),
+    });
+  }
+
+  private loadEnvLoadBalancers(): void {
+    this.networkingService.listEnvironmentLoadBalancers(this.envId).subscribe({
+      next: lbs => this.envLoadBalancers.set(lbs),
+      error: () => this.toast.error('Failed to load load balancers'),
+    });
+  }
+
+  createEnvLb(): void {
+    const input: EnvironmentLoadBalancerInput = {
+      name: this.lbName.trim(),
+      lbType: this.lbType,
+    };
+    this.networkingService.createEnvironmentLoadBalancer(this.envId, input).subscribe({
+      next: () => {
+        this.showLbForm = false;
+        this.lbName = '';
+        this.lbType = '';
+        this.loadEnvLoadBalancers();
+        this.toast.success('Load balancer created');
+      },
+      error: err => this.toast.error(err.message || 'Failed to create load balancer'),
+    });
+  }
+
+  deleteEnvLb(id: string): void {
+    this.networkingService.deleteEnvironmentLoadBalancer(id).subscribe({
+      next: () => { this.loadEnvLoadBalancers(); this.toast.success('Deleted'); },
+      error: err => this.toast.error(err.message || 'Failed to delete'),
+    });
+  }
+
+  private loadEnvPeering(): void {
+    const e = this.env();
+    if (!e?.landingZoneId) return;
+    // Peering configs are at LZ level; filter those associated with this environment
+    this.networkingService.listPeeringConfigs(e.landingZoneId).subscribe({
+      next: configs => {
+        // Show all peering configs for the LZ (hub-to-spoke), filter to env-specific ones
+        const envPeers = configs.filter(p => !p.environmentId || p.environmentId === this.envId);
+        this.envPeeringConfigs.set(envPeers);
+      },
+      error: () => this.toast.error('Failed to load peering configs'),
     });
   }
 

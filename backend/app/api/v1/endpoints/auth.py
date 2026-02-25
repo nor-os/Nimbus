@@ -43,8 +43,26 @@ async def login(
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
         )
+
+        # Emit login success event
+        from app.services.events.event_bus import emit_event_async
+
+        emit_event_async("auth.login.succeeded", {
+            "user_id": result.get("user_id", ""), "email": body.email,
+            "ip": request.client.host if request.client else "",
+        }, result.get("current_tenant_id", ""), "auth_service", result.get("user_id"))
+
         return TokenResponse(**result)
     except AuthError as e:
+        # Emit login failure event
+        from app.services.events.event_bus import emit_event_async
+
+        emit_event_async("auth.login.failed", {
+            "email": body.email,
+            "ip": request.client.host if request.client else "",
+            "reason": e.code,
+        }, "", "auth_service")
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={

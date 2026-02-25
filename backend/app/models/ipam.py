@@ -52,7 +52,7 @@ class AddressSpace(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         UUID(as_uuid=True), ForeignKey("landing_zones.id"), nullable=False
     )
     region_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("landing_zone_regions.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("backend_regions.id"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -67,7 +67,7 @@ class AddressSpace(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
 
     # Relationships
     landing_zone: Mapped["LandingZone"] = relationship(lazy="joined")  # noqa: F821
-    region: Mapped["LandingZoneRegion | None"] = relationship(lazy="joined")  # noqa: F821
+    region: Mapped["BackendRegion | None"] = relationship(lazy="joined")  # noqa: F821
     allocations: Mapped[list["AddressAllocation"]] = relationship(
         back_populates="address_space", lazy="selectin"
     )

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.environment import EnvironmentStatus, EnvironmentTemplate, TenantEnvironment
 
@@ -103,10 +104,41 @@ class EnvironmentService:
                                  network_config: dict | None = None,
                                  iam_config: dict | None = None,
                                  security_config: dict | None = None,
-                                 monitoring_config: dict | None = None) -> TenantEnvironment:
+                                 monitoring_config: dict | None = None,
+                                 region_id: uuid.UUID | None = None,
+                                 dr_source_env_id: uuid.UUID | None = None,
+                                 dr_config: dict | None = None) -> TenantEnvironment:
         # Auto-resolve landing zone if not provided
         resolved_lz_id = await self._resolve_landing_zone_id(db, tenant_id, landing_zone_id)
         landing_zone_id = resolved_lz_id
+
+        # Validate region belongs to an enabled BackendRegion on the parent LZ's backend
+        if region_id:
+            from app.models.cloud_backend import BackendRegion
+            from app.models.landing_zone import LandingZone
+
+            lz_result = await db.execute(
+                select(LandingZone).where(LandingZone.id == landing_zone_id)
+            )
+            lz = lz_result.scalar_one_or_none()
+            if lz:
+                region_result = await db.execute(
+                    select(BackendRegion).where(
+                        BackendRegion.id == region_id,
+                        BackendRegion.backend_id == lz.backend_id,
+                        BackendRegion.is_enabled.is_(True),
+                    )
+                )
+                if not region_result.scalar_one_or_none():
+                    raise ValueError("Region does not belong to the landing zone's backend or is disabled")
+
+        # Validate DR source env
+        if dr_source_env_id:
+            source_env = await self.get_environment(db, dr_source_env_id)
+            if not source_env:
+                raise ValueError(f"DR source environment {dr_source_env_id} not found")
+            if source_env.dr_source_env_id:
+                raise ValueError("DR source environment is itself a DR environment")
 
         # Merge template defaults if template specified
         merged_tags = {}
@@ -128,6 +160,7 @@ class EnvironmentService:
             tags=merged_tags, policies=merged_policies, settings=settings,
             network_config=network_config, iam_config=iam_config,
             security_config=security_config, monitoring_config=monitoring_config,
+            region_id=region_id, dr_source_env_id=dr_source_env_id, dr_config=dr_config,
             created_by=created_by,
         )
         db.add(env)
@@ -136,8 +169,16 @@ class EnvironmentService:
         return env
 
     async def get_environment(self, db: AsyncSession, env_id: uuid.UUID) -> TenantEnvironment | None:
+        from app.models.cloud_backend import CloudBackend
+        from app.models.landing_zone import LandingZone
+
         result = await db.execute(
             select(TenantEnvironment)
+            .options(
+                selectinload(TenantEnvironment.landing_zone)
+                .selectinload(LandingZone.backend)
+                .selectinload(CloudBackend.provider),
+            )
             .where(TenantEnvironment.id == env_id, TenantEnvironment.deleted_at.is_(None))
         )
         return result.scalar_one_or_none()
@@ -147,9 +188,20 @@ class EnvironmentService:
                                 status: str | None = None,
                                 offset: int | None = None,
                                 limit: int | None = None) -> list[TenantEnvironment]:
-        stmt = select(TenantEnvironment).where(
-            TenantEnvironment.tenant_id == tenant_id,
-            TenantEnvironment.deleted_at.is_(None),
+        from app.models.cloud_backend import CloudBackend
+        from app.models.landing_zone import LandingZone
+
+        stmt = (
+            select(TenantEnvironment)
+            .options(
+                selectinload(TenantEnvironment.landing_zone)
+                .selectinload(LandingZone.backend)
+                .selectinload(CloudBackend.provider),
+            )
+            .where(
+                TenantEnvironment.tenant_id == tenant_id,
+                TenantEnvironment.deleted_at.is_(None),
+            )
         )
         if landing_zone_id:
             stmt = stmt.where(TenantEnvironment.landing_zone_id == landing_zone_id)
