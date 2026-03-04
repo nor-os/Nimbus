@@ -54,7 +54,7 @@ class EventBus:
 
         # 3. Persist to PostgreSQL (audit trail)
         event_log = EventLog(
-            tenant_id=tenant_id,
+            tenant_id=tenant_id or None,
             event_type_id=event_type.id if event_type else None,
             event_type_name=event_type_name,
             source=source,

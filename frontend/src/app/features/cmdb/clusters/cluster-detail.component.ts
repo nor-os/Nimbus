@@ -34,19 +34,28 @@ import {
           <div class="page-header">
             <div>
               <div class="breadcrumb">
-                <a routerLink="/architecture/blueprints" class="breadcrumb-link">Stack Blueprints</a>
+                <a routerLink="/infrastructure/stacks" class="breadcrumb-link">Stacks</a>
                 <span class="breadcrumb-sep">/</span>
                 <span>{{ cluster()!.name }}</span>
               </div>
-              <h1 class="page-title">{{ cluster()!.name }}</h1>
+              <h1 class="page-title">{{ cluster()!.displayName || cluster()!.name }}</h1>
               @if (cluster()!.description) {
                 <p class="page-subtitle">{{ cluster()!.description }}</p>
               }
+              <div class="title-meta">
+                @if (cluster()!.category) {
+                  <span class="badge badge-category">{{ cluster()!.category }}</span>
+                }
+                <span class="badge" [class]="cluster()!.isPublished ? 'badge-published' : 'badge-draft'">
+                  {{ cluster()!.isPublished ? 'Published' : 'Draft' }}
+                </span>
+                <span class="version-label">v{{ cluster()!.version }}</span>
+              </div>
             </div>
             <div class="header-actions">
               <a
                 *nimbusHasPermission="'cmdb:cluster:manage'"
-                [routerLink]="'/architecture/blueprints/' + cluster()!.id + '/edit'"
+                [routerLink]="'/infrastructure/stacks/' + cluster()!.id + '/edit'"
                 class="btn btn-outline"
               >Edit</a>
               <button
@@ -60,12 +69,16 @@ import {
           <!-- Blueprint Info -->
           <div class="info-row">
             <div class="info-card">
-              <div class="info-label">Type</div>
-              <div class="info-value">{{ cluster()!.clusterType }}</div>
+              <div class="info-label">Version</div>
+              <div class="info-value">v{{ cluster()!.version }}</div>
             </div>
             <div class="info-card">
               <div class="info-label">Slots</div>
               <div class="info-value">{{ cluster()!.slots.length }}</div>
+            </div>
+            <div class="info-card">
+              <div class="info-label">Components</div>
+              <div class="info-value">{{ cluster()!.blueprintComponents.length || 0 }}</div>
             </div>
             <div class="info-card">
               <div class="info-label">Parameters</div>
@@ -214,6 +227,12 @@ import {
     .breadcrumb-link:hover { text-decoration: underline; }
     .breadcrumb-sep { margin: 0 4px; }
     .header-actions { display: flex; gap: 8px; }
+    .title-meta { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+    .version-label { font-size: 0.8rem; color: #64748b; font-weight: 500; }
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+    .badge-category { background: #ede9fe; color: #7c3aed; }
+    .badge-published { background: #dcfce7; color: #16a34a; }
+    .badge-draft { background: #f1f5f9; color: #64748b; }
 
     .info-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
     .info-card {
@@ -389,7 +408,7 @@ export class ClusterDetailComponent implements OnInit {
     if (!this.cluster()) return;
     if (!confirm(`Delete blueprint "${this.cluster()!.name}"?`)) return;
     this.clusterService.deleteCluster(this.cluster()!.id).subscribe({
-      next: () => this.router.navigate(['/architecture/blueprints']),
+      next: () => this.router.navigate(['/infrastructure/stacks']),
     });
   }
 }

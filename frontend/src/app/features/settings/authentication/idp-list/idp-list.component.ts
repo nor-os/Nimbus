@@ -278,7 +278,7 @@ type ActiveTab = 'providers' | 'scim';
     </nimbus-layout>
   `,
   styles: [`
-    .auth-page { padding: 0; }
+    .auth-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.25rem;
@@ -316,7 +316,7 @@ type ActiveTab = 'providers' | 'scim';
     .search-input:focus { border-color: #3b82f6; outline: none; }
     .btn-primary {
       background: #3b82f6; color: #fff; padding: 0.5rem 1rem;
-      border: none; border-radius: 6px; text-decoration: none; font-size: 0.8125rem;
+      border: none; border-radius: 6px; text-decoration: none; font-size: 0.875rem;
       font-weight: 500; cursor: pointer; transition: background 0.15s;
     }
     .btn-primary:hover { background: #2563eb; }
@@ -326,7 +326,7 @@ type ActiveTab = 'providers' | 'scim';
       overflow-x: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
     }
     .table {
-      width: 100%; border-collapse: collapse; font-size: 0.8125rem;
+      width: 100%; border-collapse: collapse; font-size: 0.875rem;
     }
     .table th, .table td {
       padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #f1f5f9;

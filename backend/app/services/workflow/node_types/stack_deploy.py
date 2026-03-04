@@ -30,6 +30,11 @@ class StackDeployNodeExecutor(BaseNodeExecutor):
         topology_id = context.config.get("topology_id", "")
         preview_only = context.config.get("preview_only", False)
 
+        # Read HA config from stack context for replica count, health checks
+        stack_ctx = context.variables.get("stack_context", {})
+        ha_config = stack_ctx.get("ha_config", {})
+        dr_config = stack_ctx.get("dr_config", {})
+
         if not stack_id:
             return NodeOutput(error="stack_id is required")
 
@@ -40,15 +45,20 @@ class StackDeployNodeExecutor(BaseNodeExecutor):
                     "topology_id": topology_id,
                     "status": "MOCK_SUCCESS",
                     "preview_only": preview_only,
+                    "ha_config": ha_config,
+                    "dr_config": dr_config,
                     "outputs": {},
                 },
                 next_port="out",
             )
 
         # STUB: Phase 12 will replace this with real Pulumi stack operations
+        # HA config drives: replica_count, health_check_interval, failover_mode
+        # DR config drives: replication_mode, backup_frequency, rpo/rto targets
         logger.info(
-            "Stack deploy STUB: stack_id=%s, topology_id=%s, preview_only=%s",
+            "Stack deploy STUB: stack_id=%s, topology_id=%s, preview_only=%s, ha_keys=%s, dr_keys=%s",
             stack_id, topology_id, preview_only,
+            list(ha_config.keys()), list(dr_config.keys()),
         )
 
         return NodeOutput(
@@ -57,6 +67,8 @@ class StackDeployNodeExecutor(BaseNodeExecutor):
                 "topology_id": topology_id,
                 "status": "STUBBED_PENDING_PHASE_12",
                 "preview_only": preview_only,
+                "ha_config": ha_config,
+                "dr_config": dr_config,
                 "outputs": {},
                 "message": "Stack deployment is stubbed. Phase 12 (Pulumi Integration) will provide real provisioning.",
             },

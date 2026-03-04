@@ -165,7 +165,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
     </nimbus-layout>
   `,
   styles: [`
-    .process-list-page { padding: 0; }
+    .process-list-page { padding: 0; max-width: 1200px; }
 
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
@@ -326,7 +326,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
     /* ── Shared button styles ──────────────────────────────────────── */
 
     .btn {
-      font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+      font-family: inherit; font-size: 0.875rem; font-weight: 500;
       border-radius: 6px; cursor: pointer; transition: background 0.15s;
       padding: 0.5rem 1rem; border: none;
     }

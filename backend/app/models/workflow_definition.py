@@ -10,7 +10,7 @@ import uuid
 
 from sqlalchemy import Boolean, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.base import IDMixin, SoftDeleteMixin, TimestampMixin
@@ -26,6 +26,7 @@ class WorkflowType(str, enum.Enum):
     AUTOMATION = "AUTOMATION"
     SYSTEM = "SYSTEM"
     DEPLOYMENT = "DEPLOYMENT"
+    STACK = "STACK"
 
 
 class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
@@ -40,6 +41,8 @@ class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     graph: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    input_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    output_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[WorkflowDefinitionStatus] = mapped_column(
         Enum(
             WorkflowDefinitionStatus,
@@ -87,6 +90,15 @@ class WorkflowDefinition(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         ForeignKey("workflow_definitions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    component_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("components.id"),
+        nullable=True,
+        index=True,
+    )
+
+    # Relationships
+    component = relationship("Component", lazy="joined", foreign_keys=[component_id])  # noqa: F821
 
     __table_args__ = (
         UniqueConstraint(

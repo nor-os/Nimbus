@@ -134,7 +134,7 @@ type Direction = 'upstream' | 'downstream';
     </nimbus-layout>
   `,
   styles: [`
-    .impact-page { padding: 0; }
+    .impact-page { padding: 0; max-width: 1200px; }
 
     .back-btn {
       background: none; border: none; color: #3b82f6; cursor: pointer;

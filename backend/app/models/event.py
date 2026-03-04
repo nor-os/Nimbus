@@ -48,6 +48,7 @@ class EventCategory(str, enum.Enum):
     CMDB = "CMDB"
     AUTOMATION = "AUTOMATION"
     WORKFLOW = "WORKFLOW"
+    STACK = "STACK"
     CUSTOM = "CUSTOM"
 
 
@@ -116,11 +117,11 @@ class EventLog(Base, IDMixin):
 
     __tablename__ = "event_log"
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True
     )
-    event_type_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("event_types.id"), nullable=False
+    event_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("event_types.id"), nullable=True
     )
     event_type_name: Mapped[str] = mapped_column(String(255), nullable=False)
     source: Mapped[str] = mapped_column(String(255), nullable=False)

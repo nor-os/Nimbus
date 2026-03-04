@@ -29,7 +29,7 @@ import { ToastService } from '@shared/services/toast.service';
           <div class="page-header">
             <div>
               <div class="breadcrumb">
-                <a routerLink="/architecture" class="breadcrumb-link">Architecture Topologies</a>
+                <a routerLink="/infrastructure/topologies" class="breadcrumb-link">Topologies</a>
                 <span class="breadcrumb-sep">/</span>
                 <span>{{ topology()!.name }}</span>
               </div>
@@ -151,7 +151,7 @@ import { ToastService } from '@shared/services/toast.service';
                           </td>
                           <td>{{ v.updatedAt | date:'short' }}</td>
                           <td>
-                            <a [routerLink]="['/architecture', v.id]" class="action-btn">View</a>
+                            <a [routerLink]="['/infrastructure/topologies', v.id]" class="action-btn">View</a>
                           </td>
                         </tr>
                       }
@@ -449,7 +449,7 @@ export class TopologyDetailComponent implements OnInit {
     this.architectureService.cloneTopology(t.id).subscribe({
       next: cloned => {
         this.toast.success('Topology cloned');
-        this.router.navigate(['/architecture', cloned.id, 'edit']);
+        this.router.navigate(['/infrastructure/topologies', cloned.id, 'edit']);
       },
       error: err => this.toast.error(err.message || 'Clone failed'),
     });
@@ -472,7 +472,7 @@ export class TopologyDetailComponent implements OnInit {
     if (!t) return;
     this.architectureService.cloneTopology(t.id).subscribe({
       next: draft => {
-        this.router.navigate(['/architecture', draft.id, 'edit']);
+        this.router.navigate(['/infrastructure/topologies', draft.id, 'edit']);
       },
       error: err => this.toast.error(err.message || 'Failed to create draft'),
     });

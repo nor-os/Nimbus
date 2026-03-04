@@ -17,9 +17,6 @@ export interface Component {
   description: string | null;
   language: ComponentLanguage;
   code: string;
-  inputSchema: Record<string, unknown> | null;
-  outputSchema: Record<string, unknown> | null;
-  resolverBindings: Record<string, unknown> | null;
   version: number;
   isPublished: boolean;
   isSystem: boolean;
@@ -39,9 +36,6 @@ export interface ComponentVersion {
   componentId: string;
   version: number;
   code: string;
-  inputSchema: Record<string, unknown> | null;
-  outputSchema: Record<string, unknown> | null;
-  resolverBindings: Record<string, unknown> | null;
   changelog: string | null;
   publishedAt: string;
   publishedBy: string;
@@ -122,9 +116,6 @@ export interface ComponentCreateInput {
   language: ComponentLanguage;
   description?: string;
   code?: string;
-  inputSchema?: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
-  resolverBindings?: Record<string, unknown>;
 }
 
 export type EstimatedDowntime = 'NONE' | 'BRIEF' | 'EXTENDED';
@@ -137,8 +128,6 @@ export interface ComponentOperation {
   name: string;
   displayName: string;
   description: string | null;
-  inputSchema: Record<string, unknown> | null;
-  outputSchema: Record<string, unknown> | null;
   workflowDefinitionId: string;
   workflowDefinitionName: string | null;
   isDestructive: boolean;
@@ -156,8 +145,6 @@ export interface ComponentOperationCreateInput {
   displayName: string;
   workflowDefinitionId: string;
   description?: string;
-  inputSchema?: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
   isDestructive?: boolean;
   requiresApproval?: boolean;
   estimatedDowntime?: EstimatedDowntime;
@@ -168,8 +155,6 @@ export interface ComponentOperationUpdateInput {
   name?: string;
   displayName?: string;
   description?: string;
-  inputSchema?: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
   workflowDefinitionId?: string;
   isDestructive?: boolean;
   requiresApproval?: boolean;
@@ -182,8 +167,5 @@ export interface ComponentUpdateInput {
   displayName?: string;
   description?: string;
   code?: string;
-  inputSchema?: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
-  resolverBindings?: Record<string, unknown>;
   language?: ComponentLanguage;
 }

@@ -343,7 +343,7 @@ const LIFECYCLE_COLORS: Record<string, { bg: string; fg: string }> = {
     </nimbus-layout>
   `,
   styles: [`
-    .ci-detail-page { padding: 0; }
+    .ci-detail-page { padding: 0; max-width: 1200px; }
     .loading, .empty-state {
       padding: 3rem; text-align: center; color: #64748b;
     }
@@ -375,7 +375,7 @@ const LIFECYCLE_COLORS: Record<string, { bg: string; fg: string }> = {
     .badge-delete { background: #fef2f2; color: #dc2626; }
 
     .btn {
-      font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+      font-family: inherit; font-size: 0.875rem; font-weight: 500;
       border-radius: 6px; cursor: pointer; padding: 0.5rem 1rem;
       transition: background 0.15s; text-decoration: none; display: inline-block;
     }

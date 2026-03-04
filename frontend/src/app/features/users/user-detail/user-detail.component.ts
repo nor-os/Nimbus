@@ -224,7 +224,7 @@ import { TenantContextService } from '@core/services/tenant-context.service';
     </nimbus-layout>
   `,
   styles: [`
-    .user-detail-page { padding: 0; }
+    .user-detail-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: flex-start;
       margin-bottom: 1.5rem;
@@ -265,7 +265,7 @@ import { TenantContextService } from '@core/services/tenant-context.service';
     .toggle-input:checked + .toggle-track .toggle-thumb { transform: translateX(16px); }
     .toggle-label { font-size: 0.8125rem; color: #374151; font-weight: 400; }
     .save-row { margin-top: 0.75rem; }
-    .btn { font-family: inherit; font-size: 0.8125rem; font-weight: 500; border-radius: 6px; cursor: pointer; padding: 0.5rem 1rem; transition: background 0.15s; text-decoration: none; }
+    .btn { font-family: inherit; font-size: 0.875rem; font-weight: 500; border-radius: 6px; cursor: pointer; padding: 0.5rem 1rem; transition: background 0.15s; text-decoration: none; }
     .btn-primary { background: #3b82f6; color: #fff; border: none; }
     .btn-primary:hover { background: #2563eb; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }

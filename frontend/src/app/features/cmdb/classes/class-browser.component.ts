@@ -319,7 +319,7 @@ interface ClassTreeNode {
     </nimbus-layout>
   `,
   styles: [`
-    .class-browser-page { padding: 0; }
+    .class-browser-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;

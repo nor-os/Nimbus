@@ -48,12 +48,6 @@ class MutationTypeGQL(Enum):
 
 
 @strawberry.enum
-class ActivityScopeGQL(Enum):
-    COMPONENT = "COMPONENT"
-    WORKFLOW = "WORKFLOW"
-
-
-@strawberry.enum
 class ActivityExecutionStatusGQL(Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
@@ -72,16 +66,18 @@ class AutomatedActivityType:
     name: str
     slug: str
     description: str | None
-    category: str | None
     semantic_activity_type_id: uuid.UUID | None
     semantic_type_id: uuid.UUID | None
     provider_id: uuid.UUID | None
     operation_kind: OperationKindGQL
     implementation_type: ImplementationTypeGQL
-    scope: ActivityScopeGQL
+    is_component_activity: bool
+    component_id: uuid.UUID | None
+    template_activity_id: uuid.UUID | None
+    is_mandatory: bool
+    forked_at_version: int | None
     idempotent: bool
     timeout_seconds: int
-    is_system: bool
     created_by: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
@@ -102,6 +98,7 @@ class AutomatedActivityVersionType:
     published_at: datetime | None
     published_by: uuid.UUID | None
     runtime_config: strawberry.scalars.JSON | None
+    resolver_bindings: strawberry.scalars.JSON | None
     created_at: datetime
     updated_at: datetime
 
@@ -149,13 +146,12 @@ class AutomatedActivityCreateInput:
     name: str
     slug: str | None = None
     description: str | None = None
-    category: str | None = None
     semantic_activity_type_id: uuid.UUID | None = None
     semantic_type_id: uuid.UUID | None = None
     provider_id: uuid.UUID | None = None
     operation_kind: str = "UPDATE"
     implementation_type: str = "PYTHON_SCRIPT"
-    scope: str = "WORKFLOW"
+    is_component_activity: bool = False
     idempotent: bool = False
     timeout_seconds: int = 300
 
@@ -165,13 +161,11 @@ class AutomatedActivityUpdateInput:
     name: str | None = None
     slug: str | None = None
     description: str | None = None
-    category: str | None = None
     semantic_activity_type_id: uuid.UUID | None = None
     semantic_type_id: uuid.UUID | None = None
     provider_id: uuid.UUID | None = None
     operation_kind: str | None = None
     implementation_type: str | None = None
-    scope: str | None = None
     idempotent: bool | None = None
     timeout_seconds: int | None = None
 
@@ -185,6 +179,7 @@ class ActivityVersionCreateInput:
     rollback_mutations: strawberry.scalars.JSON | None = None
     changelog: str | None = None
     runtime_config: strawberry.scalars.JSON | None = None
+    resolver_bindings: strawberry.scalars.JSON | None = None
 
 
 @strawberry.input
@@ -207,16 +202,18 @@ def activity_to_type(a) -> AutomatedActivityType:
         name=a.name,
         slug=a.slug,
         description=a.description,
-        category=a.category,
         semantic_activity_type_id=a.semantic_activity_type_id,
         semantic_type_id=a.semantic_type_id,
         provider_id=a.provider_id,
         operation_kind=OperationKindGQL(a.operation_kind.value),
         implementation_type=ImplementationTypeGQL(a.implementation_type.value),
-        scope=ActivityScopeGQL(a.scope.value),
+        is_component_activity=a.is_component_activity,
+        component_id=a.component_id,
+        template_activity_id=a.template_activity_id,
+        is_mandatory=a.is_mandatory,
+        forked_at_version=a.forked_at_version,
         idempotent=a.idempotent,
         timeout_seconds=a.timeout_seconds,
-        is_system=a.is_system,
         created_by=a.created_by,
         created_at=a.created_at,
         updated_at=a.updated_at,
@@ -232,16 +229,18 @@ def activity_summary_to_type(a) -> AutomatedActivityType:
         name=a.name,
         slug=a.slug,
         description=a.description,
-        category=a.category,
         semantic_activity_type_id=a.semantic_activity_type_id,
         semantic_type_id=a.semantic_type_id,
         provider_id=a.provider_id,
         operation_kind=OperationKindGQL(a.operation_kind.value),
         implementation_type=ImplementationTypeGQL(a.implementation_type.value),
-        scope=ActivityScopeGQL(a.scope.value),
+        is_component_activity=a.is_component_activity,
+        component_id=a.component_id,
+        template_activity_id=a.template_activity_id,
+        is_mandatory=a.is_mandatory,
+        forked_at_version=a.forked_at_version,
         idempotent=a.idempotent,
         timeout_seconds=a.timeout_seconds,
-        is_system=a.is_system,
         created_by=a.created_by,
         created_at=a.created_at,
         updated_at=a.updated_at,
@@ -264,6 +263,7 @@ def version_to_type(v) -> AutomatedActivityVersionType:
         published_at=v.published_at,
         published_by=v.published_by,
         runtime_config=v.runtime_config,
+        resolver_bindings=v.resolver_bindings,
         created_at=v.created_at,
         updated_at=v.updated_at,
     )

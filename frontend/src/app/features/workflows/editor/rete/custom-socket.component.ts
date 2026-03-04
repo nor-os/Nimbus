@@ -45,6 +45,11 @@ export class CustomSocketComponent implements OnChanges {
 
   ngOnChanges(): void {
     this.cdr.detectChanges();
-    requestAnimationFrame(() => this.rendered());
+    console.log('[socket] ngOnChanges, rendered=', typeof this.rendered, 'data=', this.data?.side, this.data?.key);
+    if (typeof this.rendered === 'function') {
+      requestAnimationFrame(() => this.rendered());
+    } else {
+      console.warn('[socket] rendered is NOT a function!', this.rendered);
+    }
   }
 }

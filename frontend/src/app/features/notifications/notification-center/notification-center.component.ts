@@ -111,7 +111,7 @@ const CATEGORIES: NotificationCategory[] = [
     </nimbus-layout>
   `,
   styles: [`
-    .page { max-width: 56rem; }
+    .page { max-width: 1200px; padding: 0; }
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
     .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
     .filters {

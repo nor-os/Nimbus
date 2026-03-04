@@ -41,8 +41,12 @@ def _definition_to_type(d) -> WorkflowDefinitionType:
         workflow_type=WorkflowTypeGQL(d.workflow_type.value),
         source_topology_id=d.source_topology_id,
         is_system=d.is_system,
+        is_template=d.is_template,
+        template_source_id=d.template_source_id,
         applicable_semantic_type_id=d.applicable_semantic_type_id,
         applicable_provider_id=d.applicable_provider_id,
+        input_schema=d.input_schema,
+        output_schema=d.output_schema,
         created_at=d.created_at,
         updated_at=d.updated_at,
     )
@@ -104,6 +108,7 @@ class WorkflowQuery:
         tenant_id: uuid.UUID,
         status: str | None = None,
         workflow_type: str | None = None,
+        is_template: bool | None = None,
         offset: int = 0,
         limit: int = 50,
         applicable_semantic_type_id: uuid.UUID | None = None,
@@ -127,7 +132,29 @@ class WorkflowQuery:
             applicable_semantic_type_id=st_id,
             applicable_provider_id=p_id,
         )
+        # Filter by is_template if specified
+        if is_template is True:
+            definitions = [d for d in definitions if d.is_template]
+        elif is_template is False:
+            definitions = [d for d in definitions if not d.is_template]
         return [_definition_to_type(d) for d in definitions]
+
+    @strawberry.field
+    async def workflow_templates(
+        self,
+        info: Info,
+        tenant_id: uuid.UUID,
+        workflow_type: str | None = None,
+    ) -> list[WorkflowDefinitionType]:
+        """List system workflow templates."""
+        await check_graphql_permission(info, "workflow:definition:read", str(tenant_id))
+
+        from app.services.workflow.definition_service import WorkflowDefinitionService
+
+        db = await _get_session(info)
+        svc = WorkflowDefinitionService(db)
+        templates = await svc.list_templates(workflow_type)
+        return [_definition_to_type(d) for d in templates]
 
     @strawberry.field
     async def deployment_workflows_for_topology(

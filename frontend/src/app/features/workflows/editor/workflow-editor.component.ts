@@ -45,7 +45,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
 
       <!-- Toolbar -->
       <div class="editor-toolbar">
-        <a routerLink="/workflows/definitions" class="back-link">&larr; Back</a>
+        <a [routerLink]="backRoute" class="back-link">&larr; Back</a>
         <span class="toolbar-title">{{ definition()?.name || 'New Workflow' }}</span>
         <div class="toolbar-actions">
           <button class="btn" (click)="save()" [disabled]="saving()">
@@ -74,6 +74,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
             [graph]="definition()?.graph ?? null"
             [nodeTypes]="nodeTypes()"
             (nodeSelected)="onNodeSelected($event)"
+            (editActivity)="onEditActivity($event)"
           />
           <nimbus-validation-overlay [validationResult]="validationResult()" />
         </div>
@@ -85,9 +86,12 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
           [graphContext]="graphContext()"
           [workflowProps]="workflowProps()"
           (configChange)="onConfigChange($event)"
+          (editActivity)="onEditActivity($event)"
           (workflowNameChange)="onNameChange($event)"
           (workflowDescriptionChange)="onDescriptionChange($event)"
           (timeoutChange)="onTimeoutChange($event)"
+          (inputSchemaChange)="onInputSchemaChange($event)"
+          (outputSchemaChange)="onOutputSchemaChange($event)"
         />
       </div>
     </div>
@@ -138,7 +142,16 @@ export class WorkflowEditorComponent implements OnInit {
   saving = signal(false);
   selectedNode = signal<{ id: string; type: string; config: Record<string, unknown> } | null>(null);
 
-  workflowProps = signal<{ name: string; description: string; timeoutSeconds: number } | null>(null);
+  /** Back link destination — returnTo query param > provider templates > workflow definitions */
+  backRoute = this.route.snapshot.queryParamMap.get('returnTo')
+    || (this.route.snapshot.data['mode'] === 'provider' ? '/provider/templates' : '/workflows/definitions');
+
+  workflowProps = signal<{
+    name: string; description: string; timeoutSeconds: number;
+    inputSchema: Record<string, unknown> | null;
+    outputSchema: Record<string, unknown> | null;
+    version?: number;
+  } | null>(null);
   private _graphVersion = signal(0);
 
   graphContext = computed(() => {
@@ -152,6 +165,8 @@ export class WorkflowEditorComponent implements OnInit {
   private workflowName = '';
   private workflowDescription = '';
   private timeoutSeconds = 3600;
+  private inputSchema: Record<string, unknown> | null = null;
+  private outputSchema: Record<string, unknown> | null = null;
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -170,10 +185,15 @@ export class WorkflowEditorComponent implements OnInit {
         this.workflowName = d.name;
         this.workflowDescription = d.description || '';
         this.timeoutSeconds = d.timeoutSeconds;
+        this.inputSchema = d.inputSchema ?? null;
+        this.outputSchema = d.outputSchema ?? null;
         this.workflowProps.set({
           name: d.name,
           description: d.description || '',
           timeoutSeconds: d.timeoutSeconds,
+          inputSchema: d.inputSchema ?? null,
+          outputSchema: d.outputSchema ?? null,
+          version: d.version,
         });
       }
     });
@@ -194,6 +214,10 @@ export class WorkflowEditorComponent implements OnInit {
     }
   }
 
+  onEditActivity(activityId: string): void {
+    this.router.navigate(['/provider/activities', activityId]);
+  }
+
   onConfigChange(config: Record<string, unknown>): void {
     const node = this.selectedNode();
     if (node && this.canvasRef) {
@@ -204,17 +228,21 @@ export class WorkflowEditorComponent implements OnInit {
   onNameChange(name: string): void { this.workflowName = name; }
   onDescriptionChange(desc: string): void { this.workflowDescription = desc; }
   onTimeoutChange(timeout: number): void { this.timeoutSeconds = timeout; }
+  onInputSchemaChange(schema: Record<string, unknown> | null): void { this.inputSchema = schema; }
+  onOutputSchemaChange(schema: Record<string, unknown> | null): void { this.outputSchema = schema; }
 
   save(): void {
     const def = this.definition();
     const graph = this.canvasRef?.getGraph();
     this.saving.set(true);
 
-    const input = {
+    const input: any = {
       name: this.workflowName,
       description: this.workflowDescription || undefined,
       graph: graph as any,
       timeoutSeconds: this.timeoutSeconds,
+      inputSchema: this.inputSchema,
+      outputSchema: this.outputSchema,
     };
 
     if (def) {

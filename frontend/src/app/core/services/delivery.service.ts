@@ -108,7 +108,7 @@ const ACTIVITY_TEMPLATE_FIELDS = `
   id tenantId name description version
   automatedActivityId
   automatedActivity {
-    id name slug category operationKind implementationType isSystem
+    id name slug operationKind implementationType isComponentActivity
   }
   definitions { ${ACTIVITY_DEFINITION_FIELDS} }
   createdAt updatedAt

@@ -11,8 +11,6 @@ export type ImplementationType = 'PYTHON_SCRIPT' | 'HTTP_WEBHOOK' | 'PULUMI_OPER
 
 export type MutationType = 'SET' | 'SET_FROM_INPUT' | 'INCREMENT' | 'DECREMENT' | 'APPEND' | 'REMOVE';
 
-export type ActivityScope = 'COMPONENT' | 'WORKFLOW';
-
 export type ActivityExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
 
 export interface AutomatedActivity {
@@ -21,16 +19,18 @@ export interface AutomatedActivity {
   name: string;
   slug: string;
   description: string | null;
-  category: string | null;
   semanticActivityTypeId: string | null;
   semanticTypeId: string | null;
   providerId: string | null;
   operationKind: OperationKind;
   implementationType: ImplementationType;
-  scope: ActivityScope;
+  isComponentActivity: boolean;
+  componentId: string | null;
+  templateActivityId: string | null;
+  isMandatory: boolean;
+  forkedAtVersion: number | null;
   idempotent: boolean;
   timeoutSeconds: number;
-  isSystem: boolean;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -50,6 +50,7 @@ export interface AutomatedActivityVersion {
   publishedAt: string | null;
   publishedBy: string | null;
   runtimeConfig: Record<string, unknown> | null;
+  resolverBindings: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,13 +92,13 @@ export interface AutomatedActivityCreateInput {
   name: string;
   slug?: string | null;
   description?: string | null;
-  category?: string | null;
   semanticActivityTypeId?: string | null;
   semanticTypeId?: string | null;
   providerId?: string | null;
   operationKind?: string;
   implementationType?: string;
-  scope?: ActivityScope;
+  isComponentActivity?: boolean;
+  componentId?: string | null;
   idempotent?: boolean;
   timeoutSeconds?: number;
 }
@@ -106,13 +107,11 @@ export interface AutomatedActivityUpdateInput {
   name?: string;
   slug?: string;
   description?: string | null;
-  category?: string | null;
   semanticActivityTypeId?: string | null;
   semanticTypeId?: string | null;
   providerId?: string | null;
   operationKind?: string;
   implementationType?: string;
-  scope?: ActivityScope;
   idempotent?: boolean;
   timeoutSeconds?: number;
 }
@@ -125,4 +124,5 @@ export interface ActivityVersionCreateInput {
   rollbackMutations?: Record<string, unknown> | null;
   changelog?: string | null;
   runtimeConfig?: Record<string, unknown> | null;
+  resolverBindings?: Record<string, unknown> | null;
 }

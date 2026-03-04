@@ -149,6 +149,8 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
       display: flex;
       flex-direction: column;
       height: 100%;
+      max-width: 1200px;
+      padding: 0;
     }
 
     .tree-header {

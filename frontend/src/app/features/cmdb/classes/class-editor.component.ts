@@ -358,7 +358,7 @@ const DATA_TYPES = [
     </nimbus-layout>
   `,
   styles: [`
-    .class-editor-page { padding: 0; }
+    .class-editor-page { padding: 0; max-width: 1200px; }
 
     .loading, .empty-state {
       padding: 3rem; text-align: center; color: #64748b; font-size: 0.875rem;

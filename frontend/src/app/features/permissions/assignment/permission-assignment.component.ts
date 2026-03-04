@@ -121,7 +121,7 @@ type FilterMode = 'all' | 'inherited' | 'direct' | 'denied';
     </nimbus-layout>
   `,
   styles: [`
-    .assignment-page { padding: 0; }
+    .assignment-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;

@@ -12,6 +12,7 @@ import { ClassicPreset } from 'rete';
 const CATEGORY_COLORS: Record<string, string> = {
   'Flow Control': '#3b82f6',
   'Action': '#f59e0b',
+  'Activity': '#059669',
   'Integration': '#8b5cf6',
   'Data': '#10b981',
   'Utility': '#6b7280',
@@ -88,7 +89,7 @@ const CATEGORY_COLORS: Record<string, string> = {
       font-size: 0.8125rem;
       box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
       transition: border-color 0.15s, box-shadow 0.15s;
-      overflow: hidden;
+      overflow: visible;
     }
     :host(.selected) .node-card {
       border-color: #3b82f6;
@@ -101,6 +102,7 @@ const CATEGORY_COLORS: Record<string, string> = {
       padding: 8px 12px;
       border-bottom: 1px solid #f1f5f9;
       background: #f8fafc;
+      border-radius: 7px 7px 0 0;
     }
     .node-icon {
       font-size: 1rem;
@@ -146,10 +148,18 @@ const CATEGORY_COLORS: Record<string, string> = {
     .port-label {
       color: #64748b;
       font-size: 0.6875rem;
+      vertical-align: middle;
+      display: inline-block;
+      line-height: 24px;
     }
     .port-socket {
-      display: flex;
-      align-items: center;
+      display: inline-block;
+    }
+    .input-port .port-socket {
+      margin-left: -19px;
+    }
+    .output-port .port-socket {
+      margin-right: -19px;
     }
     .controls {
       padding: 4px 12px;

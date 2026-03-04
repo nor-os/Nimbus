@@ -205,7 +205,7 @@ interface CellEdit {
     </nimbus-layout>
   `,
   styles: [`
-    .matrix-page { padding: 0; }
+    .matrix-page { padding: 0; max-width: 1200px; }
 
     .page-header {
       display: flex; justify-content: space-between; align-items: center;

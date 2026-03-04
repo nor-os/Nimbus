@@ -54,6 +54,17 @@ export class ReteEditorService {
     this.area.use(connection);
     this.area.use(angularPlugin);
 
+    // Debug: log connection events
+    this.editor.addPipe(context => {
+      if ('type' in context) {
+        const t = (context as any).type;
+        if (t === 'connectioncreated' || t === 'connectionremoved') {
+          console.log(`[rete-debug] ${t}`, (context as any).data);
+        }
+      }
+      return context;
+    });
+
     // Minimap
     const minimap = new MinimapPlugin<any>();
     this.area.use(minimap);
@@ -90,6 +101,11 @@ export class ReteEditorService {
     const nodeMap = new Map<string, ClassicPreset.Node>();
 
     for (const wfNode of graph.nodes) {
+      // Normalize legacy field: data → config
+      if ((wfNode as any).data && !wfNode.config) {
+        wfNode.config = (wfNode as any).data;
+        delete (wfNode as any).data;
+      }
       const node = this.createReteNode(wfNode);
       if (node) {
         await this.editor.addNode(node);
@@ -106,6 +122,16 @@ export class ReteEditorService {
     });
 
     for (const conn of graph.connections) {
+      // Normalize legacy fields: sourceOutput → sourcePort, targetInput → targetPort
+      if ((conn as any).sourceOutput && !conn.sourcePort) {
+        conn.sourcePort = (conn as any).sourceOutput;
+        delete (conn as any).sourceOutput;
+      }
+      if ((conn as any).targetInput && !conn.targetPort) {
+        conn.targetPort = (conn as any).targetInput;
+        delete (conn as any).targetInput;
+      }
+
       const sourceNode = nodeMap.get(conn.source);
       const targetNode = nodeMap.get(conn.target);
       if (!sourceNode) {
@@ -117,8 +143,27 @@ export class ReteEditorService {
         continue;
       }
 
-      const srcPort = conn.sourcePort || 'out';
-      const tgtPort = conn.targetPort || 'in';
+      let srcPort = conn.sourcePort || 'out';
+      let tgtPort = conn.targetPort || 'in';
+
+      // Fallback: if exact port not found, try first available port of same direction
+      if (!sourceNode.outputs[srcPort]) {
+        const available = Object.keys(sourceNode.outputs || {});
+        const fallback = available.find(k => k !== 'result') || available[0];
+        if (fallback) {
+          console.warn(`[loadGraph] Port fallback: source "${srcPort}" → "${fallback}" on "${conn.source}"`);
+          srcPort = fallback;
+        }
+      }
+      if (!targetNode.inputs[tgtPort]) {
+        const available = Object.keys(targetNode.inputs || {});
+        const fallback = available[0];
+        if (fallback) {
+          console.warn(`[loadGraph] Port fallback: target "${tgtPort}" → "${fallback}" on "${conn.target}"`);
+          tgtPort = fallback;
+        }
+      }
+
       const sourceOutput = sourceNode.outputs[srcPort];
       const targetInput = targetNode.inputs[tgtPort];
 
@@ -131,9 +176,35 @@ export class ReteEditorService {
         continue;
       }
 
+      console.log(`[loadGraph] Adding connection: ${conn.source}:${srcPort} → ${conn.target}:${tgtPort}`);
       const connection = new ClassicPreset.Connection(sourceNode, srcPort, targetNode, tgtPort);
-      await this.editor.addConnection(connection);
+      try {
+        await this.editor.addConnection(connection);
+        console.log(`[loadGraph] Connection added OK: ${connection.id}`);
+      } catch (e) {
+        console.error(`[loadGraph] Connection add FAILED:`, e);
+      }
     }
+
+    console.log(`[loadGraph] Loaded ${this.editor.getNodes().length} nodes, ${this.editor.getConnections().length} connections`);
+    console.log(`[loadGraph] Connection views: ${this.area.connectionViews.size}`);
+    console.log(`[loadGraph] Node views: ${this.area.nodeViews.size}`);
+
+    // Debug: check SVG paths after render
+    setTimeout(() => {
+      const container = this.area!.container;
+      const paths = container.querySelectorAll('svg path');
+      console.log(`[loadGraph] SVG paths found: ${paths.length}`);
+      paths.forEach((p, i) => {
+        console.log(`[loadGraph] path[${i}] d="${p.getAttribute('d')}" visible=${getComputedStyle(p).display}`);
+      });
+      // Check if connection wrapper got position data
+      this.area!.connectionViews.forEach((view, id) => {
+        const svg = view.element.querySelector('svg path');
+        const d = svg?.getAttribute('d');
+        console.log(`[loadGraph] conn ${id}: path d="${d || 'EMPTY'}"`);
+      });
+    }, 2000);
 
     AreaExtensions.zoomAt(this.area, this.editor.getNodes());
   }

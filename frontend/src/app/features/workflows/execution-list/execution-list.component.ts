@@ -72,7 +72,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     </nimbus-layout>
   `,
   styles: [`
-    .page-container { padding: 0; }
+    .page-container { padding: 0; max-width: 1200px; }
     .page-header { margin-bottom: 1.5rem; }
     .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
     .tabs { display: flex; gap: 4px; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
@@ -83,7 +83,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     .tab:hover { color: #1e293b; }
     .tab.active { background: #eff6ff; color: #3b82f6; font-weight: 500; }
     .table-container { overflow-x: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
-    .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
     .data-table th {
       padding: 0.75rem 1rem; text-align: left; font-size: 0.75rem;
       color: #64748b; border-bottom: 1px solid #f1f5f9; font-weight: 600;

@@ -1,8 +1,8 @@
 /**
- * Overview: Activity list — browsable catalog of automated activities with scope-aware tabs.
+ * Overview: Activity list — unified catalog of automated activities with operation kind and component filtering.
  * Architecture: Feature component for activity catalog (Section 11.5)
  * Dependencies: @angular/core, @angular/router, AutomatedActivityService
- * Concepts: Activity catalog, scope filtering (COMPONENT vs WORKFLOW), search/filter, permission-gated actions
+ * Concepts: Activity catalog, template vs component activity, search/filter, permission-gated actions
  */
 import {
   Component,
@@ -14,9 +14,9 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { AutomatedActivityService } from '@core/services/automated-activity.service';
-import { AutomatedActivity, OperationKind, ImplementationType, ActivityScope } from '@shared/models/automated-activity.model';
+import { AutomatedActivity } from '@shared/models/automated-activity.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { HasPermissionDirective } from '@shared/directives/has-permission.directive';
 
@@ -30,47 +30,13 @@ import { HasPermissionDirective } from '@shared/directives/has-permission.direct
       <div class="page-container">
         <div class="page-header">
           <div>
-            <h1>{{ pageTitle() }}</h1>
-            <p class="page-subtitle">{{ pageSubtitle() }}</p>
+            <h1>Activities</h1>
+            <p class="page-subtitle">All activities — templates and component-bound automation</p>
           </div>
           <div class="header-actions" *nimbusHasPermission="'automation:activity:create'">
             <button class="btn btn-primary" (click)="createActivity()">+ New Activity</button>
           </div>
         </div>
-
-        <!-- Scope tabs -->
-        @if (isComponentMode()) {
-          <div class="scope-tabs">
-            <button class="scope-tab" [class.active]="subTab() === 'day2'" (click)="subTab.set('day2'); loadActivities()">
-              Day-2 Operations
-            </button>
-            <button class="scope-tab" [class.active]="subTab() === 'deployment'" (click)="subTab.set('deployment'); loadActivities()">
-              Deployment
-            </button>
-            <button class="scope-tab" [class.active]="subTab() === 'all'" (click)="subTab.set('all'); loadActivities()">
-              All
-            </button>
-          </div>
-        }
-        @if (!isComponentMode()) {
-          <div class="scope-tabs">
-            <button class="scope-tab" [class.active]="subTab() === 'all'" (click)="subTab.set('all'); loadActivities()">
-              All
-            </button>
-            <button class="scope-tab" [class.active]="subTab() === 'component'" (click)="subTab.set('component'); loadActivities()">
-              Component
-            </button>
-            <button class="scope-tab" [class.active]="subTab() === 'workflow'" (click)="subTab.set('workflow'); loadActivities()">
-              Workflow
-            </button>
-            <button class="scope-tab" [class.active]="subTab() === 'builtin'" (click)="subTab.set('builtin'); loadActivities()">
-              Builtin
-            </button>
-            <button class="scope-tab" [class.active]="subTab() === 'custom'" (click)="subTab.set('custom'); loadActivities()">
-              Custom
-            </button>
-          </div>
-        }
 
         <!-- Filters -->
         <div class="filter-bar">
@@ -82,18 +48,6 @@ import { HasPermissionDirective } from '@shared/directives/has-permission.direct
               (ngModelChange)="search.set($event); loadActivities()"
             />
           </div>
-          <select [ngModel]="categoryFilter()" (ngModelChange)="categoryFilter.set($event); loadActivities()">
-            <option value="">All Categories</option>
-            <option value="compute">Compute</option>
-            <option value="storage">Storage</option>
-            <option value="network">Network</option>
-            <option value="security">Security</option>
-            <option value="backup">Backup</option>
-            <option value="monitoring">Monitoring</option>
-            <option value="notification">Notification</option>
-            <option value="integration">Integration</option>
-            <option value="observability">Observability</option>
-          </select>
           <select [ngModel]="operationKindFilter()" (ngModelChange)="operationKindFilter.set($event); loadActivities()">
             <option value="">All Operations</option>
             <option value="CREATE">Create</option>
@@ -105,6 +59,11 @@ import { HasPermissionDirective } from '@shared/directives/has-permission.direct
             <option value="BACKUP">Backup</option>
             <option value="RESTORE">Restore</option>
           </select>
+          <select [ngModel]="componentFilter()" (ngModelChange)="componentFilter.set($event); loadActivities()">
+            <option value="">All Activities</option>
+            <option value="component">Component Activities</option>
+            <option value="template">Template Activities</option>
+          </select>
         </div>
 
         <!-- Table -->
@@ -115,13 +74,7 @@ import { HasPermissionDirective } from '@shared/directives/has-permission.direct
         @if (!loading() && filteredActivities().length === 0) {
           <div class="empty-state">
             <p>No activities found.</p>
-            <p class="empty-hint">
-              @if (isComponentMode()) {
-                Component activities are infrastructure operations bound to deployed resources.
-              } @else {
-                Create workflow activities for general-purpose automation building blocks.
-              }
-            </p>
+            <p class="empty-hint">Activities are automation building blocks — either templates or component-bound.</p>
           </div>
         }
 
@@ -131,38 +84,46 @@ import { HasPermissionDirective } from '@shared/directives/has-permission.direct
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Category</th>
                   <th>Operation</th>
                   <th>Type</th>
-                  <th>Scope</th>
-                  <th>Idempotent</th>
-                  <th>Kind</th>
+                  <th>Status</th>
+                  <th>Impl</th>
                   <th>Updated</th>
                 </tr>
               </thead>
               <tbody>
                 @for (activity of filteredActivities(); track activity.id) {
-                  <tr class="clickable-row" (click)="openActivity(activity.id)">
+                  <tr class="clickable-row" (click)="openActivity(activity)">
                     <td>
-                      <div class="activity-name">{{ activity.name }}</div>
+                      <div class="activity-name">
+                        {{ activity.name }}
+                        @if (activity.isMandatory) {
+                          <span class="badge badge-mandatory">Mandatory</span>
+                        }
+                      </div>
                       <div class="activity-slug">{{ activity.slug }}</div>
                     </td>
-                    <td><span class="badge badge-category">{{ activity.category || '—' }}</span></td>
                     <td><span class="badge badge-operation">{{ formatOperationKind(activity.operationKind) }}</span></td>
-                    <td><span class="badge badge-type">{{ formatImplType(activity.implementationType) }}</span></td>
                     <td>
-                      <span class="badge" [class]="activity.scope === 'COMPONENT' ? 'badge-component' : 'badge-workflow'">
-                        {{ activity.scope === 'COMPONENT' ? 'Component' : 'Workflow' }}
-                      </span>
-                    </td>
-                    <td>{{ activity.idempotent ? 'Yes' : 'No' }}</td>
-                    <td>
-                      @if (activity.isSystem) {
-                        <span class="badge badge-system">System</span>
+                      @if (activity.isComponentActivity) {
+                        <span class="badge badge-component">Component</span>
                       } @else {
-                        <span class="badge badge-custom">Custom</span>
+                        <span class="badge badge-template">Template</span>
                       }
                     </td>
+                    <td>
+                      @if (activity.templateActivityId && activity.forkedAtVersion !== null) {
+                        @if (isCustomized(activity)) {
+                          <span class="badge badge-customized">Customized</span>
+                        } @else {
+                          <span class="badge badge-default">Default</span>
+                        }
+                        <span class="forked-version">from v{{ activity.forkedAtVersion }}</span>
+                      } @else {
+                        <span class="text-muted">—</span>
+                      }
+                    </td>
+                    <td><span class="badge badge-type">{{ formatImplType(activity.implementationType) }}</span></td>
                     <td>{{ activity.updatedAt | date:'short' }}</td>
                   </tr>
                 }
@@ -174,7 +135,7 @@ import { HasPermissionDirective } from '@shared/directives/has-permission.direct
     </nimbus-layout>
   `,
   styles: [`
-    .page-container { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    .page-container { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: flex-start;
       margin-bottom: 24px;
@@ -189,18 +150,6 @@ import { HasPermissionDirective } from '@shared/directives/has-permission.direct
     }
     .btn-primary { background: #3b82f6; color: #fff; }
     .btn-primary:hover { background: #2563eb; }
-
-    .scope-tabs {
-      display: flex; gap: 0; margin-bottom: 16px;
-      border-bottom: 2px solid #e2e8f0;
-    }
-    .scope-tab {
-      padding: 8px 20px; font-size: 14px; font-weight: 500; color: #64748b;
-      background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent;
-      margin-bottom: -2px; transition: all 0.15s;
-    }
-    .scope-tab:hover { color: #334155; }
-    .scope-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
 
     .filter-bar {
       display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
@@ -238,97 +187,56 @@ import { HasPermissionDirective } from '@shared/directives/has-permission.direct
     }
     .clickable-row { cursor: pointer; transition: background 0.1s; }
     .clickable-row:hover { background: #f8fafc; }
-    .activity-name { font-weight: 600; color: #1e293b; }
+    .activity-name { font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px; }
     .activity-slug { font-size: 12px; color: #94a3b8; font-family: monospace; }
 
     .badge {
       display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;
     }
-    .badge-category { background: #ede9fe; color: #6d28d9; }
     .badge-operation { background: #dbeafe; color: #1d4ed8; }
     .badge-type { background: #fef3c7; color: #92400e; }
-    .badge-system { background: #e0e7ff; color: #3730a3; }
-    .badge-custom { background: #f0fdf4; color: #166534; }
+    .badge-mandatory { background: #fef2f2; color: #991b1b; font-size: 10px; padding: 1px 6px; }
     .badge-component { background: #fff7ed; color: #c2410c; }
-    .badge-workflow { background: #eff6ff; color: #1d4ed8; }
+    .badge-template { background: #e0e7ff; color: #3730a3; }
+    .badge-customized { background: #fef3c7; color: #92400e; }
+    .badge-default { background: #f1f5f9; color: #64748b; }
+    .forked-version { font-size: 11px; color: #94a3b8; margin-left: 4px; }
+    .text-muted { color: #94a3b8; }
   `],
 })
 export class ActivityListComponent implements OnInit {
   private activityService = inject(AutomatedActivityService);
   private router = inject(Router);
-  private route = inject(ActivatedRoute);
-
-  /** Component mode: Provider section (/provider/activities) OR tenant Infrastructure (/activities) */
-  private get isComponentRoute(): boolean {
-    return this.router.url.includes('/provider/activities') || this.router.url.startsWith('/activities');
-  }
-
-  /** Workflow catalog mode: /workflows/activities — shows ALL activities regardless of scope */
-  private get isWorkflowCatalogRoute(): boolean {
-    return this.router.url.includes('/workflows/activities');
-  }
-
-  private get basePath(): string {
-    if (this.router.url.includes('/provider/activities')) return '/provider/activities';
-    if (this.router.url.startsWith('/activities')) return '/activities';
-    return '/workflows/activities';
-  }
 
   activities = signal<AutomatedActivity[]>([]);
   loading = signal(false);
   search = signal('');
-  categoryFilter = signal('');
   operationKindFilter = signal('');
-  subTab = signal<string>('all');
+  componentFilter = signal('');
 
-  isComponentMode = computed(() => this.isComponentRoute);
-
-  pageTitle = computed(() =>
-    this.isComponentMode() ? 'Component Activities' : 'Automation Catalog'
-  );
-
-  pageSubtitle = computed(() =>
-    this.isComponentMode()
-      ? 'Infrastructure operations for deployed components — day-2 and deployment activities'
-      : 'All available activities — component, workflow, builtin and custom'
-  );
-
-  /** Client-side sub-tab filtering after server scope filter */
   filteredActivities = computed(() => {
-    const list = this.activities();
-    const tab = this.subTab();
+    let list = this.activities();
+    const filter = this.componentFilter();
 
-    if (this.isComponentMode()) {
-      const DAY2_OPS = new Set(['REMEDIATE', 'VALIDATE', 'BACKUP', 'RESTORE', 'UPDATE', 'READ']);
-      const DEPLOY_OPS = new Set(['CREATE', 'DELETE']);
-      if (tab === 'day2') return list.filter(a => DAY2_OPS.has(a.operationKind));
-      if (tab === 'deployment') return list.filter(a => DEPLOY_OPS.has(a.operationKind));
-    } else {
-      if (tab === 'component') return list.filter(a => a.scope === 'COMPONENT');
-      if (tab === 'workflow') return list.filter(a => a.scope === 'WORKFLOW');
-      if (tab === 'builtin') return list.filter(a => a.isSystem);
-      if (tab === 'custom') return list.filter(a => !a.isSystem);
+    if (filter === 'component') {
+      list = list.filter(a => a.isComponentActivity);
+    } else if (filter === 'template') {
+      list = list.filter(a => !a.isComponentActivity);
     }
+
     return list;
   });
 
   ngOnInit(): void {
-    // Default to day2 tab for component mode
-    if (this.isComponentRoute) {
-      this.subTab.set('day2');
-    }
     this.loadActivities();
   }
 
   loadActivities(): void {
     this.loading.set(true);
-    // Component routes filter by COMPONENT scope; workflow catalog shows ALL (no scope filter)
-    const scope = this.isComponentRoute ? 'COMPONENT' : undefined;
     this.activityService.listActivities({
-      scope,
       search: this.search() || undefined,
-      category: this.categoryFilter() || undefined,
       operationKind: this.operationKindFilter() || undefined,
+      isComponentActivity: this.componentFilter() === 'component' ? true : this.componentFilter() === 'template' ? false : undefined,
     }).subscribe({
       next: (list) => {
         this.activities.set(list);
@@ -338,12 +246,20 @@ export class ActivityListComponent implements OnInit {
     });
   }
 
-  openActivity(id: string): void {
-    this.router.navigate([this.basePath, id]);
+  openActivity(activity: AutomatedActivity): void {
+    if (activity.componentId) {
+      this.router.navigate(['/infrastructure/components', activity.componentId, 'edit']);
+    } else {
+      this.router.navigate(['/provider/activities', activity.id]);
+    }
   }
 
   createActivity(): void {
-    this.router.navigate([this.basePath, 'new']);
+    this.router.navigate(['/provider/activities', 'new']);
+  }
+
+  isCustomized(activity: AutomatedActivity): boolean {
+    return !!(activity.templateActivityId && activity.versions && activity.versions.length > 1);
   }
 
   formatOperationKind(kind: string): string {

@@ -68,9 +68,6 @@ class Component(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
         server_default="typescript",
     )
     code: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
-    input_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    output_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    resolver_bindings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     is_published: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
@@ -98,6 +95,9 @@ class Component(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     operations: Mapped[list["ComponentOperation"]] = relationship(
         back_populates="component", lazy="selectin"
     )
+    activities: Mapped[list["AutomatedActivity"]] = relationship(  # noqa: F821
+        back_populates="component", lazy="selectin", foreign_keys="AutomatedActivity.component_id"
+    )
 
     __table_args__ = (
         Index("ix_components_tenant", "tenant_id"),
@@ -114,9 +114,6 @@ class ComponentVersion(Base, IDMixin):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     code: Mapped[str] = mapped_column(Text, nullable=False)
-    input_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    output_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    resolver_bindings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     changelog: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -168,8 +165,6 @@ class ComponentOperation(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    input_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    output_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     workflow_definition_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("workflow_definitions.id"), nullable=False
     )

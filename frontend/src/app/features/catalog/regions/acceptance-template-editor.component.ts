@@ -254,7 +254,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
     </nimbus-layout>
   `,
   styles: [`
-    .ate-page { padding: 0; }
+    .ate-page { padding: 0; max-width: 1200px; }
 
     /* ── Page header ──────────────────────────────────────────────── */
     .page-header {

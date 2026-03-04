@@ -21,16 +21,19 @@ import {
 } from '@shared/models/automated-activity.model';
 
 const ACTIVITY_FIELDS = `
-  id tenantId name slug description category
+  id tenantId name slug description
   semanticActivityTypeId semanticTypeId providerId
-  operationKind implementationType scope idempotent timeoutSeconds
-  isSystem createdBy createdAt updatedAt
+  operationKind implementationType isComponentActivity
+  componentId templateActivityId
+  isMandatory forkedAtVersion
+  idempotent timeoutSeconds
+  createdBy createdAt updatedAt
 `;
 
 const VERSION_FIELDS = `
   id activityId version sourceCode inputSchema outputSchema
   configMutations rollbackMutations changelog
-  publishedAt publishedBy runtimeConfig createdAt updatedAt
+  publishedAt publishedBy runtimeConfig resolverBindings createdAt updatedAt
 `;
 
 const EXECUTION_FIELDS = `
@@ -59,11 +62,11 @@ export class AutomatedActivityService {
   // -- Activity queries -----------------------------------------------------
 
   listActivities(options?: {
-    category?: string;
     operationKind?: string;
     providerId?: string;
-    scope?: string;
     search?: string;
+    componentId?: string;
+    isComponentActivity?: boolean;
     offset?: number;
     limit?: number;
   }): Observable<AutomatedActivity[]> {
@@ -71,21 +74,21 @@ export class AutomatedActivityService {
     return this.gql<{ automatedActivities: AutomatedActivity[] }>(`
       query AutomatedActivities(
         $tenantId: UUID!
-        $category: String
         $operationKind: String
         $providerId: UUID
-        $scope: String
         $search: String
+        $componentId: UUID
+        $isComponentActivity: Boolean
         $offset: Int
         $limit: Int
       ) {
         automatedActivities(
           tenantId: $tenantId
-          category: $category
           operationKind: $operationKind
           providerId: $providerId
-          scope: $scope
           search: $search
+          componentId: $componentId
+          isComponentActivity: $isComponentActivity
           offset: $offset
           limit: $limit
         ) {
@@ -317,6 +320,33 @@ export class AutomatedActivityService {
       }
     `, { tenantId, templateId }).pipe(
       map((data) => data.unlinkActivityTemplate),
+    );
+  }
+
+  // -- Upgrade from library -------------------------------------------------
+
+  upgradeFromLibrary(activityId: string): Observable<AutomatedActivity> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ upgradeForkedActivity: AutomatedActivity }>(`
+      mutation UpgradeForkedActivity($tenantId: UUID!, $activityId: UUID!) {
+        upgradeForkedActivity(tenantId: $tenantId, activityId: $activityId) {
+          ${ACTIVITY_FIELDS}
+          versions { ${VERSION_FIELDS} }
+        }
+      }
+    `, { tenantId, activityId }).pipe(
+      map((data) => data.upgradeForkedActivity),
+    );
+  }
+
+  checkUpgradeAvailable(activityId: string): Observable<{ libraryVersion: number; forkedAtVersion: number } | null> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ activityUpgradeStatus: { libraryVersion: number; forkedAtVersion: number } | null }>(`
+      query ActivityUpgradeStatus($tenantId: UUID!, $activityId: UUID!) {
+        activityUpgradeStatus(tenantId: $tenantId, activityId: $activityId)
+      }
+    `, { tenantId, activityId }).pipe(
+      map((data) => data.activityUpgradeStatus),
     );
   }
 

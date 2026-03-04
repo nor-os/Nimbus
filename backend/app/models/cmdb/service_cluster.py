@@ -4,6 +4,7 @@ Architecture: CMDB service cluster layer (Section 8)
 Dependencies: sqlalchemy, app.db.base, app.models.base
 Concepts: Service clusters are pure templates that define slot shapes and constraints.
     CI assignment happens at deployment time (not on the blueprint itself).
+    Evolved to full stack blueprints with versioning, components, governance, and DR.
 """
 
 import uuid
@@ -21,8 +22,8 @@ class ServiceCluster(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
 
     __tablename__ = "service_clusters"
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -40,11 +41,53 @@ class ServiceCluster(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     )
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
+    # ── New blueprint evolution fields ─────────────────────────────────
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("semantic_providers.id"), nullable=True, index=True
+    )
+    category: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    input_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    output_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
+    is_published: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+    is_system: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+
+    # ── HA/DR configuration schemas ───────────────────────────────────
+    ha_config_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    ha_config_defaults: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    dr_config_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    dr_config_defaults: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # ── Relationships ──────────────────────────────────────────────────
     slots: Mapped[list["ServiceClusterSlot"]] = relationship(
         back_populates="cluster", lazy="selectin", cascade="all, delete-orphan"
     )
     parameters: Mapped[list["StackBlueprintParameter"]] = relationship(  # noqa: F821
         back_populates="cluster", lazy="selectin", cascade="all, delete-orphan"
+    )
+    versions: Mapped[list["StackBlueprintVersion"]] = relationship(  # noqa: F821
+        back_populates="blueprint", lazy="selectin", cascade="all, delete-orphan"
+    )
+    blueprint_components: Mapped[list["StackBlueprintComponent"]] = relationship(  # noqa: F821
+        back_populates="blueprint", lazy="selectin", cascade="all, delete-orphan"
+    )
+    variable_bindings: Mapped[list["StackVariableBinding"]] = relationship(  # noqa: F821
+        back_populates="blueprint", lazy="selectin", cascade="all, delete-orphan"
+    )
+    governance_rules: Mapped[list["StackBlueprintGovernance"]] = relationship(  # noqa: F821
+        back_populates="blueprint", lazy="selectin", cascade="all, delete-orphan"
+    )
+    stack_workflows: Mapped[list["StackWorkflow"]] = relationship(  # noqa: F821
+        back_populates="blueprint", lazy="selectin", cascade="all, delete-orphan"
+    )
+    reservation_template: Mapped["BlueprintReservationTemplate | None"] = relationship(  # noqa: F821
+        lazy="selectin", cascade="all, delete-orphan", uselist=False,
+        foreign_keys="BlueprintReservationTemplate.blueprint_id",
     )
 
     __table_args__ = (
@@ -76,6 +119,14 @@ class ServiceClusterSlot(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
+    # ── New slot evolution fields ──────────────────────────────────────
+    component_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("components.id"), nullable=True
+    )
+    default_parameters: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    depends_on: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # ── Relationships ──────────────────────────────────────────────────
     cluster: Mapped["ServiceCluster"] = relationship(back_populates="slots")
     semantic_category: Mapped["SemanticCategory | None"] = relationship(lazy="joined", foreign_keys=[semantic_category_id])  # noqa: F821
     semantic_type: Mapped["SemanticResourceType | None"] = relationship(lazy="joined", foreign_keys=[semantic_type_id])  # noqa: F821

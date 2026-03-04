@@ -23,10 +23,10 @@ import { ServiceCluster } from '@shared/models/cluster.model';
       <div class="page-container">
         <div class="page-header">
           <div>
-            <h1 class="page-title">Stack Blueprints</h1>
+            <h1 class="page-title">Stacks</h1>
             <p class="page-subtitle">Reusable infrastructure stack templates with slot-based CI assignment</p>
           </div>
-          <a *nimbusHasPermission="'cmdb:cluster:create'" routerLink="/architecture/blueprints/new" class="btn btn-primary">
+          <a *nimbusHasPermission="'cmdb:cluster:create'" routerLink="/infrastructure/stacks/new" class="btn btn-primary">
             + New Blueprint
           </a>
         </div>
@@ -47,7 +47,7 @@ import { ServiceCluster } from '@shared/models/cluster.model';
           } @else if (clusters().length === 0) {
             <div class="empty-state">
               <p>No stack blueprints found.</p>
-              <a *nimbusHasPermission="'cmdb:cluster:create'" routerLink="/architecture/blueprints/new" class="btn btn-primary">
+              <a *nimbusHasPermission="'cmdb:cluster:create'" routerLink="/infrastructure/stacks/new" class="btn btn-primary">
                 Create your first blueprint
               </a>
             </div>
@@ -56,8 +56,11 @@ import { ServiceCluster } from '@shared/models/cluster.model';
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Category</th>
+                  <th>Version</th>
+                  <th>Status</th>
                   <th>Slots</th>
-                  <th>Parameters</th>
+                  <th>Components</th>
                   <th>Created</th>
                   <th></th>
                 </tr>
@@ -66,20 +69,35 @@ import { ServiceCluster } from '@shared/models/cluster.model';
                 @for (cluster of clusters(); track cluster.id) {
                   <tr>
                     <td>
-                      <a [routerLink]="'/architecture/blueprints/' + cluster.id" class="link-primary">
-                        {{ cluster.name }}
+                      <a [routerLink]="'/infrastructure/stacks/' + cluster.id" class="link-primary">
+                        {{ cluster.displayName || cluster.name }}
                       </a>
                       @if (cluster.description) {
                         <div class="text-muted text-sm">{{ cluster.description }}</div>
                       }
                     </td>
+                    <td>
+                      @if (cluster.category) {
+                        <span class="badge badge-category">{{ cluster.category }}</span>
+                      } @else {
+                        <span class="text-muted">—</span>
+                      }
+                    </td>
+                    <td>v{{ cluster.version }}</td>
+                    <td>
+                      @if (cluster.isPublished) {
+                        <span class="badge badge-published">Published</span>
+                      } @else {
+                        <span class="badge badge-draft">Draft</span>
+                      }
+                    </td>
                     <td>{{ cluster.slots.length || 0 }}</td>
-                    <td>{{ cluster.parameters.length || 0 }}</td>
+                    <td>{{ cluster.blueprintComponents.length || 0 }}</td>
                     <td class="text-muted">{{ cluster.createdAt | date:'mediumDate' }}</td>
                     <td class="actions-cell">
                       <a
                         *nimbusHasPermission="'cmdb:cluster:manage'"
-                        [routerLink]="'/architecture/blueprints/' + cluster.id + '/edit'"
+                        [routerLink]="'/infrastructure/stacks/' + cluster.id + '/edit'"
                         class="btn btn-sm btn-outline"
                       >Edit</a>
                     </td>
@@ -147,6 +165,10 @@ import { ServiceCluster } from '@shared/models/cluster.model';
     .empty-state .btn { margin-top: 12px; }
     .pagination { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px 16px; border-top: 1px solid #e2e8f0; }
     .pagination-info { font-size: 0.875rem; color: #64748b; }
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+    .badge-category { background: #ede9fe; color: #7c3aed; }
+    .badge-published { background: #dcfce7; color: #16a34a; }
+    .badge-draft { background: #f1f5f9; color: #64748b; }
   `],
 })
 export class ClusterListComponent implements OnInit {

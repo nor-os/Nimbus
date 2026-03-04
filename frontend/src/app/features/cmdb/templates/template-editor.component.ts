@@ -212,7 +212,7 @@ import { ToastService } from '@shared/services/toast.service';
     </nimbus-layout>
   `,
   styles: [`
-    .template-editor-page { padding: 0; max-width: 780px; }
+    .template-editor-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;
@@ -318,7 +318,7 @@ import { ToastService } from '@shared/services/toast.service';
 
     .form-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
     .btn {
-      font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+      font-family: inherit; font-size: 0.875rem; font-weight: 500;
       border-radius: 6px; cursor: pointer; padding: 0.5rem 1.5rem;
       transition: background 0.15s;
     }

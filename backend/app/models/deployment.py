@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,8 +45,8 @@ class Deployment(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     environment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenant_environments.id"), nullable=False
     )
-    topology_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("architecture_topologies.id"), nullable=False
+    topology_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("architecture_topologies.id"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -72,7 +72,7 @@ class Deployment(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     # Relationships
     tenant: Mapped["Tenant"] = relationship(lazy="joined", foreign_keys=[tenant_id])  # noqa: F821
     environment: Mapped["TenantEnvironment"] = relationship(lazy="joined")  # noqa: F821
-    topology: Mapped["ArchitectureTopology"] = relationship(lazy="joined")  # noqa: F821
+    topology: Mapped["ArchitectureTopology | None"] = relationship(lazy="joined")  # noqa: F821
 
     # Deployment-CI junction
     cis: Mapped[list["DeploymentCI"]] = relationship(
@@ -96,13 +96,14 @@ class DeploymentCI(Base):
     deployment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("deployments.id"), nullable=False
     )
-    ci_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("configuration_items.id"), nullable=False
+    ci_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("configuration_items.id"), nullable=True
     )
     component_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("components.id"), nullable=False
     )
     topology_node_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    component_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     resolver_outputs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
@@ -110,7 +111,7 @@ class DeploymentCI(Base):
 
     # Relationships
     deployment: Mapped["Deployment"] = relationship(back_populates="cis")
-    ci: Mapped["ConfigurationItem"] = relationship(lazy="joined")  # noqa: F821
+    ci: Mapped["ConfigurationItem | None"] = relationship(lazy="joined")  # noqa: F821
     component: Mapped["Component"] = relationship(lazy="joined")  # noqa: F821
 
     __table_args__ = (

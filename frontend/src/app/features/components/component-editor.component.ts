@@ -10,11 +10,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
-import { MonacoEditorComponent } from '@shared/components/monaco-editor/monaco-editor.component';
 import { SearchableSelectComponent, SelectOption } from '@shared/components/searchable-select/searchable-select.component';
 import { ComponentService } from '@core/services/component.service';
 import { SemanticService } from '@core/services/semantic.service';
 import { WorkflowService } from '@core/services/workflow.service';
+import { AutomatedActivityService } from '@core/services/automated-activity.service';
+import { AutomatedActivity } from '@shared/models/automated-activity.model';
 import {
   Component as ComponentModel,
   ComponentCreateInput,
@@ -22,30 +23,13 @@ import {
   ComponentOperationCreateInput,
   ComponentVersion,
   EstimatedDowntime,
-  Resolver,
 } from '@shared/models/component.model';
 import { WorkflowDefinition } from '@shared/models/workflow.model';
+import { forkJoin, of, catchError } from 'rxjs';
 import { ToastService } from '@shared/services/toast.service';
 
-type EditorTab = 'codeConfig' | 'operations' | 'versions';
-type ConfigTab = 'inputs' | 'outputs';
+type EditorTab = 'workflows' | 'activities' | 'versions';
 type ComponentMode = 'provider' | 'tenant';
-
-interface SchemaProperty {
-  name: string;
-  type: 'string' | 'integer' | 'number' | 'boolean' | 'object' | 'array';
-  description: string;
-  required: boolean;
-  defaultValue: string;
-  enumValues: string;
-}
-
-interface ResolverBinding {
-  paramName: string;
-  resolverType: string;
-  resolverParams: Record<string, string>;
-  targetField: string;
-}
 
 const EXAMPLE_CODE = `"""
 Example Pulumi component for provisioning a virtual machine.
@@ -90,7 +74,7 @@ def create_resource(args: dict) -> dict:
 @NgComponent({
   selector: 'nimbus-component-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, LayoutComponent, MonacoEditorComponent, SearchableSelectComponent],
+  imports: [CommonModule, FormsModule, LayoutComponent, SearchableSelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nimbus-layout>
@@ -98,25 +82,27 @@ def create_resource(args: dict) -> dict:
         <!-- Header -->
         <div class="page-header">
           <button class="back-btn" (click)="router.navigate([basePath()])">&larr; {{ isProviderMode() ? 'Provider Components' : 'Components' }}</button>
-          <div class="header-main">
-            <h1>{{ isNew() ? 'New Component' : component()?.displayName || 'Component' }}</h1>
-            @if (component(); as c) {
-              <div class="header-badges">
-                <span class="badge lang-python">Python</span>
-                <span class="badge" [class.published]="c.isPublished" [class.draft]="!c.isPublished">
-                  {{ c.isPublished ? 'Published v' + (c.version - 1) : 'Draft' }}
-                </span>
-              </div>
-            }
-          </div>
-          <div class="header-actions">
-            <button class="btn btn-secondary" (click)="save()" [disabled]="saving()">
-              {{ saving() ? 'Saving...' : 'Save Draft' }}
-            </button>
-            @if (!isNew() && component()) {
-              <button class="btn btn-primary" (click)="showPublishDialog.set(true)">Publish</button>
-              <button class="btn btn-danger" (click)="confirmDelete()">Delete</button>
-            }
+          <div class="header-row">
+            <div class="header-title">
+              <h1>{{ isNew() ? 'New Component' : component()?.displayName || 'Component' }}</h1>
+              @if (component(); as c) {
+                <div class="header-badges">
+                  <span class="badge lang-python">Python</span>
+                  <span class="badge" [class.published]="c.isPublished" [class.draft]="!c.isPublished">
+                    {{ c.isPublished ? 'Published v' + (c.version - 1) : 'Draft' }}
+                  </span>
+                </div>
+              }
+            </div>
+            <div class="header-actions">
+              <button class="btn btn-outline" (click)="onCancel()">Cancel</button>
+              <button class="btn btn-secondary" (click)="save()" [disabled]="saving()">
+                {{ saving() ? 'Saving...' : 'Save Draft' }}
+              </button>
+              @if (!isNew() && component()) {
+                <button class="btn btn-primary" (click)="showPublishDialog.set(true)">Publish</button>
+              }
+            </div>
           </div>
         </div>
 
@@ -158,11 +144,13 @@ def create_resource(args: dict) -> dict:
 
         <!-- Tabs -->
         <div class="tabs">
-          <button class="tab" [class.active]="activeTab() === 'codeConfig'" (click)="activeTab.set('codeConfig')">Code &amp; Config</button>
+          <button class="tab" [class.active]="activeTab() === 'workflows'" (click)="activeTab.set('workflows'); loadOperations()">
+            Workflows ({{ allWorkflowOps().length }})
+          </button>
+          <button class="tab" [class.active]="activeTab() === 'activities'" (click)="activeTab.set('activities'); loadOperations()">
+            Activities ({{ allActivities().length }})
+          </button>
           @if (!isNew()) {
-            <button class="tab" [class.active]="activeTab() === 'operations'" (click)="activeTab.set('operations'); loadOperations()">
-              Operations ({{ operations().length }})
-            </button>
             <button class="tab" [class.active]="activeTab() === 'versions'" (click)="activeTab.set('versions'); loadVersions()">
               Versions ({{ versions().length }})
             </button>
@@ -170,270 +158,39 @@ def create_resource(args: dict) -> dict:
         </div>
 
         <!-- Tab Content -->
-        <div class="tab-content" [class.no-padding]="activeTab() === 'codeConfig'">
-          <!-- ── Code & Config Tab ───────────────────────── -->
-          @if (activeTab() === 'codeConfig') {
-            <div class="split-pane">
-              <!-- Left: Monaco Editor -->
-              <div class="editor-pane">
-                @if (editorVisible()) {
-                  <nimbus-monaco-editor
-                    [value]="form.code"
-                    [language]="'python'"
-                    [height]="'calc(100vh - 320px)'"
-                    (valueChange)="form.code = $event"
-                  />
-                }
-              </div>
-
-              <!-- Right: Config Panel -->
-              <div class="config-pane">
-                <div class="config-tabs">
-                  <button class="config-tab" [class.active]="configTab() === 'inputs'" (click)="configTab.set('inputs')">Inputs</button>
-                  <button class="config-tab" [class.active]="configTab() === 'outputs'" (click)="configTab.set('outputs')">Outputs</button>
-                </div>
-                <div class="config-body">
-                  <!-- Inputs sub-tab -->
-                  @if (configTab() === 'inputs') {
-                    <div class="schema-builder">
-                      <div class="schema-header">
-                        <h3>Input Parameters</h3>
-                        <div style="display:flex;gap:6px">
-                          <button class="btn btn-sm" (click)="addInputProperty()">+ Add</button>
-                          @if (!isNew() && inputProperties().length > 0) {
-                            <button class="btn btn-sm" (click)="validateBindings()">Validate</button>
-                          }
-                        </div>
-                      </div>
-                      @if (bindingWarnings().length > 0) {
-                        <div class="binding-warnings">
-                          @for (w of bindingWarnings(); track w) {
-                            <div class="warning-item">&#9888; {{ w }}</div>
-                          }
-                        </div>
-                      }
-                      @if (inputProperties().length === 0) {
-                        <div class="empty-schema">No input parameters defined.</div>
-                      }
-                      @for (prop of inputProperties(); track prop.name; let i = $index) {
-                        <div class="input-card" [class.resolver-bound]="hasBinding(prop.name)">
-                          <div class="schema-row-top">
-                            <div class="schema-field">
-                              <label>Name</label>
-                              <input type="text" [(ngModel)]="prop.name" placeholder="param_name" />
-                            </div>
-                            <div class="schema-field type-field">
-                              <label>Type</label>
-                              <select [(ngModel)]="prop.type">
-                                <option value="string">String</option>
-                                <option value="integer">Integer</option>
-                                <option value="number">Number</option>
-                                <option value="boolean">Boolean</option>
-                                <option value="object">Object</option>
-                                <option value="array">Array</option>
-                              </select>
-                            </div>
-                            <div class="schema-field check-field">
-                              <label>
-                                <input type="checkbox" [(ngModel)]="prop.required" /> Req
-                              </label>
-                            </div>
-                            <button class="btn-icon btn-remove" (click)="removeInputProperty(i)" title="Remove">&times;</button>
-                          </div>
-                          <div class="schema-field">
-                            <label>Description</label>
-                            <input type="text" [(ngModel)]="prop.description" placeholder="Description" />
-                          </div>
-
-                          <!-- Source toggle: Manual vs Resolver -->
-                          <div class="source-row">
-                            <label class="source-label">Source</label>
-                            <div class="source-toggle">
-                              <button class="source-btn" [class.active]="!hasBinding(prop.name)" (click)="removeBinding(prop.name)">Manual</button>
-                              <button class="source-btn" [class.active]="hasBinding(prop.name)" (click)="enableBinding(prop.name, prop.type)">Resolver</button>
-                            </div>
-                          </div>
-
-                          @if (!hasBinding(prop.name)) {
-                            <!-- Manual: default value + enum -->
-                            <div class="schema-row-top">
-                              <div class="schema-field">
-                                <label>Default</label>
-                                <input type="text" [(ngModel)]="prop.defaultValue" placeholder="Default value" />
-                              </div>
-                              <div class="schema-field">
-                                <label>Enum (comma-sep)</label>
-                                <input type="text" [(ngModel)]="prop.enumValues" placeholder="a, b, c" />
-                              </div>
-                            </div>
-                          } @else {
-                            <!-- Resolver binding config -->
-                            @if (getBinding(prop.name); as binding) {
-                              @if (getSuggestions(prop.name).length > 0 && !binding.resolverType) {
-                                <div class="suggestions">
-                                  <span class="suggestions-label">Suggested:</span>
-                                  @for (s of getSuggestions(prop.name); track s.resolver_type) {
-                                    <button class="suggestion-chip" (click)="applySuggestion(binding, s)">
-                                      {{ s.display_name }}
-                                      @if (s.matching_fields.length) {
-                                        <span class="match-hint">&rarr; {{ s.matching_fields[0] }}</span>
-                                      }
-                                    </button>
-                                  }
-                                </div>
-                              }
-                              <div class="binding-row">
-                                <div class="schema-field">
-                                  <label>Resolver</label>
-                                  <select [(ngModel)]="binding.resolverType" (ngModelChange)="onBindingResolverChange(binding)">
-                                    <option value="">-- Select --</option>
-                                    @for (r of resolvers(); track r.id) {
-                                      <option [value]="r.resolverType">{{ r.displayName }}</option>
-                                    }
-                                  </select>
-                                </div>
-                                <div class="schema-field">
-                                  <label>Output Field</label>
-                                  <input type="text" [(ngModel)]="binding.targetField" placeholder="e.g. cidr, name" />
-                                </div>
-                              </div>
-                              @if (binding.resolverType) {
-                                @if (getResolverByType(binding.resolverType); as r) {
-                                  <span class="resolver-hint">{{ r.description }}</span>
-                                }
-                              }
-                            }
-                          }
-                        </div>
-                      }
-                    </div>
-                  }
-
-                  <!-- Outputs sub-tab -->
-                  @if (configTab() === 'outputs') {
-                    <div class="schema-builder">
-                      <div class="schema-header">
-                        <h3>Output Values</h3>
-                        <button class="btn btn-sm" (click)="addOutputProperty()">+ Add</button>
-                      </div>
-                      @if (outputProperties().length === 0) {
-                        <div class="empty-schema">No outputs defined.</div>
-                      }
-                      @for (prop of outputProperties(); track prop.name; let i = $index) {
-                        <div class="schema-row stacked">
-                          <div class="schema-row-top">
-                            <div class="schema-field">
-                              <label>Name</label>
-                              <input type="text" [(ngModel)]="prop.name" placeholder="output_name" />
-                            </div>
-                            <div class="schema-field type-field">
-                              <label>Type</label>
-                              <select [(ngModel)]="prop.type">
-                                <option value="string">String</option>
-                                <option value="integer">Integer</option>
-                                <option value="number">Number</option>
-                                <option value="boolean">Boolean</option>
-                                <option value="object">Object</option>
-                                <option value="array">Array</option>
-                              </select>
-                            </div>
-                            <button class="btn-icon btn-remove" (click)="removeOutputProperty(i)" title="Remove">&times;</button>
-                          </div>
-                          <div class="schema-field">
-                            <label>Description</label>
-                            <input type="text" [(ngModel)]="prop.description" placeholder="Description" />
-                          </div>
-                        </div>
-                      }
-                    </div>
-                  }
-
-                </div>
-              </div>
-            </div>
-          }
-
-          <!-- ── Operations Tab ─────────────────────────── -->
-          @if (activeTab() === 'operations') {
+        <div class="tab-content">
+          <!-- ── Workflows Tab ─────────────────────────── -->
+          @if (activeTab() === 'workflows') {
             <div class="operations-builder">
-              <!-- ── Deployment Operations ────────────────── -->
-              <div class="section-divider">
-                <h3>Deployment Operations</h3>
-                <p class="section-info">Standard lifecycle operations auto-provisioned for every component. Customize the linked workflow or reset to the default template.</p>
-              </div>
-
-              @if (deploymentOps().length === 0) {
+              @if (deploymentOps().length === 0 && day2Ops().length === 0) {
                 <div class="deploy-init-banner">
-                  <p>No deployment operations found. Initialize 6 standard deployment activities for this component.</p>
+                  <p>No workflows found. Initialize standard deployment operations for this component.</p>
                   <button class="btn btn-primary" (click)="initDeploymentOps()" [disabled]="deployInitializing()">
                     {{ deployInitializing() ? 'Initializing...' : 'Initialize Deployment Operations' }}
                   </button>
                 </div>
               }
 
-              <div class="deploy-grid">
-                @for (op of deploymentOps(); track op.id) {
-                  <div class="deploy-card">
-                    <div class="deploy-card-header">
-                      <div class="deploy-card-title">
-                        <span class="deploy-name">{{ op.displayName }}</span>
-                        @if (op.operationKind) {
-                          <span class="badge badge-kind">{{ op.operationKind }}</span>
-                        }
-                        @if (op.isDestructive) {
-                          <span class="badge badge-destructive">Destructive</span>
-                        }
-                      </div>
-                    </div>
-                    <div class="deploy-card-body">
-                      <div class="deploy-meta-row">
-                        <span class="meta-label">Workflow</span>
-                        <span class="deploy-wf-name">{{ op.workflowDefinitionName || '(draft)' }}</span>
-                      </div>
-                      <div class="deploy-meta-row">
-                        <span class="meta-label">Approval</span>
-                        <span [class.text-green]="!op.requiresApproval" [class.text-amber]="op.requiresApproval">
-                          {{ op.requiresApproval ? 'Required' : 'Not required' }}
-                        </span>
-                      </div>
-                      @if (op.estimatedDowntime && op.estimatedDowntime !== 'NONE') {
-                        <div class="deploy-meta-row">
-                          <span class="meta-label">Downtime</span>
-                          <span class="text-amber">{{ op.estimatedDowntime }}</span>
-                        </div>
-                      }
-                    </div>
-                    <div class="deploy-card-actions">
-                      <button class="btn btn-sm btn-secondary" (click)="editWorkflow(op.workflowDefinitionId)">Customize Workflow</button>
-                      <button class="btn btn-sm" (click)="resetDeployWorkflow(op)">Reset to Default</button>
-                    </div>
-                  </div>
-                }
-              </div>
-
-              <!-- ── Day-2 Operations ─────────────────────── -->
-              <div class="section-divider" style="margin-top: 2rem;">
-                <div class="schema-header">
-                  <h3>Day-2 Operations</h3>
-                  <button class="btn btn-sm" (click)="showOpForm.set(true); resetOpForm()">+ Add Operation</button>
-                </div>
-                <p class="section-info">Define workflow-backed actions available on deployed resources (e.g. extend disk, snapshot, restart).</p>
-              </div>
-
-              @if (day2Ops().length === 0 && !showOpForm()) {
-                <div class="empty-schema">No day-2 operations defined. Add custom operations that users can trigger on deployed resources.</div>
-              }
-
-              @for (op of day2Ops(); track op.id) {
-                <!-- Collapsed card (shown when NOT editing this op) -->
+              <!-- All workflow-backed operations (deployment + day-2) -->
+              @for (op of allWorkflowOps(); track op.id) {
                 @if (editingOpId() !== op.id) {
                   <div class="operation-card" [class.expanded]="expandedOpId() === op.id">
                     <div class="operation-header" (click)="toggleOperationExpand(op)">
                       <div class="operation-title">
                         <span class="expand-icon">{{ expandedOpId() === op.id ? '&#9660;' : '&#9654;' }}</span>
                         <span class="operation-name">{{ op.displayName }}</span>
+                        <span class="badge badge-kind">{{ op.operationCategory === 'DEPLOYMENT' ? 'Deployment' : 'Day-2' }}</span>
+                        @if (op.operationKind) {
+                          <span class="badge badge-kind">{{ op.operationKind }}</span>
+                        }
+                        @if (op.isDestructive) {
+                          <span class="badge badge-destructive">Destructive</span>
+                        }
+                        @if (op.requiresApproval) {
+                          <span class="badge badge-approval">Approval</span>
+                        }
                         @if (op.estimatedDowntime && op.estimatedDowntime !== 'NONE') {
-                          <span class="badge badge-downtime">~{{ parseDowntimeMinutes(op.estimatedDowntime) }} min downtime</span>
+                          <span class="badge badge-downtime">~{{ parseDowntimeMinutes(op.estimatedDowntime) }} min</span>
                         }
                       </div>
                       <div class="operation-actions" (click)="$event.stopPropagation()">
@@ -441,54 +198,70 @@ def create_resource(args: dict) -> dict:
                         <button class="btn btn-sm btn-danger" (click)="deleteOperation(op)">Delete</button>
                       </div>
                     </div>
-                    @if (op.description) {
-                      <div class="operation-desc">{{ op.description }}</div>
-                    }
+
+                    <!-- Collapsed summary: always show workflow info + template status -->
+                    <div class="wf-summary">
+                      @if (getWorkflowForOp(op); as wf) {
+                        <div class="wf-summary-row">
+                          <span class="wf-summary-name">{{ wf.name }}</span>
+                          <span class="badge" [class.published]="wf.status === 'ACTIVE'" [class.draft]="wf.status === 'DRAFT'">{{ wf.status }}</span>
+                          <span class="wf-version">v{{ wf.version }}</span>
+                          @if (wf.templateSourceId && wf.version <= 1) {
+                            <span class="badge badge-default">Default</span>
+                          } @else if (wf.templateSourceId) {
+                            <span class="badge badge-customized">Customized</span>
+                          }
+                        </div>
+                      } @else {
+                        <span class="wf-summary-name wf-missing">{{ workflowsLoaded() ? 'Workflow not found' : 'Loading...' }}</span>
+                      }
+                    </div>
 
                     <!-- Expanded workflow detail -->
                     @if (expandedOpId() === op.id) {
                       <div class="workflow-detail">
-                        @if (workflowLoading()) {
-                          <div class="workflow-loading">Loading workflow...</div>
-                        } @else if (expandedWorkflow()) {
+                        @if (getWorkflowForOp(op); as wf) {
                           <div class="workflow-detail-header">
-                            <h4>{{ expandedWorkflow()!.name }}</h4>
+                            <h4>{{ wf.name }}</h4>
                             <div class="workflow-detail-actions">
-                              <button class="btn btn-sm btn-secondary" (click)="editWorkflow(expandedWorkflow()!.id)">Open in Editor</button>
+                              @if (wf.templateSourceId) {
+                                <button class="btn btn-sm" (click)="resetDeployWorkflow(op)">Reset to Template</button>
+                              }
+                              <button class="btn btn-sm btn-secondary" (click)="editWorkflow(wf.id)">Open in Editor</button>
                             </div>
                           </div>
-                          @if (expandedWorkflow()!.description) {
-                            <p class="workflow-detail-desc">{{ expandedWorkflow()!.description }}</p>
+                          @if (wf.description) {
+                            <p class="workflow-detail-desc">{{ wf.description }}</p>
                           }
                           <div class="workflow-detail-meta">
                             <div class="meta-item">
                               <span class="meta-label">Status</span>
-                              <span class="badge" [class.published]="expandedWorkflow()!.status === 'ACTIVE'" [class.draft]="expandedWorkflow()!.status === 'DRAFT'">{{ expandedWorkflow()!.status }}</span>
+                              <span class="badge" [class.published]="wf.status === 'ACTIVE'" [class.draft]="wf.status === 'DRAFT'">{{ wf.status }}</span>
                             </div>
                             <div class="meta-item">
                               <span class="meta-label">Type</span>
-                              <span>{{ expandedWorkflow()!.workflowType }}</span>
+                              <span>{{ wf.workflowType }}</span>
                             </div>
                             <div class="meta-item">
                               <span class="meta-label">Version</span>
-                              <span>v{{ expandedWorkflow()!.version }}</span>
+                              <span>v{{ wf.version }}</span>
                             </div>
-                            @if (expandedWorkflow()!.graph) {
+                            @if (wf.graph) {
                               <div class="meta-item">
                                 <span class="meta-label">Nodes</span>
-                                <span>{{ expandedWorkflow()!.graph!.nodes.length || 0 }}</span>
+                                <span>{{ wf.graph!.nodes.length || 0 }}</span>
                               </div>
                             }
                             <div class="meta-item">
                               <span class="meta-label">Timeout</span>
-                              <span>{{ expandedWorkflow()!.timeoutSeconds }}s</span>
+                              <span>{{ wf.timeoutSeconds }}s</span>
                             </div>
                           </div>
-                          @if (expandedWorkflow()?.graph?.nodes?.length) {
+                          @if (wf.graph?.nodes?.length) {
                             <div class="workflow-node-list">
                               <span class="meta-label">Node Pipeline</span>
                               <div class="node-pipeline">
-                                @for (node of expandedWorkflow()!.graph!.nodes; track node.id; let last = $last) {
+                                @for (node of wf.graph!.nodes; track node.id; let last = $last) {
                                   <span class="pipeline-node">{{ node.label || node.type }}</span>
                                   @if (!last) {
                                     <span class="pipeline-arrow">&rarr;</span>
@@ -498,14 +271,7 @@ def create_resource(args: dict) -> dict:
                             </div>
                           }
                         } @else {
-                          <div class="workflow-loading">No workflow linked.</div>
-                        }
-                      </div>
-                    } @else {
-                      <div class="operation-meta">
-                        <span>Workflow: <strong>{{ op.workflowDefinitionName || '—' }}</strong></span>
-                        @if (op.inputSchema) {
-                          <span>Inputs: {{ getSchemaFieldCount(op.inputSchema) }} fields</span>
+                          <div class="workflow-loading">{{ workflowsLoaded() ? 'Workflow not found — this operation references a deleted or missing workflow.' : 'Loading workflow...' }}</div>
                         }
                       </div>
                     }
@@ -518,18 +284,23 @@ def create_resource(args: dict) -> dict:
                 }
               }
 
+              <!-- Add workflow button -->
+              <div class="add-op-row">
+                <button class="btn btn-sm" (click)="showOpForm.set(true); resetOpForm()">+ Add Workflow</button>
+                <button class="btn btn-sm btn-secondary" style="margin-left: 0.5rem;" (click)="createBlankWorkflow()">+ Create Blank Workflow</button>
+              </div>
+
               <!-- New operation form (at bottom, only for new) -->
               @if (showOpForm() && !editingOpId()) {
                 <ng-container *ngTemplateOutlet="opFormTpl; context: { isEdit: false }"></ng-container>
               }
-
               <!-- Shared form template -->
               <ng-template #opFormTpl let-isEdit="isEdit">
                 <div class="operation-form">
-                  <h4>{{ isEdit ? 'Edit Operation' : 'New Operation' }}</h4>
+                  <h4>{{ isEdit ? 'Edit Operation' : 'Link Workflow to Component' }}</h4>
                   <div class="form-group">
                     <label>Display Name</label>
-                    <input type="text" [(ngModel)]="opForm.displayName" placeholder="Extend Disk" />
+                    <input type="text" [(ngModel)]="opForm.displayName" placeholder="e.g. Extend Disk" />
                   </div>
                   <div class="form-group">
                     <label>Description</label>
@@ -542,7 +313,7 @@ def create_resource(args: dict) -> dict:
                         <input type="text" [value]="getWorkflowName(opForm.workflowDefinitionId)" disabled />
                       } @else {
                         <select [(ngModel)]="opForm.workflowDefinitionId">
-                          <option value="">-- Select workflow --</option>
+                          <option value="">-- Select existing workflow --</option>
                           @for (wf of workflowDefinitions(); track wf.id) {
                             <option [value]="wf.id">{{ wf.name }}</option>
                           }
@@ -562,6 +333,48 @@ def create_resource(args: dict) -> dict:
                   </div>
                 </div>
               </ng-template>
+            </div>
+          }
+
+          <!-- ── Activities Tab ─────────────────────────── -->
+          @if (activeTab() === 'activities') {
+            <div class="operations-builder">
+              @if (allActivities().length === 0) {
+                <div class="empty-schema">No activities linked to this component yet. Initialize deployment operations to create standard activities.</div>
+              }
+
+              <div class="activity-list-inline">
+                @for (act of allActivities(); track act.id) {
+                  <div class="activity-card-inline">
+                    <div class="activity-card-header-inline">
+                      <div class="activity-card-title-inline">
+                        <span class="activity-card-name">{{ act.name }}</span>
+                        <span class="badge badge-kind">{{ act.isComponentActivity ? 'Component' : 'Template' }}</span>
+                        <span class="badge badge-kind">{{ act.operationKind }}</span>
+                        @if (act.isMandatory) {
+                          <span class="badge badge-mandatory-sm">Mandatory</span>
+                        }
+                        @if (act.templateActivityId && act.forkedAtVersion !== null) {
+                          @if (isActivityCustomized(act)) {
+                            <span class="badge badge-customized">Customized</span>
+                          } @else {
+                            <span class="badge badge-default">Default</span>
+                          }
+                          <span class="wf-version">from template v{{ act.forkedAtVersion }}</span>
+                        }
+                      </div>
+                      <div class="activity-card-actions-inline">
+                        <button class="btn btn-sm btn-secondary" (click)="editActivity(act.id)">Edit</button>
+                      </div>
+                    </div>
+                    <div class="activity-card-slug">{{ act.slug }}</div>
+                  </div>
+                }
+              </div>
+
+              <div class="add-op-row">
+                <button class="btn btn-sm" (click)="createDay2Activity()">+ New Activity</button>
+              </div>
             </div>
           }
 
@@ -606,15 +419,16 @@ def create_resource(args: dict) -> dict:
     </nimbus-layout>
   `,
   styles: [`
-    .page-container { padding: 1.5rem; }
-    .page-header { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .page-container { padding: 0; max-width: 1200px; }
+    .page-header { margin-bottom: 1.5rem; }
     .back-btn {
       background: none; border: none; color: #3b82f6; cursor: pointer;
-      font-size: 0.875rem; padding: 0; text-align: left;
+      font-size: 0.875rem; padding: 0; text-align: left; margin-bottom: 0.5rem;
     }
     .back-btn:hover { text-decoration: underline; }
-    .header-main { display: flex; align-items: center; gap: 0.75rem; }
-    .header-main h1 { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
+    .header-row { display: flex; justify-content: space-between; align-items: center; }
+    .header-title { display: flex; align-items: center; gap: 0.75rem; }
+    .header-title h1 { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
     .header-badges { display: flex; gap: 0.5rem; }
     .badge {
       font-size: 0.6875rem; font-weight: 600; padding: 0.125rem 0.5rem; border-radius: 4px;
@@ -625,10 +439,12 @@ def create_resource(args: dict) -> dict:
     .badge.draft { background: #f1f5f9; color: #64748b; }
     .header-actions { display: flex; gap: 0.5rem; }
 
-    .btn { padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.875rem; cursor: pointer; border: none; font-weight: 500; }
+    .btn { padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.875rem; cursor: pointer; border: none; font-weight: 500; transition: background 0.15s; }
     .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
     .btn-primary { background: #3b82f6; color: #fff; }
     .btn-primary:hover { background: #2563eb; }
+    .btn-outline { background: #fff; color: #1e293b; border: 1px solid #e2e8f0; }
+    .btn-outline:hover { background: #f8fafc; }
     .btn-secondary { background: #f1f5f9; color: #374151; border: 1px solid #e2e8f0; }
     .btn-secondary:hover { background: #e2e8f0; }
     .btn-danger { background: #fee2e2; color: #991b1b; }
@@ -657,95 +473,8 @@ def create_resource(args: dict) -> dict:
     .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
 
     .tab-content { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; min-height: 300px; }
-    .tab-content.no-padding { padding: 0; overflow: hidden; }
 
-    /* ── Split pane layout ────────────────────── */
-    .split-pane { display: flex; gap: 0; min-height: calc(100vh - 320px); }
-    .editor-pane { flex: 3; min-width: 0; }
-    .config-pane {
-      flex: 2; min-width: 300px; display: flex; flex-direction: column;
-      border-left: 1px solid #e2e8f0;
-    }
-    .config-tabs {
-      display: flex; gap: 0; border-bottom: 1px solid #e2e8f0; background: #f8fafc;
-    }
-    .config-tab {
-      padding: 0.5rem 0.875rem; border: none; border-bottom: 2px solid transparent;
-      background: none; cursor: pointer; font-size: 0.8125rem; font-weight: 500; color: #64748b;
-    }
-    .config-tab:hover { color: #1e293b; }
-    .config-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-    .config-body { flex: 1; overflow-y: auto; max-height: calc(100vh - 380px); padding: 0.75rem; }
-
-    /* ── Schema builder ──────────────────────── */
-    .schema-builder { display: flex; flex-direction: column; gap: 0.75rem; }
-    .schema-header { display: flex; justify-content: space-between; align-items: center; }
-    .schema-header h3 { font-size: 0.9375rem; font-weight: 600; color: #1e293b; margin: 0; }
     .empty-schema { color: #94a3b8; font-size: 0.875rem; padding: 1.5rem; text-align: center; }
-
-    .schema-row, .binding-row {
-      display: flex; gap: 0.5rem; align-items: flex-end;
-      padding: 0.75rem; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;
-    }
-    .schema-row.stacked {
-      flex-direction: column; align-items: stretch; gap: 0.5rem;
-    }
-    .schema-row-top {
-      display: flex; gap: 0.5rem; align-items: flex-end;
-    }
-    .schema-field { display: flex; flex-direction: column; gap: 0.125rem; flex: 1; }
-    .schema-field.name-field { flex: 1.2; }
-    .schema-field.type-field { flex: 0.8; }
-    .schema-field.desc-field { flex: 2; }
-    .schema-field.default-field { flex: 1; }
-    .schema-field.enum-field { flex: 1.2; }
-    .schema-field.check-field { flex: 0 0 auto; align-self: center; }
-    .schema-field.flex-2 { flex: 2; }
-    .schema-field label { font-size: 0.6875rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
-    .schema-field input, .schema-field select {
-      padding: 0.375rem 0.5rem; border: 1px solid #e2e8f0; border-radius: 4px;
-      font-size: 0.8125rem; color: #1e293b; background: #fff;
-    }
-    .schema-field input:focus, .schema-field select:focus {
-      outline: none; border-color: #3b82f6;
-    }
-    .schema-field input[type="checkbox"] { width: auto; margin-right: 0.25rem; }
-
-    .btn-icon { background: none; border: none; cursor: pointer; font-size: 1.25rem; padding: 0.25rem; line-height: 1; color: #94a3b8; }
-    .btn-remove:hover { color: #dc2626; }
-
-    .resolver-hint { font-size: 0.75rem; color: #64748b; font-style: italic; display: block; margin-top: 0.25rem; }
-    .section-info { font-size: 0.875rem; color: #64748b; margin: 0; }
-    .binding-warnings { margin: 8px 0; padding: 8px 12px; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; }
-    .warning-item { font-size: 0.8125rem; color: #92400e; padding: 2px 0; }
-
-    /* ── Input card with integrated source toggle ── */
-    .input-card {
-      padding: 0.75rem; background: #f8fafc; border-radius: 6px;
-      border: 1px solid #e2e8f0; margin-bottom: 0.5rem;
-      display: flex; flex-direction: column; gap: 0.5rem; transition: border-color 0.15s;
-    }
-    .input-card.resolver-bound { border-color: #93c5fd; background: #f0f7ff; }
-    .source-row { display: flex; align-items: center; gap: 0.5rem; }
-    .source-label { font-size: 0.6875rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
-    .source-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 4px; overflow: hidden; }
-    .source-btn {
-      padding: 0.25rem 0.625rem; font-size: 0.6875rem; font-weight: 500; border: none;
-      background: #fff; color: #64748b; cursor: pointer; font-family: inherit;
-    }
-    .source-btn:first-child { border-right: 1px solid #e2e8f0; }
-    .source-btn.active { background: #3b82f6; color: #fff; }
-    .source-btn:hover:not(.active) { background: #f1f5f9; }
-    .binding-row { display: flex; gap: 0.5rem; }
-    .binding-row .schema-field { flex: 1; }
-    .suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
-    .suggestions-label { font-size: 0.6875rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
-    .suggestion-chip {
-      padding: 3px 10px; border-radius: 12px; border: 1px solid #93c5fd; background: #eff6ff;
-      color: #1e40af; font-size: 0.6875rem; font-weight: 500; cursor: pointer; font-family: inherit;
-    }
-    .suggestion-chip:hover { background: #dbeafe; border-color: #3b82f6; }
-    .match-hint { color: #64748b; font-weight: 400; }
 
     /* ── Version list ────────────────────────── */
     .version-list { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -843,6 +572,36 @@ def create_resource(args: dict) -> dict:
       display: flex; gap: 0.375rem; margin-top: 0.25rem; padding-top: 0.5rem; border-top: 1px solid #f1f5f9;
       flex-wrap: wrap;
     }
+    /* ── Activity Cards (Inline) ──────────────── */
+    .activity-list-inline { display: flex; flex-direction: column; gap: 0.5rem; }
+    .activity-card-inline {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.75rem;
+      transition: border-color 0.15s;
+    }
+    .activity-card-inline:hover { border-color: #cbd5e1; }
+    .activity-card-header-inline {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .activity-card-title-inline {
+      display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;
+    }
+    .activity-card-actions-inline { display: flex; gap: 0.375rem; align-items: center; }
+    .activity-card-name { font-weight: 600; font-size: 0.8125rem; color: #1e293b; }
+    .activity-card-slug { font-size: 0.6875rem; color: #94a3b8; font-family: monospace; margin-top: 0.125rem; }
+    .badge-mandatory-sm { background: #fef2f2; color: #991b1b; font-size: 0.5625rem; padding: 1px 4px; }
+    .badge-forked-sm { background: #f0f7ff; color: #1e40af; font-size: 0.5625rem; padding: 1px 4px; }
+    .badge-default { background: #f1f5f9; color: #64748b; font-size: 0.625rem; padding: 2px 6px; }
+    .badge-customized { background: #fef3c7; color: #92400e; font-size: 0.625rem; padding: 2px 6px; }
+    .add-op-row { margin-top: 0.75rem; }
+    .wf-summary { margin-top: 0.375rem; }
+    .wf-summary-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .wf-summary-name { font-size: 0.8125rem; color: #475569; font-weight: 500; }
+    .wf-missing { color: #dc2626; font-style: italic; }
+    .wf-version { font-size: 0.75rem; color: #94a3b8; }
+    .btn-upgrade { background: #fef3c7; color: #92400e; border: 1px solid #fbbf24; }
+    .btn-upgrade:hover { background: #fde68a; }
+
+    .empty-msg { color: #64748b; font-size: 0.875rem; }
     /* ── Dialog ──────────────────────────────── */
     .dialog-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.3); display: flex;
@@ -868,32 +627,42 @@ export class ComponentEditorComponent implements OnInit {
   private componentService = inject(ComponentService);
   private semanticService = inject(SemanticService);
   private workflowService = inject(WorkflowService);
+  private activityService = inject(AutomatedActivityService);
   private toastService = inject(ToastService);
   private cdr = inject(ChangeDetectorRef);
 
   component = signal<ComponentModel | null>(null);
   loading = signal(false);
   saving = signal(false);
-  activeTab = signal<EditorTab>('codeConfig');
-  configTab = signal<ConfigTab>('inputs');
+  activeTab = signal<EditorTab>('workflows');
   showPublishDialog = signal(false);
   publishChangelog = '';
   versions = signal<ComponentVersion[]>([]);
-  resolvers = signal<Resolver[]>([]);
   operations = signal<ComponentOperation[]>([]);
   workflowDefinitions = signal<{ id: string; name: string }[]>([]);
   showOpForm = signal(false);
   editingOpId = signal<string | null>(null);
   opSaving = signal(false);
   expandedOpId = signal<string | null>(null);
-  expandedWorkflow = signal<WorkflowDefinition | null>(null);
-  workflowLoading = signal(false);
   editorVisible = signal(false);
   deployInitializing = signal(false);
 
   // Computed: split operations by category
   deploymentOps = computed(() => this.operations().filter(op => op.operationCategory === 'DEPLOYMENT'));
   day2Ops = computed(() => this.operations().filter(op => op.operationCategory !== 'DEPLOYMENT'));
+  allWorkflowOps = computed(() => [...this.deploymentOps(), ...this.day2Ops()]);
+
+  // Activity signals
+  deploymentActivities = signal<AutomatedActivity[]>([]);
+  day2Activities = signal<AutomatedActivity[]>([]);
+  allActivities = computed(() => [...this.deploymentActivities(), ...this.day2Activities()]);
+
+  // Pre-loaded workflow definitions keyed by ID (for showing template info on all cards)
+  workflowMap = signal<Map<string, WorkflowDefinition>>(new Map());
+  workflowsLoaded = signal(false);
+
+  // Track which activities have been customized (versions > 1 means user made changes)
+  customizedActivityIds = signal<Set<string>>(new Set());
 
   // Dropdown options
   semanticTypeOptions = signal<SelectOption[]>([]);
@@ -909,9 +678,6 @@ export class ComponentEditorComponent implements OnInit {
     description: '',
     semanticTypeId: '',
     code: EXAMPLE_CODE,
-    inputSchema: null as Record<string, unknown> | null,
-    outputSchema: null as Record<string, unknown> | null,
-    resolverBindings: null as Record<string, unknown> | null,
   };
 
   opForm = {
@@ -921,19 +687,12 @@ export class ComponentEditorComponent implements OnInit {
     downtimeMinutes: 0,
   };
 
-  // Structured schema editing
-  inputProperties = signal<SchemaProperty[]>([]);
-  outputProperties = signal<SchemaProperty[]>([]);
-  resolverBindings = signal<ResolverBinding[]>([]);
-  bindingWarnings = signal<string[]>([]);
-
   isNew = computed(() => !this.route.snapshot.params['id']);
 
   ngOnInit(): void {
     const id = this.route.snapshot.params['id'];
     this.loadSemanticTypes();
     this.loadProvider();
-    this.loadResolvers();
 
     if (id) {
       this.loadComponent(id);
@@ -982,17 +741,11 @@ export class ComponentEditorComponent implements OnInit {
         this.form.description = c.description || '';
         this.form.semanticTypeId = c.semanticTypeId;
         this.form.code = c.code || EXAMPLE_CODE;
-        this.form.inputSchema = c.inputSchema;
-        this.form.outputSchema = c.outputSchema;
-        this.form.resolverBindings = c.resolverBindings;
         this.providerId = c.providerId;
         this.versions.set(c.versions || []);
         this.operations.set(c.operations || []);
-
-        // Parse schema into structured format
-        this.inputProperties.set(this.schemaToProperties(c.inputSchema));
-        this.outputProperties.set(this.schemaToProperties(c.outputSchema));
-        this.resolverBindings.set(this.parseResolverBindings(c.resolverBindings));
+        this.loadComponentActivities();
+        this.loadComponentWorkflows(c.operations || []);
 
         this.loading.set(false);
         // Show editor after data loads
@@ -1006,11 +759,151 @@ export class ComponentEditorComponent implements OnInit {
     });
   }
 
-  private loadResolvers(): void {
-    this.componentService.listResolvers().subscribe({
-      next: (r) => {
-        this.resolvers.set(r);
+  private loadComponentActivities(): void {
+    const comp = this.component();
+    if (!comp) return;
+    // Load activities that have component_id set to this component
+    this.activityService.listActivities({ componentId: comp.id, limit: 200 }).subscribe({
+      next: (list) => {
+        // Only update signals if we actually found per-component activities;
+        // otherwise leave existing data (from fallback loaders) untouched
+        if (list.length > 0) {
+          this.deploymentActivities.set(list.filter(a => a.operationKind === 'CREATE' || a.operationKind === 'DELETE' || a.operationKind === 'RESTORE'));
+          this.day2Activities.set(list.filter(a => a.operationKind !== 'CREATE' && a.operationKind !== 'DELETE' && a.operationKind !== 'RESTORE'));
+          this.trackActivityCustomization(list);
+          this.cdr.markForCheck();
+        }
+      },
+    });
+  }
+
+  /** Track which forked activities have been customized (have more than 1 version) */
+  private trackActivityCustomization(activities: AutomatedActivity[]): void {
+    const ids = new Set(this.customizedActivityIds());
+    for (const act of activities) {
+      if (act.templateActivityId && act.versions && act.versions.length > 1) {
+        ids.add(act.id);
+      }
+    }
+    this.customizedActivityIds.set(ids);
+  }
+
+  /** Check if a forked activity has been customized (has multiple versions) */
+  isActivityCustomized(act: AutomatedActivity): boolean {
+    if (this.customizedActivityIds().has(act.id)) return true;
+    if (act.versions && act.versions.length > 1) return true;
+    return false;
+  }
+
+  /** Pre-load all WorkflowDefinition objects for the component's operations */
+  private loadComponentWorkflows(ops: ComponentOperation[]): void {
+    const wfIds = [...new Set(ops.map(o => o.workflowDefinitionId).filter(Boolean))];
+    if (wfIds.length === 0) {
+      this.workflowsLoaded.set(true);
+      return;
+    }
+
+    // Wrap each fetch in catchError so missing/deleted workflows don't break forkJoin
+    const fetches = wfIds.map(id =>
+      this.workflowService.getDefinition(id).pipe(catchError(() => of(null)))
+    );
+    forkJoin(fetches).subscribe({
+      next: (workflows) => {
+        const map = new Map<string, WorkflowDefinition>();
+        for (const wf of workflows) {
+          if (wf) map.set(wf.id, wf);
+        }
+        this.workflowMap.set(map);
+        this.workflowsLoaded.set(true);
+
+        // If no component activities were loaded yet, extract activity references
+        // from workflow graph nodes and load them
+        if (this.allActivities().length === 0) {
+          this.loadActivitiesFromWorkflowGraphs(workflows.filter(Boolean) as WorkflowDefinition[]);
+        }
+
         this.cdr.markForCheck();
+      },
+    });
+  }
+
+  /** Fallback: extract activity IDs/slugs from workflow graph nodes, or load system deployment activities */
+  private loadActivitiesFromWorkflowGraphs(workflows: WorkflowDefinition[]): void {
+    const activityIds = new Set<string>();
+    for (const wf of workflows) {
+      if (!wf.graph?.nodes) continue;
+      for (const node of wf.graph.nodes) {
+        const actId = node.config?.['activity_id'] as string;
+        if (actId) activityIds.add(actId);
+      }
+    }
+
+    if (activityIds.size > 0) {
+      const fetches = [...activityIds].map(id =>
+        this.activityService.getActivity(id).pipe(catchError(() => of(null)))
+      );
+      forkJoin(fetches).subscribe({
+        next: (activities) => {
+          const valid = activities.filter(Boolean) as AutomatedActivity[];
+          if (valid.length > 0) {
+            this.deploymentActivities.set(valid.filter(a => a.operationKind === 'CREATE' || a.operationKind === 'DELETE' || a.operationKind === 'RESTORE'));
+            this.day2Activities.set(valid.filter(a => a.operationKind !== 'CREATE' && a.operationKind !== 'DELETE' && a.operationKind !== 'RESTORE'));
+            this.trackActivityCustomization(valid);
+            this.cdr.markForCheck();
+          } else {
+            this.loadSystemDeploymentActivities();
+          }
+        },
+      });
+    } else {
+      // No activity IDs in graphs — load system deployment activities as fallback
+      this.loadSystemDeploymentActivities();
+    }
+  }
+
+  /** Load system deployment activities when no per-component activities exist */
+  private loadSystemDeploymentActivities(): void {
+    if (this.deploymentOps().length === 0) return;
+    // Load all deployment-type activities (system defaults, no componentId filter)
+    this.activityService.listActivities({ isComponentActivity: false, limit: 50 }).subscribe({
+      next: (list) => {
+        if (list.length > 0) {
+          this.deploymentActivities.set(list);
+          this.cdr.markForCheck();
+        }
+      },
+    });
+  }
+
+  /** Get the pre-loaded workflow for an operation */
+  getWorkflowForOp(op: ComponentOperation): WorkflowDefinition | null {
+    return this.workflowMap().get(op.workflowDefinitionId) ?? null;
+  }
+
+  editActivity(activityId: string): void {
+    const comp = this.component();
+    if (!comp) return;
+    this.router.navigate([this.basePath(), comp.id, 'activities', activityId]);
+  }
+
+  createDay2Activity(): void {
+    const comp = this.component();
+    if (!comp) return;
+    this.router.navigate([this.basePath(), comp.id, 'activities', 'new'], {
+      queryParams: { componentId: comp.id, isComponentActivity: true },
+    });
+  }
+
+  createBlankWorkflow(): void {
+    const comp = this.component();
+    if (!comp) return;
+    const returnTo = `${this.basePath()}/${comp.id}/edit`;
+    this.router.navigate(['/workflows', 'definitions', 'new'], {
+      queryParams: {
+        returnTo,
+        componentId: comp.id,
+        applicableSemanticTypeId: comp.semanticTypeId,
+        applicableProviderId: comp.providerId,
       },
     });
   }
@@ -1026,177 +919,6 @@ export class ComponentEditorComponent implements OnInit {
     });
   }
 
-  // ── Schema ↔ Properties conversion ────────────────────────────────
-
-  private schemaToProperties(schema: Record<string, unknown> | null): SchemaProperty[] {
-    if (!schema) return [];
-    const props = (schema['properties'] || {}) as Record<string, Record<string, unknown>>;
-    const required = ((schema['required'] || []) as string[]);
-    return Object.entries(props).map(([name, def]) => ({
-      name,
-      type: (def['type'] as SchemaProperty['type']) || 'string',
-      description: (def['description'] as string) || '',
-      required: required.includes(name),
-      defaultValue: def['default'] !== undefined ? String(def['default']) : '',
-      enumValues: Array.isArray(def['enum']) ? (def['enum'] as string[]).join(', ') : '',
-    }));
-  }
-
-  private propertiesToSchema(properties: SchemaProperty[]): Record<string, unknown> | null {
-    if (properties.length === 0) return null;
-    const props: Record<string, Record<string, unknown>> = {};
-    const required: string[] = [];
-
-    for (const p of properties) {
-      if (!p.name.trim()) continue;
-      const def: Record<string, unknown> = { type: p.type };
-      if (p.description) def['description'] = p.description;
-      if (p.defaultValue) {
-        if (p.type === 'integer' || p.type === 'number') {
-          def['default'] = Number(p.defaultValue);
-        } else if (p.type === 'boolean') {
-          def['default'] = p.defaultValue === 'true';
-        } else {
-          def['default'] = p.defaultValue;
-        }
-      }
-      if (p.enumValues.trim()) {
-        def['enum'] = p.enumValues.split(',').map(v => v.trim()).filter(Boolean);
-      }
-      props[p.name] = def;
-      if (p.required) required.push(p.name);
-    }
-
-    const schema: Record<string, unknown> = { type: 'object', properties: props };
-    if (required.length > 0) schema['required'] = required;
-    return schema;
-  }
-
-  private parseResolverBindings(bindings: Record<string, unknown> | null): ResolverBinding[] {
-    if (!bindings) return [];
-    return Object.entries(bindings).map(([paramName, def]) => {
-      const d = def as Record<string, unknown>;
-      return {
-        paramName,
-        resolverType: (d['resolver_type'] as string) || '',
-        resolverParams: (d['params'] as Record<string, string>) || {},
-        targetField: (d['target'] as string) || paramName,
-      };
-    });
-  }
-
-  private resolverBindingsToJson(bindings: ResolverBinding[]): Record<string, unknown> | null {
-    if (bindings.length === 0) return null;
-    const result: Record<string, unknown> = {};
-    for (const b of bindings) {
-      if (!b.paramName || !b.resolverType) continue;
-      result[b.paramName] = {
-        resolver_type: b.resolverType,
-        params: b.resolverParams,
-        target: b.targetField || b.paramName,
-      };
-    }
-    return Object.keys(result).length > 0 ? result : null;
-  }
-
-  // ── Schema builders ───────────────────────────────────────────────
-
-  addInputProperty(): void {
-    this.inputProperties.update(props => [
-      ...props,
-      { name: '', type: 'string', description: '', required: false, defaultValue: '', enumValues: '' },
-    ]);
-  }
-
-  removeInputProperty(index: number): void {
-    const name = this.inputProperties()[index]?.name;
-    this.inputProperties.update(props => props.filter((_, i) => i !== index));
-    if (name) {
-      this.resolverBindings.update(bindings => bindings.filter(b => b.paramName !== name));
-    }
-  }
-
-  addOutputProperty(): void {
-    this.outputProperties.update(props => [
-      ...props,
-      { name: '', type: 'string', description: '', required: false, defaultValue: '', enumValues: '' },
-    ]);
-  }
-
-  removeOutputProperty(index: number): void {
-    this.outputProperties.update(props => props.filter((_, i) => i !== index));
-  }
-
-  // ── Per-parameter binding helpers ────────────────────────────────
-
-  private suggestionsCache = signal<Record<string, Array<{ resolver_id: string; resolver_type: string; display_name: string; matching_fields: string[] }>>>({});
-
-  hasBinding(paramName: string): boolean {
-    return this.resolverBindings().some(b => b.paramName === paramName);
-  }
-
-  getBinding(paramName: string): ResolverBinding | undefined {
-    return this.resolverBindings().find(b => b.paramName === paramName);
-  }
-
-  enableBinding(paramName: string, fieldType: string): void {
-    if (this.hasBinding(paramName)) return;
-    this.resolverBindings.update(bindings => [
-      ...bindings,
-      { paramName, resolverType: '', resolverParams: {}, targetField: paramName },
-    ]);
-    this.loadSuggestions(paramName, fieldType);
-  }
-
-  removeBinding(paramName: string): void {
-    if (!this.hasBinding(paramName)) return;
-    this.resolverBindings.update(bindings => bindings.filter(b => b.paramName !== paramName));
-  }
-
-  loadSuggestions(paramName: string, fieldType: string): void {
-    const pid = this.providerId || undefined;
-    this.componentService.suggestResolversForField(fieldType, pid).subscribe({
-      next: (suggestions) => {
-        this.suggestionsCache.update(cache => ({ ...cache, [paramName]: suggestions }));
-        this.cdr.markForCheck();
-      },
-    });
-  }
-
-  getSuggestions(paramName: string): Array<{ resolver_id: string; resolver_type: string; display_name: string; matching_fields: string[] }> {
-    return this.suggestionsCache()[paramName] || [];
-  }
-
-  applySuggestion(binding: ResolverBinding, suggestion: { resolver_type: string; matching_fields: string[] }): void {
-    binding.resolverType = suggestion.resolver_type;
-    binding.resolverParams = {};
-    if (suggestion.matching_fields.length > 0) {
-      binding.targetField = suggestion.matching_fields[0];
-    }
-  }
-
-  getResolverByType(type: string): Resolver | undefined {
-    return this.resolvers().find(r => r.resolverType === type);
-  }
-
-  onBindingResolverChange(binding: ResolverBinding): void {
-    binding.resolverParams = {};
-  }
-
-  validateBindings(): void {
-    const comp = this.component();
-    if (!comp) return;
-    this.componentService.validateResolverBindings(comp.id).subscribe({
-      next: (warnings) => {
-        this.bindingWarnings.set(warnings);
-        if (warnings.length === 0) {
-          this.toastService.success('All bindings are valid');
-        }
-      },
-      error: () => this.toastService.error('Failed to validate bindings'),
-    });
-  }
-
   // ── Operations ───────────────────────────────────────────────────
 
   loadOperations(): void {
@@ -1204,6 +926,11 @@ export class ComponentEditorComponent implements OnInit {
     if (!comp) return;
     // Load operations from the component's embedded list first
     this.operations.set(comp.operations || []);
+    // Only re-fetch workflows and activities if not already loaded
+    if (!this.workflowsLoaded()) {
+      this.loadComponentWorkflows(comp.operations || []);
+      this.loadComponentActivities();
+    }
     // Load workflow definitions filtered by applicability (semantic type + provider)
     this.loadApplicableWorkflows();
   }
@@ -1281,29 +1008,17 @@ export class ComponentEditorComponent implements OnInit {
   toggleOperationExpand(op: ComponentOperation): void {
     if (this.expandedOpId() === op.id) {
       this.expandedOpId.set(null);
-      this.expandedWorkflow.set(null);
       return;
     }
     this.expandedOpId.set(op.id);
-    this.expandedWorkflow.set(null);
-    if (op.workflowDefinitionId) {
-      this.workflowLoading.set(true);
-      this.workflowService.getDefinition(op.workflowDefinitionId).subscribe({
-        next: (wf) => {
-          this.expandedWorkflow.set(wf);
-          this.workflowLoading.set(false);
-          this.cdr.markForCheck();
-        },
-        error: () => {
-          this.workflowLoading.set(false);
-          this.cdr.markForCheck();
-        },
-      });
-    }
   }
 
   editWorkflow(workflowDefinitionId: string): void {
-    this.router.navigate(['/workflows', 'definitions', workflowDefinitionId, 'edit']);
+    const comp = this.component();
+    const returnTo = comp ? `${this.basePath()}/${comp.id}/edit` : undefined;
+    this.router.navigate(['/workflows', 'definitions', workflowDefinitionId, 'edit'], {
+      queryParams: returnTo ? { returnTo } : undefined,
+    });
   }
 
   saveOperation(): void {
@@ -1414,14 +1129,8 @@ export class ComponentEditorComponent implements OnInit {
   // ── Version restore ───────────────────────────────────────────────
 
   restoreVersion(v: ComponentVersion): void {
-    if (!confirm(`Restore code and schemas from v${v.version}? Current draft will be overwritten.`)) return;
+    if (!confirm(`Restore code from v${v.version}? Current draft will be overwritten.`)) return;
     this.form.code = v.code;
-    this.form.inputSchema = v.inputSchema;
-    this.form.outputSchema = v.outputSchema;
-    this.form.resolverBindings = v.resolverBindings;
-    this.inputProperties.set(this.schemaToProperties(v.inputSchema));
-    this.outputProperties.set(this.schemaToProperties(v.outputSchema));
-    this.resolverBindings.set(this.parseResolverBindings(v.resolverBindings));
 
     // Force Monaco to re-render with new code
     this.editorVisible.set(false);
@@ -1430,22 +1139,21 @@ export class ComponentEditorComponent implements OnInit {
       this.cdr.markForCheck();
     }, 50);
 
-    this.activeTab.set('codeConfig');
+    this.activeTab.set('workflows');
     this.toastService.success(`Restored from v${v.version}. Save to persist.`);
     this.cdr.markForCheck();
   }
 
-  // ── Save / Publish / Delete ───────────────────────────────────────
+  // ── Cancel / Save / Publish ──────────────────────────────────────
+
+  onCancel(): void {
+    this.router.navigate([this.basePath()]);
+  }
 
   save(): void {
     this.saving.set(true);
     const comp = this.component();
     const providerMode = this.isProviderMode();
-
-    // Build schemas from structured editors
-    const inputSchema = this.propertiesToSchema(this.inputProperties()) || undefined;
-    const outputSchema = this.propertiesToSchema(this.outputProperties()) || undefined;
-    const resolverBindings = this.resolverBindingsToJson(this.resolverBindings()) || undefined;
 
     if (comp) {
       this.componentService.updateComponent(comp.id, {
@@ -1454,9 +1162,6 @@ export class ComponentEditorComponent implements OnInit {
         description: this.form.description || undefined,
         code: this.form.code,
         language: 'python',
-        inputSchema,
-        outputSchema,
-        resolverBindings,
       }, providerMode).subscribe({
         next: (updated) => {
           this.component.set(updated);
@@ -1484,9 +1189,6 @@ export class ComponentEditorComponent implements OnInit {
         language: 'python',
         description: this.form.description || undefined,
         code: this.form.code,
-        inputSchema,
-        outputSchema,
-        resolverBindings,
       };
       this.componentService.createComponent(input, providerMode).subscribe({
         next: (created) => {

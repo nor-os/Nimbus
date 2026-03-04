@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint  # noqa: F401
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,11 +53,6 @@ class MutationType(str, enum.Enum):
     REMOVE = "REMOVE"
 
 
-class ActivityScope(str, enum.Enum):
-    COMPONENT = "COMPONENT"
-    WORKFLOW = "WORKFLOW"
-
-
 class ActivityExecutionStatus(str, enum.Enum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
@@ -82,7 +77,6 @@ class AutomatedActivity(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     semantic_activity_type_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("semantic_activity_types.id"),
@@ -116,14 +110,20 @@ class AutomatedActivity(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     timeout_seconds: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="300"
     )
-    scope: Mapped[ActivityScope] = mapped_column(
-        Enum(ActivityScope, name="activity_scope_enum", create_constraint=False, native_enum=False),
-        nullable=False,
-        default=ActivityScope.WORKFLOW,
-        server_default="WORKFLOW",
-    )
-    is_system: Mapped[bool] = mapped_column(
+    is_component_activity: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
+    )
+    component_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("components.id"), nullable=True, index=True
+    )
+    template_activity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("automated_activities.id"), nullable=True
+    )
+    is_mandatory: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    forked_at_version: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -138,6 +138,8 @@ class AutomatedActivity(Base, IDMixin, TimestampMixin, SoftDeleteMixin):
     semantic_activity_type = relationship("SemanticActivityType", lazy="joined")
     semantic_type = relationship("SemanticResourceType", lazy="joined")
     provider = relationship("SemanticProvider", lazy="joined")
+    component = relationship("Component", lazy="joined", foreign_keys=[component_id])  # noqa: F821
+    template_activity = relationship("AutomatedActivity", remote_side="AutomatedActivity.id", lazy="joined", foreign_keys=[template_activity_id])
 
 
 class AutomatedActivityVersion(Base, IDMixin, TimestampMixin):
@@ -165,6 +167,7 @@ class AutomatedActivityVersion(Base, IDMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     runtime_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    resolver_bindings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     activity: Mapped["AutomatedActivity"] = relationship(back_populates="versions")

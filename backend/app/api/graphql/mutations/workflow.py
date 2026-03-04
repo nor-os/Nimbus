@@ -66,6 +66,10 @@ class WorkflowMutation:
             data["applicable_semantic_type_id"] = str(input.applicable_semantic_type_id)
         if input.applicable_provider_id is not None:
             data["applicable_provider_id"] = str(input.applicable_provider_id)
+        if input.input_schema is not None:
+            data["input_schema"] = input.input_schema
+        if input.output_schema is not None:
+            data["output_schema"] = input.output_schema
         d = await svc.create(str(tenant_id), str(user_id), data)
         result = _definition_to_type(d)
         await db.commit()
@@ -108,6 +112,10 @@ class WorkflowMutation:
             data["applicable_provider_id"] = (
                 str(input.applicable_provider_id) if input.applicable_provider_id else None
             )
+        if input.input_schema is not strawberry.UNSET:
+            data["input_schema"] = input.input_schema
+        if input.output_schema is not strawberry.UNSET:
+            data["output_schema"] = input.output_schema
 
         d = await svc.update(str(tenant_id), str(definition_id), data)
         result = _definition_to_type(d)

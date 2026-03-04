@@ -56,6 +56,8 @@ class WorkflowDefinitionService:
             is_system=data.get("is_system", False),
             applicable_semantic_type_id=data.get("applicable_semantic_type_id"),
             applicable_provider_id=data.get("applicable_provider_id"),
+            input_schema=data.get("input_schema"),
+            output_schema=data.get("output_schema"),
         )
         self.db.add(definition)
         await self.db.flush()
@@ -77,6 +79,11 @@ class WorkflowDefinitionService:
             "applicable_semantic_type_id", "applicable_provider_id",
         ):
             if field in data and data[field] is not None:
+                setattr(definition, field, data[field])
+
+        # Nullable fields — allow setting to None to clear
+        for field in ("input_schema", "output_schema"):
+            if field in data:
                 setattr(definition, field, data[field])
 
         await self.db.flush()
@@ -137,11 +144,23 @@ class WorkflowDefinitionService:
     async def get(
         self, tenant_id: str, definition_id: str
     ) -> WorkflowDefinition | None:
-        """Get a definition by ID."""
+        """Get a definition by ID.  Checks tenant first, then falls back to
+        system templates (is_template=True) which may belong to a different tenant."""
         result = await self.db.execute(
             select(WorkflowDefinition).where(
                 WorkflowDefinition.id == definition_id,
                 WorkflowDefinition.tenant_id == tenant_id,
+                WorkflowDefinition.deleted_at.is_(None),
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row:
+            return row
+        # Fallback: system templates are stored under a system tenant
+        result = await self.db.execute(
+            select(WorkflowDefinition).where(
+                WorkflowDefinition.id == definition_id,
+                WorkflowDefinition.is_template.is_(True),
                 WorkflowDefinition.deleted_at.is_(None),
             )
         )
@@ -227,6 +246,8 @@ class WorkflowDefinitionService:
             description=source.description,
             version=0,
             graph=copy.deepcopy(source.graph) if source.graph else None,
+            input_schema=copy.deepcopy(source.input_schema) if source.input_schema else None,
+            output_schema=copy.deepcopy(source.output_schema) if source.output_schema else None,
             status=WorkflowDefinitionStatus.DRAFT,
             created_by=created_by,
             timeout_seconds=source.timeout_seconds,
@@ -243,6 +264,7 @@ class WorkflowDefinitionService:
         created_by: str,
         name: str,
         description: str | None = None,
+        component_id: str | None = None,
     ) -> WorkflowDefinition:
         """Clone a system template into a tenant-specific draft workflow."""
         template = await self.db.execute(
@@ -264,6 +286,8 @@ class WorkflowDefinitionService:
             description=description or source.description,
             version=0,
             graph=copy.deepcopy(source.graph) if source.graph else None,
+            input_schema=copy.deepcopy(source.input_schema) if source.input_schema else None,
+            output_schema=copy.deepcopy(source.output_schema) if source.output_schema else None,
             status=WorkflowDefinitionStatus.DRAFT,
             created_by=created_by,
             timeout_seconds=source.timeout_seconds,
@@ -272,6 +296,7 @@ class WorkflowDefinitionService:
             is_system=False,
             is_template=False,
             template_source_id=source.id,
+            component_id=component_id,
         )
         self.db.add(cloned)
         await self.db.flush()
@@ -384,6 +409,8 @@ class WorkflowDefinitionService:
             "name": definition.name,
             "description": definition.description,
             "graph": definition.graph,
+            "input_schema": definition.input_schema,
+            "output_schema": definition.output_schema,
             "timeout_seconds": definition.timeout_seconds,
             "max_concurrent": definition.max_concurrent,
         }

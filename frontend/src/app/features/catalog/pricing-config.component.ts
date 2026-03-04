@@ -651,7 +651,7 @@ interface EditingItem {
     </nimbus-layout>
   `,
   styles: [`
-    .pricing-page { padding: 0; max-width: 960px; }
+    .pricing-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;

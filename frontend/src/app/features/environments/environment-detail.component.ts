@@ -14,8 +14,8 @@ import { DeploymentService } from '@core/services/deployment.service';
 import { ArchitectureService } from '@core/services/architecture.service';
 import { ComponentService } from '@core/services/component.service';
 import { TenantEnvironment, LandingZone } from '@shared/models/landing-zone.model';
-import { Deployment } from '@shared/models/deployment.model';
-import { Resolver, ResolverConfiguration } from '@shared/models/component.model';
+import { Deployment, DeploymentCI, UpgradableCI } from '@shared/models/deployment.model';
+import { Component as NimbusComponent, Resolver, ResolverConfiguration } from '@shared/models/component.model';
 import { ArchitectureTopology } from '@shared/models/architecture.model';
 import { ToastService } from '@shared/services/toast.service';
 import { ConfirmService } from '@shared/services/confirm.service';
@@ -53,7 +53,7 @@ import {
           <!-- Header -->
           <div class="page-header">
             <div class="header-left">
-              <a routerLink="/environments" class="back-link">&larr; Environments</a>
+              <a routerLink="/deployments/environments" class="back-link">&larr; Environments</a>
               <div class="title-row">
                 <h1 class="page-title">{{ env()!.displayName }}</h1>
                 <span class="status-badge" [class]="'badge-' + env()!.status.toLowerCase()">{{ env()!.status }}</span>
@@ -581,9 +581,10 @@ import {
           <!-- Tab: Deployments -->
           @if (activeTab() === 'deployments') {
             <div class="tab-content">
+              <!-- Topology Deployments -->
               <div class="section-card">
                 <div class="section-header">
-                  <h2 class="section-title">Deployments</h2>
+                  <h2 class="section-title">Topology Deployments</h2>
                   <button
                     *nimbusHasPermission="'deployment:deployment:create'"
                     class="btn btn-primary btn-sm"
@@ -664,6 +665,117 @@ import {
                   </table>
                 </div>
               </div>
+
+              <!-- Deployed Components -->
+              <div class="section-card">
+                <div class="section-header">
+                  <h2 class="section-title">Deployed Components</h2>
+                  <button
+                    *nimbusHasPermission="'deployment:deployment:create'"
+                    class="btn btn-primary btn-sm"
+                    (click)="showDeployComponent.set(!showDeployComponent())"
+                  >{{ showDeployComponent() ? 'Cancel' : 'Deploy Component' }}</button>
+                </div>
+
+                @if (showDeployComponent()) {
+                  <div class="deploy-form">
+                    <div class="form-grid">
+                      <div class="form-group">
+                        <label class="form-label">Component</label>
+                        <select class="form-input" [(ngModel)]="deployComponentForm.componentId" (ngModelChange)="onDeployComponentSelected()">
+                          <option value="">Select published component...</option>
+                          @for (c of publishedComponents(); track c.id) {
+                            <option [value]="c.id">{{ c.displayName }} (v{{ c.version }})</option>
+                          }
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label">Version</label>
+                        <input type="number" class="form-input" [(ngModel)]="deployComponentForm.version"
+                          [placeholder]="'Latest'" min="1" />
+                      </div>
+                    </div>
+                    <div class="form-actions">
+                      <button
+                        class="btn btn-primary btn-sm"
+                        (click)="onDeployComponent()"
+                        [disabled]="!deployComponentForm.componentId"
+                      >Deploy Component</button>
+                    </div>
+                  </div>
+                }
+
+                <div class="table-container">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Component</th>
+                        <th>Deployed Version</th>
+                        <th>Latest Version</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (ci of deployedComponentCis(); track ci.id) {
+                        <tr>
+                          <td class="name-cell">{{ ci.component?.displayName || ci.componentId.slice(0, 8) + '...' }}</td>
+                          <td>v{{ ci.componentVersion || '?' }}</td>
+                          <td>v{{ getUpgradeInfo(ci)?.latestVersion || ci.componentVersion || '?' }}</td>
+                          <td>
+                            @if (getUpgradeInfo(ci)) {
+                              <span class="status-badge badge-upgrade">
+                                Upgrade available (v{{ getUpgradeInfo(ci)!.deployedVersion }} &rarr; v{{ getUpgradeInfo(ci)!.latestVersion }})
+                              </span>
+                            } @else {
+                              <span class="status-badge badge-deployed">Up to date</span>
+                            }
+                          </td>
+                          <td>
+                            @if (getUpgradeInfo(ci)) {
+                              <button
+                                *nimbusHasPermission="'deployment:deployment:update'"
+                                class="action-btn"
+                                (click)="onUpgradeComponent(getUpgradeInfo(ci)!)"
+                              >Upgrade</button>
+                            }
+                          </td>
+                        </tr>
+                      }
+                      @if (deployedComponentCis().length === 0) {
+                        <tr>
+                          <td colspan="5" class="empty-cell">No components deployed yet.</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Upgrade Confirmation Dialog -->
+              @if (upgradeTarget()) {
+                <div class="overlay" (click)="upgradeTarget.set(null)">
+                  <div class="dialog" (click)="$event.stopPropagation()">
+                    <h3 class="dialog-title">Confirm Component Upgrade</h3>
+                    <div class="dialog-body">
+                      <p class="dialog-text">
+                        <strong>{{ upgradeTarget()!.componentDisplayName }}</strong>: v{{ upgradeTarget()!.deployedVersion }} &rarr; v{{ upgradeTarget()!.latestVersion }}
+                      </p>
+                      @if (upgradeTarget()!.changelog) {
+                        <div class="changelog-box">
+                          <span class="config-label">Changelog</span>
+                          <p class="changelog-text">{{ upgradeTarget()!.changelog }}</p>
+                        </div>
+                      }
+                      <p class="dialog-warning">This will execute the upgrade workflow which may cause brief downtime.</p>
+                    </div>
+                    <div class="dialog-actions">
+                      <button class="btn btn-outline btn-sm" (click)="upgradeTarget.set(null)">Cancel</button>
+                      <button class="btn btn-primary btn-sm" (click)="onConfirmUpgrade()">Confirm Upgrade</button>
+                    </div>
+                  </div>
+                </div>
+              }
             </div>
           }
         } @else if (loading()) {
@@ -860,6 +972,32 @@ import {
     .bc-link:hover { text-decoration: underline; }
     .bc-seg { color: #64748b; }
     .bc-seg.bc-current { color: #1e293b; font-weight: 600; }
+
+    .badge-upgrade { background: #fef3c7; color: #92400e; }
+
+    /* Upgrade confirmation dialog */
+    .overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .dialog {
+      background: #fff; border-radius: 10px; padding: 24px;
+      max-width: 480px; width: 90%; box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+    }
+    .dialog-title { font-size: 1.125rem; font-weight: 600; color: #1e293b; margin: 0 0 16px; }
+    .dialog-body { margin-bottom: 20px; }
+    .dialog-text { font-size: 0.875rem; color: #374151; margin: 0 0 12px; }
+    .dialog-warning {
+      font-size: 0.8125rem; color: #92400e; background: #fef3c7;
+      padding: 10px 12px; border-radius: 6px; margin: 12px 0 0;
+    }
+    .changelog-box {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+      padding: 10px 12px; margin: 8px 0;
+    }
+    .changelog-text { font-size: 0.8125rem; color: #374151; margin: 4px 0 0; white-space: pre-wrap; }
+    .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
   `],
 })
 export class EnvironmentDetailComponent implements OnInit {
@@ -961,6 +1099,27 @@ export class EnvironmentDetailComponent implements OnInit {
   loadingDeploys = signal(false);
   showDeploy = signal(false);
 
+  /** Component deployment state */
+  showDeployComponent = signal(false);
+  publishedComponents = signal<NimbusComponent[]>([]);
+  upgradableCis = signal<UpgradableCI[]>([]);
+  upgradeTarget = signal<UpgradableCI | null>(null);
+  deployComponentForm = { componentId: '', version: null as number | null };
+
+  /** Computed: all DeploymentCIs from deployed deployments, with component info attached */
+  deployedComponentCis = computed((): (DeploymentCI & { component?: NimbusComponent })[] => {
+    const deps = this.deployments().filter(d => d.status === 'DEPLOYED');
+    const comps = this.publishedComponents();
+    const compMap = new Map(comps.map(c => [c.id, c]));
+    const cis: (DeploymentCI & { component?: NimbusComponent })[] = [];
+    for (const dep of deps) {
+      for (const ci of (dep.cis || [])) {
+        cis.push({ ...ci, component: compMap.get(ci.componentId) });
+      }
+    }
+    return cis;
+  });
+
   /** Resolver state */
   availableResolvers = signal<Resolver[]>([]);
   resolverConfigs = signal<ResolverConfiguration[]>([]);
@@ -1050,6 +1209,16 @@ export class EnvironmentDetailComponent implements OnInit {
         this.toast.error('Failed to load deployments');
         this.loadingDeploys.set(false);
       },
+    });
+    // Load upgrade detection data
+    this.deploymentService.getUpgradableCis(this.envId).subscribe({
+      next: (items) => this.upgradableCis.set(items),
+      error: () => {},
+    });
+    // Load published components for the deploy form and display names
+    this.componentService.listComponents({ publishedOnly: true }).subscribe({
+      next: (comps) => this.publishedComponents.set(comps),
+      error: () => {},
     });
   }
 
@@ -1172,7 +1341,8 @@ export class EnvironmentDetailComponent implements OnInit {
     }
   }
 
-  getTopologyName(id: string): string {
+  getTopologyName(id: string | null): string {
+    if (!id) return '—';
     const t = this.topologies().find(t => t.id === id);
     return t?.name ?? id.slice(0, 8) + '...';
   }
@@ -1301,6 +1471,51 @@ export class EnvironmentDetailComponent implements OnInit {
         this.loadDeployments();
       },
       error: (e: Error) => this.toast.error(e.message || 'Failed to delete'),
+    });
+  }
+
+  // ── Component deployment methods ─────────────────────────────────
+
+  getUpgradeInfo(ci: DeploymentCI): UpgradableCI | null {
+    return this.upgradableCis().find(u => u.deploymentCiId === ci.id) || null;
+  }
+
+  onDeployComponentSelected(): void {
+    // Reset version when component changes
+    this.deployComponentForm.version = null;
+  }
+
+  onDeployComponent(): void {
+    if (!this.deployComponentForm.componentId) return;
+    this.deploymentService.deployComponent({
+      environmentId: this.envId,
+      componentId: this.deployComponentForm.componentId,
+      componentVersion: this.deployComponentForm.version,
+    }).subscribe({
+      next: () => {
+        this.toast.success('Component deployed');
+        this.showDeployComponent.set(false);
+        this.deployComponentForm = { componentId: '', version: null };
+        this.loadDeployments();
+      },
+      error: (e: Error) => this.toast.error(e.message || 'Failed to deploy component'),
+    });
+  }
+
+  onUpgradeComponent(upgradeInfo: UpgradableCI): void {
+    this.upgradeTarget.set(upgradeInfo);
+  }
+
+  onConfirmUpgrade(): void {
+    const target = this.upgradeTarget();
+    if (!target) return;
+    this.deploymentService.triggerUpgrade(target.deploymentCiId, target.latestVersion).subscribe({
+      next: () => {
+        this.toast.success(`Component upgraded to v${target.latestVersion}`);
+        this.upgradeTarget.set(null);
+        this.loadDeployments();
+      },
+      error: (e: Error) => this.toast.error(e.message || 'Upgrade failed'),
     });
   }
 

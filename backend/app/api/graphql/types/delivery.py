@@ -272,10 +272,9 @@ class LinkedAutomatedActivityType:
     id: uuid.UUID
     name: str
     slug: str
-    category: str | None
     operation_kind: str
     implementation_type: str
-    is_system: bool
+    is_component_activity: bool
 
 
 @strawberry.type

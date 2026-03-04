@@ -210,7 +210,7 @@ interface DefinitionRow {
                       <select class="form-input form-select" [(ngModel)]="linkActivityId">
                         <option value="">Select automated activity...</option>
                         @for (act of availableActivities(); track act.id) {
-                          <option [value]="act.id">{{ act.name }} ({{ act.operationKind | lowercase }}, {{ act.category || 'uncategorized' }})</option>
+                          <option [value]="act.id">{{ act.name }} ({{ act.operationKind | lowercase }})</option>
                         }
                       </select>
                     </div>
@@ -303,7 +303,7 @@ interface DefinitionRow {
     </nimbus-layout>
   `,
   styles: [`
-    .editor-page { padding: 0; max-width: 960px; }
+    .editor-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;
@@ -652,10 +652,10 @@ export class ActivityTemplateEditorComponent implements OnInit {
             id: act.id,
             name: act.name,
             slug: act.slug,
-            category: act.category,
+            category: null,
             operationKind: act.operationKind,
             implementationType: act.implementationType,
-            isSystem: act.isSystem,
+            isSystem: false,
           });
         }
         this.linkActivityId = '';

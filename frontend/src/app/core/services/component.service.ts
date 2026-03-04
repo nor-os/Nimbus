@@ -24,10 +24,10 @@ import {
   ResolverDefinitionUpdateInput,
 } from '@shared/models/component.model';
 
-const VERSION_FIELDS = `id componentId version code inputSchema outputSchema resolverBindings changelog publishedAt publishedBy`;
+const VERSION_FIELDS = `id componentId version code changelog publishedAt publishedBy`;
 const GOVERNANCE_FIELDS = `id componentId tenantId isAllowed parameterConstraints maxInstances createdAt updatedAt`;
-const OPERATION_FIELDS = `id componentId name displayName description inputSchema outputSchema workflowDefinitionId workflowDefinitionName isDestructive requiresApproval estimatedDowntime operationCategory operationKind sortOrder createdAt updatedAt`;
-const COMPONENT_FIELDS = `id tenantId providerId semanticTypeId name displayName description language code inputSchema outputSchema resolverBindings version isPublished isSystem upgradeWorkflowId createdBy createdAt updatedAt providerName semanticTypeName versions { ${VERSION_FIELDS} } governanceRules { ${GOVERNANCE_FIELDS} } operations { ${OPERATION_FIELDS} }`;
+const OPERATION_FIELDS = `id componentId name displayName description workflowDefinitionId workflowDefinitionName isDestructive requiresApproval estimatedDowntime operationCategory operationKind sortOrder createdAt updatedAt`;
+const COMPONENT_FIELDS = `id tenantId providerId semanticTypeId name displayName description language code version isPublished isSystem upgradeWorkflowId createdBy createdAt updatedAt providerName semanticTypeName versions { ${VERSION_FIELDS} } governanceRules { ${GOVERNANCE_FIELDS} } operations { ${OPERATION_FIELDS} }`;
 const RESOLVER_FIELDS = `id resolverType displayName description inputSchema outputSchema handlerClass isSystem instanceConfigSchema code category supportsRelease supportsUpdate compatibleProviderIds`;
 const RESOLVER_CONFIG_FIELDS = `id resolverId resolverType landingZoneId environmentId config createdAt updatedAt`;
 

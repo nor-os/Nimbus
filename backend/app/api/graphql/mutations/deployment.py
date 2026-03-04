@@ -11,8 +11,10 @@ import strawberry
 from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
-from app.api.graphql.queries.deployment import _deployment_to_type
+from app.api.graphql.queries.deployment import _deployment_ci_to_type, _deployment_to_type
 from app.api.graphql.types.deployment import (
+    DeployComponentInput,
+    DeploymentCIType,
     DeploymentCreateInput,
     DeploymentType,
     DeploymentUpdateInput,
@@ -203,4 +205,57 @@ class DeploymentMutation:
         db = await _get_session(info)
         svc = DeploymentService()
         deployment = await svc.get(db, deployment_id)
+        return _deployment_to_type(deployment)
+
+    @strawberry.mutation
+    async def trigger_component_upgrade(
+        self, info: Info, tenant_id: uuid.UUID,
+        deployment_ci_id: uuid.UUID, target_version: int | None = None,
+    ) -> DeploymentCIType:
+        """Upgrade a deployed component to a newer version.
+
+        Validates the version delta, confirms upgrade workflow exists.
+        TODO (Phase 12): Executes the upgrade workflow via Temporal.
+        For now: directly updates the DeploymentCI.component_version.
+        """
+        await check_graphql_permission(
+            info, "deployment:deployment:update", str(tenant_id)
+        )
+
+        from app.services.deployment.deployment_service import DeploymentService
+
+        db = await _get_session(info)
+        svc = DeploymentService()
+        dc = await svc.trigger_component_upgrade(
+            db, deployment_ci_id, target_version
+        )
+        await db.commit()
+        return _deployment_ci_to_type(dc)
+
+    @strawberry.mutation
+    async def deploy_component(
+        self, info: Info, tenant_id: uuid.UUID,
+        input: DeployComponentInput,
+    ) -> DeploymentType:
+        """Deploy a single component into an environment (no topology required).
+
+        Creates a Deployment + DeploymentCI record. Plumbing only — no Temporal.
+        """
+        user_id = await check_graphql_permission(
+            info, "deployment:deployment:create", str(tenant_id)
+        )
+
+        from app.services.deployment.deployment_service import DeploymentService
+
+        db = await _get_session(info)
+        svc = DeploymentService()
+        deployment = await svc.deploy_component(
+            db, tenant_id=tenant_id,
+            environment_id=input.environment_id,
+            component_id=input.component_id,
+            deployed_by=user_id,
+            component_version=input.component_version,
+            parameters=input.parameters,
+        )
+        await db.commit()
         return _deployment_to_type(deployment)

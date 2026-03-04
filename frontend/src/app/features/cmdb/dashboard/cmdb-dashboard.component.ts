@@ -266,7 +266,7 @@ interface ClassBreakdown {
     </nimbus-layout>
   `,
   styles: [`
-    .cmdb-dashboard { padding: 0; }
+    .cmdb-dashboard { padding: 0; max-width: 1200px; }
 
     /* ── Page header ───────────────────────────────────────────────── */
     .page-header {

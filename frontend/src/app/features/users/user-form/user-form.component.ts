@@ -80,7 +80,7 @@ import { ToastService } from '@shared/services/toast.service';
     </nimbus-layout>
   `,
   styles: [`
-    .user-form-page { padding: 0; max-width: 720px; }
+    .user-form-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;
@@ -109,7 +109,7 @@ import { ToastService } from '@shared/services/toast.service';
     .form-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
     .btn-primary {
       background: #3b82f6; color: #fff; padding: 0.5rem 1.5rem;
-      border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem;
+      border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem;
       font-weight: 500; font-family: inherit; transition: background 0.15s;
     }
     .btn-primary:hover { background: #2563eb; }
@@ -117,7 +117,7 @@ import { ToastService } from '@shared/services/toast.service';
     .btn-secondary {
       background: #fff; color: #374151; padding: 0.5rem 1.5rem;
       border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer;
-      font-size: 0.8125rem; font-family: inherit; transition: background 0.15s;
+      font-size: 0.875rem; font-family: inherit; transition: background 0.15s;
     }
     .btn-secondary:hover { background: #f8fafc; }
   `],

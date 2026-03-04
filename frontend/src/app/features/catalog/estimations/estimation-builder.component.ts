@@ -352,7 +352,7 @@ const COVERAGE_MODELS: { value: string; label: string }[] = [
     </nimbus-layout>
   `,
   styles: [`
-    .builder-page { padding: 0; max-width: 1100px; }
+    .builder-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;
@@ -463,7 +463,7 @@ const COVERAGE_MODELS: { value: string; label: string }[] = [
       margin-top: 0.5rem; margin-bottom: 2rem;
     }
     .btn {
-      font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+      font-family: inherit; font-size: 0.875rem; font-weight: 500;
       border-radius: 6px; cursor: pointer; padding: 0.5rem 1.5rem;
       transition: background 0.15s; border: none;
     }

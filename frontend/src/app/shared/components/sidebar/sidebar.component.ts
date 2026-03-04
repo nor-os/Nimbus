@@ -33,7 +33,11 @@ interface NavItem {
       <!-- Provider section — only visible for root tenant -->
       @if (showProviderSection()) {
         <div class="provider-section">
-          <div class="section-label">Provider</div>
+          <button class="section-label" (click)="toggleSection('provider')" [attr.aria-expanded]="isSectionExpanded('provider')">
+            <span>Provider</span>
+            <span class="section-chevron" [class.expanded]="isSectionExpanded('provider')">&#9206;</span>
+          </button>
+          @if (isSectionExpanded('provider')) {
           @for (item of visibleProviderItems(); track item.label) {
             @if (item.children) {
               <button
@@ -74,10 +78,18 @@ interface NavItem {
               </a>
             }
           }
+          }
         </div>
       }
 
       <!-- Main navigation -->
+      <div class="tenant-section">
+        <button class="section-label tenant-label" (click)="toggleSection('tenant')" [attr.aria-expanded]="isSectionExpanded('tenant')">
+          <span>Tenant</span>
+          <span class="section-chevron" [class.expanded]="isSectionExpanded('tenant')">&#9206;</span>
+        </button>
+      </div>
+      @if (isSectionExpanded('tenant')) {
       @for (group of visibleNavGroups(); track group.label) {
         @if (!group.disabled) {
           <div class="nav-group">
@@ -136,6 +148,7 @@ interface NavItem {
           </div>
         }
       }
+      }
     </nav>
   `,
   styles: [`
@@ -164,12 +177,47 @@ interface NavItem {
     }
 
     .section-label {
-      padding: 0 0.75rem 0.375rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 0.375rem 0.75rem;
+      margin: 0;
+      border: none;
+      background: none;
       font-size: 0.625rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: #60a5fa;
+      cursor: pointer;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .section-label:hover {
+      color: #93bbfd;
+    }
+
+    .tenant-section {
+      margin: 0 0.5rem 0;
+      padding: 0;
+    }
+
+    .tenant-label {
+      color: #8b95a3;
+      padding: 0.5rem 0.75rem 0.25rem;
+    }
+    .tenant-label:hover {
+      color: #b0b8c4;
+    }
+
+    .section-chevron {
+      font-size: 0.5rem;
+      transition: transform 0.2s;
+      transform: rotate(180deg);
+    }
+    .section-chevron.expanded {
+      transform: rotate(0deg);
     }
 
     .provider-section .nav-item,
@@ -308,11 +356,14 @@ export class SidebarComponent {
   private router = inject(Router);
 
   private readonly STORAGE_KEY = 'nimbus_sidebar_expanded';
+  private readonly SECTIONS_KEY = 'nimbus_sidebar_sections';
   private expandedGroups = signal<Set<string>>(new Set());
+  private expandedSections = signal<Set<string>>(new Set(['provider', 'tenant']));
   private activeGroup = signal<string | null>(null);
 
   constructor() {
     this.loadExpandedGroups();
+    this.loadExpandedSections();
 
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
@@ -374,9 +425,18 @@ export class SidebarComponent {
       permission: 'landingzone:zone:read',
       children: [
         { label: 'Landing Zones', icon: '', route: '/landing-zones', exact: true, permission: 'landingzone:zone:read' },
-        { label: 'Components', icon: '', route: '/provider/components', exact: true, permission: 'component:definition:create' },
-        { label: 'Component Activities', icon: '', route: '/provider/activities', exact: true, permission: 'automation:activity:read' },
-        { label: 'Resolvers', icon: '', route: '/provider/resolvers', exact: true, permission: 'component:definition:create' },
+        { label: 'Stacks', icon: '', route: '/provider/infrastructure/blueprints', permission: 'infrastructure:blueprint:manage' },
+        { label: 'Components', icon: '', route: '/provider/components', permission: 'component:definition:create' },
+        { label: 'Resolvers', icon: '', route: '/provider/resolvers', permission: 'component:definition:create' },
+      ],
+    },
+    {
+      label: 'Workflows',
+      icon: '&#8644;',
+      permission: 'workflow:definition:read',
+      children: [
+        { label: 'Activities', icon: '', route: '/provider/activities', permission: 'automation:activity:read' },
+        { label: 'Templates', icon: '', route: '/provider/templates', permission: 'workflow:definition:read' },
       ],
     },
   ];
@@ -409,22 +469,24 @@ export class SidebarComponent {
       ],
     },
     {
-      label: 'Architecture',
-      icon: '&#9783;',
+      label: 'Infrastructure',
+      icon: '&#9874;',
       permission: 'architecture:topology:read',
       children: [
-        { label: 'Topologies', icon: '', route: '/architecture', exact: true, permission: 'architecture:topology:read' },
-        { label: 'Stack Blueprints', icon: '', route: '/architecture/blueprints', permission: 'cmdb:cluster:read' },
+        { label: 'Topologies', icon: '', route: '/infrastructure/topologies', permission: 'architecture:topology:read' },
+        { label: 'Stacks', icon: '', route: '/infrastructure/stacks', permission: 'cmdb:cluster:read' },
+        { label: 'Components', icon: '', route: '/infrastructure/components', permission: 'component:definition:read' },
       ],
     },
     {
-      label: 'Infrastructure',
-      icon: '&#9874;',
+      label: 'Deployments',
+      icon: '&#9654;',
       permission: 'landingzone:environment:read',
       children: [
-        { label: 'Environments', icon: '', route: '/environments', permission: 'landingzone:environment:read' },
-        { label: 'Components', icon: '', route: '/components', permission: 'component:definition:read' },
-        { label: 'Component Activities', icon: '', route: '/activities', permission: 'automation:activity:read' },
+        { label: 'Environments', icon: '', route: '/deployments/environments', permission: 'landingzone:environment:read' },
+        { label: 'Topology Instances', icon: '', route: '/deployments/topologies', permission: 'deployment:deployment:read' },
+        { label: 'Stack Instances', icon: '', route: '/deployments/stacks', permission: 'infrastructure:blueprint:read' },
+        { label: 'Component Instances', icon: '', route: '/deployments/components', permission: 'deployment:deployment:read' },
       ],
     },
     {
@@ -454,11 +516,16 @@ export class SidebarComponent {
       icon: '&#8644;',
       permission: 'approval:decision:submit',
       children: [
-        { label: 'Definitions', icon: '', route: '/workflows/definitions', exact: true, permission: 'workflow:definition:read' },
-        { label: 'Executions', icon: '', route: '/workflows/executions', exact: true, permission: 'workflow:execution:read' },
-        { label: 'Automation Catalog', icon: '', route: '/workflows/activities', exact: true, permission: 'automation:activity:read' },
+        { label: 'Definitions', icon: '', route: '/workflows/definitions', permission: 'workflow:definition:read' },
+        { label: 'Executions', icon: '', route: '/workflows/executions', permission: 'workflow:execution:read' },
         { label: 'Approvals', icon: '', route: '/workflows/approvals', permission: 'approval:decision:submit' },
-        { label: 'Manage', icon: '', route: '/workflows/manage', permission: 'approval:policy:manage' },
+      ],
+    },
+    {
+      label: 'Events',
+      icon: '&#9735;',
+      permission: 'events:type:read',
+      children: [
         { label: 'Event Types', icon: '', route: '/events/types', permission: 'events:type:read' },
         { label: 'Subscriptions', icon: '', route: '/events/subscriptions', permission: 'events:subscription:read' },
         { label: 'Event Log', icon: '', route: '/events/log', permission: 'events:log:read' },
@@ -570,6 +637,38 @@ export class SidebarComponent {
 
   isActiveProviderGroup(label: string): boolean {
     return this.activeGroup() === this.providerKey(label);
+  }
+
+  toggleSection(section: string): void {
+    const current = this.expandedSections();
+    const next = new Set(current);
+    if (next.has(section)) {
+      next.delete(section);
+    } else {
+      next.add(section);
+    }
+    this.expandedSections.set(next);
+    this.saveExpandedSections();
+  }
+
+  isSectionExpanded(section: string): boolean {
+    return this.expandedSections().has(section);
+  }
+
+  private loadExpandedSections(): void {
+    const stored = localStorage.getItem(this.SECTIONS_KEY);
+    if (stored) {
+      try {
+        const sections: string[] = JSON.parse(stored);
+        this.expandedSections.set(new Set(sections));
+        return;
+      } catch { /* fall through to default */ }
+    }
+    this.expandedSections.set(new Set(['provider', 'tenant']));
+  }
+
+  private saveExpandedSections(): void {
+    localStorage.setItem(this.SECTIONS_KEY, JSON.stringify([...this.expandedSections()]));
   }
 
   private loadExpandedGroups(): void {

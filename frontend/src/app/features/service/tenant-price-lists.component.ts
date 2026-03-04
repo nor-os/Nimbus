@@ -94,7 +94,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     </nimbus-layout>
   `,
   styles: [`
-    .tenant-price-lists-page { padding: 0; max-width: 960px; }
+    .tenant-price-lists-page { padding: 0; max-width: 1200px; }
 
     .page-header {
       display: flex; justify-content: space-between; align-items: center;

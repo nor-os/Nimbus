@@ -42,6 +42,16 @@ from app.models.cmdb.region_constraint import CatalogRegionConstraint, PriceList
 from app.models.cmdb.service_catalog import ServiceCatalog, ServiceCatalogItem, TenantCatalogPin
 from app.models.cmdb.service_cluster import ServiceCluster, ServiceClusterSlot
 from app.models.cmdb.service_group import ServiceGroup, ServiceGroupItem
+from app.models.cmdb.stack_blueprint import (
+    StackBlueprintComponent,
+    StackBlueprintGovernance,
+    StackBlueprintVersion,
+    StackVariableBinding,
+    StackWorkflow,
+)
+from app.models.cmdb.stack_instance import StackInstance, StackInstanceComponent
+from app.models.cmdb.reservation_template import BlueprintReservationTemplate, ComponentReservationTemplate
+from app.models.cmdb.stack_reservation import ReservationSyncPolicy, StackReservation
 from app.models.cmdb.service_offering import ServiceOffering
 from app.models.cmdb.service_offering_ci_class import ServiceOfferingCIClass
 from app.models.cmdb.service_offering_region import ServiceOfferingRegion
@@ -84,6 +94,17 @@ __all__ = [
 
     "ServiceClusterSlot",
     "ServiceEstimation",
+    "StackBlueprintComponent",
+    "StackBlueprintGovernance",
+    "StackBlueprintVersion",
+    "StackInstance",
+    "StackInstanceComponent",
+    "BlueprintReservationTemplate",
+    "ComponentReservationTemplate",
+    "StackReservation",
+    "StackVariableBinding",
+    "StackWorkflow",
+    "ReservationSyncPolicy",
     "ServiceGroup",
     "ServiceGroupItem",
     "ServiceOffering",

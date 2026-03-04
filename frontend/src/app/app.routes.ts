@@ -843,6 +843,29 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'provider/templates',
+    canActivate: [authGuard, permissionGuard('workflow:definition:read')],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/workflows/workflow-template-list/workflow-template-list.component').then(
+            (m) => m.WorkflowTemplateListComponent,
+          ),
+        data: { breadcrumb: [{ label: 'Provider', path: '/tenants' }, 'Workflow Templates'] },
+      },
+      {
+        path: ':id/edit',
+        loadComponent: () =>
+          import('./features/workflows/editor/workflow-editor.component').then(
+            (m) => m.WorkflowEditorComponent,
+          ),
+        canActivate: [permissionGuard('workflow:definition:update')],
+        data: { breadcrumb: [{ label: 'Templates', path: '/provider/templates' }, 'Edit'], mode: 'provider' },
+      },
+    ],
+  },
+  {
     path: 'provider/resolvers',
     canActivate: [authGuard, permissionGuard('component:definition:create')],
     children: [
@@ -903,41 +926,28 @@ export const routes: Routes = [
         canActivate: [permissionGuard('component:definition:update')],
         data: { breadcrumb: [{ label: 'Provider Components', path: '/provider/components' }, 'Edit'], mode: 'provider' },
       },
-    ],
-  },
-  {
-    path: 'components',
-    canActivate: [authGuard],
-    children: [
       {
-        path: '',
+        path: ':componentId/activities/new',
         loadComponent: () =>
-          import('./features/components/component-catalog.component').then(
-            (m) => m.ComponentCatalogComponent,
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
           ),
-        canActivate: [permissionGuard('component:definition:read')],
-        data: { breadcrumb: 'Components', mode: 'tenant' },
+        canActivate: [permissionGuard('automation:activity:create')],
+        data: { breadcrumb: [{ label: 'Provider Components', path: '/provider/components' }, 'Edit', 'New Activity'] },
       },
       {
-        path: 'new',
+        path: ':componentId/activities/:id',
         loadComponent: () =>
-          import('./features/components/component-editor.component').then(
-            (m) => m.ComponentEditorComponent,
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
           ),
-        canActivate: [permissionGuard('component:definition:create')],
-        data: { breadcrumb: [{ label: 'Components', path: '/components' }, 'New'], mode: 'tenant' },
-      },
-      {
-        path: ':id/edit',
-        loadComponent: () =>
-          import('./features/components/component-editor.component').then(
-            (m) => m.ComponentEditorComponent,
-          ),
-        canActivate: [permissionGuard('component:definition:update')],
-        data: { breadcrumb: [{ label: 'Components', path: '/components' }, 'Edit'], mode: 'tenant' },
+        canActivate: [permissionGuard('automation:activity:read')],
+        data: { breadcrumb: [{ label: 'Provider Components', path: '/provider/components' }, 'Edit', 'Activity'] },
       },
     ],
   },
+  // Redirect: old /components → /infrastructure/components
+  { path: 'components', redirectTo: 'infrastructure/components', pathMatch: 'prefix' },
   {
     path: 'landing-zones',
     canActivate: [authGuard],
@@ -962,108 +972,11 @@ export const routes: Routes = [
       },
     ],
   },
-  {
-    path: 'environments',
-    canActivate: [authGuard],
-    children: [
-      {
-        path: '',
-        loadComponent: () =>
-          import('./features/environments/environment-list.component').then(
-            (m) => m.EnvironmentListComponent,
-          ),
-        canActivate: [permissionGuard('landingzone:environment:read')],
-        data: { breadcrumb: 'Environments' },
-      },
-      {
-        path: ':id',
-        loadComponent: () =>
-          import('./features/environments/environment-detail.component').then(
-            (m) => m.EnvironmentDetailComponent,
-          ),
-        canActivate: [permissionGuard('landingzone:environment:read')],
-        data: { breadcrumb: [{ label: 'Environments', path: '/environments' }, 'Details'] },
-      },
-    ],
-  },
-  {
-    path: 'architecture',
-    canActivate: [authGuard],
-    children: [
-      {
-        path: '',
-        loadComponent: () =>
-          import('./features/architecture/topology-list/topology-list.component').then(
-            (m) => m.TopologyListComponent,
-          ),
-        canActivate: [permissionGuard('architecture:topology:read')],
-        data: { breadcrumb: 'Architecture' },
-      },
-      {
-        path: 'new',
-        loadComponent: () =>
-          import('./features/architecture/editor/topology-editor.component').then(
-            (m) => m.TopologyEditorComponent,
-          ),
-        canActivate: [permissionGuard('architecture:topology:create')],
-        data: { breadcrumb: [{ label: 'Architecture', path: '/architecture' }, 'New'] },
-      },
-      {
-        path: 'blueprints',
-        loadComponent: () =>
-          import('./features/cmdb/clusters/cluster-list.component').then(
-            (m) => m.ClusterListComponent,
-          ),
-        canActivate: [permissionGuard('cmdb:cluster:read')],
-        data: { breadcrumb: [{ label: 'Architecture', path: '/architecture' }, 'Stack Blueprints'] },
-      },
-      {
-        path: 'blueprints/new',
-        loadComponent: () =>
-          import('./features/cmdb/clusters/cluster-form.component').then(
-            (m) => m.ClusterFormComponent,
-          ),
-        canActivate: [permissionGuard('cmdb:cluster:create')],
-        data: { breadcrumb: [{ label: 'Stack Blueprints', path: '/architecture/blueprints' }, 'New'] },
-      },
-      {
-        path: 'blueprints/:id/edit',
-        loadComponent: () =>
-          import('./features/cmdb/clusters/cluster-form.component').then(
-            (m) => m.ClusterFormComponent,
-          ),
-        canActivate: [permissionGuard('cmdb:cluster:manage')],
-        data: { breadcrumb: [{ label: 'Stack Blueprints', path: '/architecture/blueprints' }, 'Edit'] },
-      },
-      {
-        path: 'blueprints/:id',
-        loadComponent: () =>
-          import('./features/cmdb/clusters/cluster-detail.component').then(
-            (m) => m.ClusterDetailComponent,
-          ),
-        canActivate: [permissionGuard('cmdb:cluster:read')],
-        data: { breadcrumb: [{ label: 'Stack Blueprints', path: '/architecture/blueprints' }, 'Details'] },
-      },
-      {
-        path: ':id/edit',
-        loadComponent: () =>
-          import('./features/architecture/editor/topology-editor.component').then(
-            (m) => m.TopologyEditorComponent,
-          ),
-        canActivate: [permissionGuard('architecture:topology:update')],
-        data: { breadcrumb: [{ label: 'Architecture', path: '/architecture' }, 'Edit'] },
-      },
-      {
-        path: ':id',
-        loadComponent: () =>
-          import('./features/architecture/topology-detail/topology-detail.component').then(
-            (m) => m.TopologyDetailComponent,
-          ),
-        canActivate: [permissionGuard('architecture:topology:read')],
-        data: { breadcrumb: [{ label: 'Architecture', path: '/architecture' }, 'Details'] },
-      },
-    ],
-  },
+  // Redirect: old /environments → /deployments/environments
+  { path: 'environments', redirectTo: 'deployments/environments', pathMatch: 'prefix' },
+  // Redirect: old /architecture → /infrastructure/topologies
+  { path: 'architecture/blueprints', redirectTo: 'infrastructure/stacks', pathMatch: 'prefix' },
+  { path: 'architecture', redirectTo: 'infrastructure/topologies', pathMatch: 'prefix' },
   {
     path: 'semantic',
     canActivate: [authGuard],
@@ -1203,7 +1116,7 @@ export const routes: Routes = [
           import('./features/automation/activity-list/activity-list.component').then(
             (m) => m.ActivityListComponent,
           ),
-        data: { breadcrumb: [{ label: 'Infrastructure', path: '/environments' }, 'Component Activities'], mode: 'tenant' },
+        data: { breadcrumb: [{ label: 'Infrastructure', path: '/deployments/environments' }, 'Component Activities'], mode: 'tenant' },
       },
       {
         path: 'new',
@@ -1334,6 +1247,243 @@ export const routes: Routes = [
         data: {
           breadcrumb: [{ label: 'Settings', path: '/settings/auth' }, 'Currency & Rates'],
         },
+      },
+    ],
+  },
+  // ── Provider Infrastructure: Stack Blueprints ────────────────────
+  {
+    path: 'provider/infrastructure/blueprints',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/infrastructure/blueprints/blueprint-catalog.component').then(
+            (m) => m.BlueprintCatalogComponent,
+          ),
+        canActivate: [permissionGuard('infrastructure:blueprint:manage')],
+        data: { breadcrumb: 'Stack Blueprints' },
+      },
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-form.component').then(
+            (m) => m.ClusterFormComponent,
+          ),
+        canActivate: [permissionGuard('infrastructure:blueprint:manage')],
+        data: { breadcrumb: [{ label: 'Stack Blueprints', path: '/provider/infrastructure/blueprints' }, 'New'] },
+      },
+      {
+        path: ':id/edit',
+        loadComponent: () =>
+          import('./features/infrastructure/blueprints/blueprint-editor.component').then(
+            (m) => m.BlueprintEditorComponent,
+          ),
+        canActivate: [permissionGuard('infrastructure:blueprint:manage')],
+        data: { breadcrumb: [{ label: 'Stack Blueprints', path: '/provider/infrastructure/blueprints' }, 'Edit'] },
+      },
+    ],
+  },
+  // Redirect: old /infrastructure/reservations → /deployments/stacks (now tab in stack detail)
+  { path: 'infrastructure/reservations', redirectTo: 'deployments/stacks', pathMatch: 'full' },
+  // ── Infrastructure (definitions/templates) ─────────────────────
+  {
+    path: 'infrastructure',
+    canActivate: [authGuard],
+    children: [
+      // Topologies (moved from Architecture)
+      {
+        path: 'topologies',
+        loadComponent: () =>
+          import('./features/architecture/topology-list/topology-list.component').then(
+            (m) => m.TopologyListComponent,
+          ),
+        canActivate: [permissionGuard('architecture:topology:read')],
+        data: { breadcrumb: 'Topologies' },
+      },
+      {
+        path: 'topologies/new',
+        loadComponent: () =>
+          import('./features/architecture/editor/topology-editor.component').then(
+            (m) => m.TopologyEditorComponent,
+          ),
+        canActivate: [permissionGuard('architecture:topology:create')],
+        data: { breadcrumb: [{ label: 'Topologies', path: '/infrastructure/topologies' }, 'New'] },
+      },
+      {
+        path: 'topologies/:id/edit',
+        loadComponent: () =>
+          import('./features/architecture/editor/topology-editor.component').then(
+            (m) => m.TopologyEditorComponent,
+          ),
+        canActivate: [permissionGuard('architecture:topology:update')],
+        data: { breadcrumb: [{ label: 'Topologies', path: '/infrastructure/topologies' }, 'Edit'] },
+      },
+      {
+        path: 'topologies/:id',
+        loadComponent: () =>
+          import('./features/architecture/topology-detail/topology-detail.component').then(
+            (m) => m.TopologyDetailComponent,
+          ),
+        canActivate: [permissionGuard('architecture:topology:read')],
+        data: { breadcrumb: [{ label: 'Topologies', path: '/infrastructure/topologies' }, 'Details'] },
+      },
+      // Stacks (renamed from Stack Blueprints, moved from Architecture)
+      {
+        path: 'stacks',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-list.component').then(
+            (m) => m.ClusterListComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:cluster:read')],
+        data: { breadcrumb: 'Stacks' },
+      },
+      {
+        path: 'stacks/new',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-form.component').then(
+            (m) => m.ClusterFormComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:cluster:create')],
+        data: { breadcrumb: [{ label: 'Stacks', path: '/infrastructure/stacks' }, 'New'] },
+      },
+      {
+        path: 'stacks/:id/edit',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-form.component').then(
+            (m) => m.ClusterFormComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:cluster:manage')],
+        data: { breadcrumb: [{ label: 'Stacks', path: '/infrastructure/stacks' }, 'Edit'] },
+      },
+      {
+        path: 'stacks/:id',
+        loadComponent: () =>
+          import('./features/cmdb/clusters/cluster-detail.component').then(
+            (m) => m.ClusterDetailComponent,
+          ),
+        canActivate: [permissionGuard('cmdb:cluster:read')],
+        data: { breadcrumb: [{ label: 'Stacks', path: '/infrastructure/stacks' }, 'Details'] },
+      },
+      // Components (moved from old Infrastructure)
+      {
+        path: 'components',
+        loadComponent: () =>
+          import('./features/components/component-catalog.component').then(
+            (m) => m.ComponentCatalogComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:read')],
+        data: { breadcrumb: 'Components', mode: 'tenant' },
+      },
+      {
+        path: 'components/new',
+        loadComponent: () =>
+          import('./features/components/component-editor.component').then(
+            (m) => m.ComponentEditorComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:create')],
+        data: { breadcrumb: [{ label: 'Components', path: '/infrastructure/components' }, 'New'], mode: 'tenant' },
+      },
+      {
+        path: 'components/:id/edit',
+        loadComponent: () =>
+          import('./features/components/component-editor.component').then(
+            (m) => m.ComponentEditorComponent,
+          ),
+        canActivate: [permissionGuard('component:definition:update')],
+        data: { breadcrumb: [{ label: 'Components', path: '/infrastructure/components' }, 'Edit'], mode: 'tenant' },
+      },
+      {
+        path: 'components/:componentId/activities/new',
+        loadComponent: () =>
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
+          ),
+        canActivate: [permissionGuard('automation:activity:create')],
+        data: { breadcrumb: [{ label: 'Components', path: '/infrastructure/components' }, 'Edit', 'New Activity'] },
+      },
+      {
+        path: 'components/:componentId/activities/:id',
+        loadComponent: () =>
+          import('./features/automation/activity-detail/activity-detail.component').then(
+            (m) => m.ActivityDetailComponent,
+          ),
+        canActivate: [permissionGuard('automation:activity:read')],
+        data: { breadcrumb: [{ label: 'Components', path: '/infrastructure/components' }, 'Edit', 'Activity'] },
+      },
+    ],
+  },
+  // ── Deployments (runtime instances) ────────────────────────────
+  {
+    path: 'deployments',
+    canActivate: [authGuard],
+    children: [
+      // Environments
+      {
+        path: 'environments',
+        loadComponent: () =>
+          import('./features/environments/environment-list.component').then(
+            (m) => m.EnvironmentListComponent,
+          ),
+        canActivate: [permissionGuard('landingzone:environment:read')],
+        data: { breadcrumb: 'Environments' },
+      },
+      {
+        path: 'environments/:id',
+        loadComponent: () =>
+          import('./features/environments/environment-detail.component').then(
+            (m) => m.EnvironmentDetailComponent,
+          ),
+        canActivate: [permissionGuard('landingzone:environment:read')],
+        data: { breadcrumb: [{ label: 'Environments', path: '/deployments/environments' }, 'Details'] },
+      },
+      // Topology Instances (NEW)
+      {
+        path: 'topologies',
+        loadComponent: () =>
+          import('./features/deployments/topology-instance-list.component').then(
+            (m) => m.TopologyInstanceListComponent,
+          ),
+        canActivate: [permissionGuard('deployment:deployment:read')],
+        data: { breadcrumb: 'Topology Instances' },
+      },
+      {
+        path: 'topologies/:id',
+        loadComponent: () =>
+          import('./features/deployments/topology-instance-detail.component').then(
+            (m) => m.TopologyInstanceDetailComponent,
+          ),
+        canActivate: [permissionGuard('deployment:deployment:read')],
+        data: { breadcrumb: [{ label: 'Topology Instances', path: '/deployments/topologies' }, 'Details'] },
+      },
+      // Stack Instances (moved from old Infrastructure)
+      {
+        path: 'stacks',
+        loadComponent: () =>
+          import('./features/infrastructure/stacks/stack-instance-list.component').then(
+            (m) => m.StackInstanceListComponent,
+          ),
+        canActivate: [permissionGuard('infrastructure:blueprint:read')],
+        data: { breadcrumb: 'Stack Instances' },
+      },
+      {
+        path: 'stacks/:id',
+        loadComponent: () =>
+          import('./features/infrastructure/stacks/stack-instance-detail.component').then(
+            (m) => m.StackInstanceDetailComponent,
+          ),
+        canActivate: [permissionGuard('infrastructure:blueprint:read')],
+        data: { breadcrumb: [{ label: 'Stack Instances', path: '/deployments/stacks' }, 'Details'] },
+      },
+      // Component Instances (NEW)
+      {
+        path: 'components',
+        loadComponent: () =>
+          import('./features/deployments/component-instance-list.component').then(
+            (m) => m.ComponentInstanceListComponent,
+          ),
+        canActivate: [permissionGuard('deployment:deployment:read')],
+        data: { breadcrumb: 'Component Instances' },
       },
     ],
   },

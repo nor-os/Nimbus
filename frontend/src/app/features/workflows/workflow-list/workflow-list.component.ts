@@ -21,12 +21,14 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     <div class="page-container">
       <div class="page-header">
         <h1>Workflow Definitions</h1>
-        <div class="header-actions">
-          <button class="btn btn-secondary" (click)="seedSystemWorkflows()">Seed System Workflows</button>
-          <button class="btn btn-primary" [routerLink]="['/workflows/definitions/new']">
-            + New Workflow
-          </button>
-        </div>
+        @if (activeTypeTab() !== 'TEMPLATE') {
+          <div class="header-actions">
+            <button class="btn btn-secondary" (click)="seedSystemWorkflows()">Seed System Workflows</button>
+            <button class="btn btn-primary" [routerLink]="['/workflows/definitions/new']">
+              + New Workflow
+            </button>
+          </div>
+        }
       </div>
 
       <!-- Type filter tabs -->
@@ -95,15 +97,20 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
                 <td>v{{ def.version }}</td>
                 <td>{{ def.updatedAt | date:'short' }}</td>
                 <td class="actions">
-                  <button class="btn-sm" [routerLink]="['/workflows/definitions', def.id, 'edit']" title="Edit">&#x270E;</button>
-                  @if (def.status === 'DRAFT') {
-                    <button class="btn-sm btn-success" (click)="publish(def.id)" title="Publish">&#x2713;</button>
+                  @if (activeTypeTab() === 'TEMPLATE') {
+                    <button class="btn-sm" [routerLink]="['/workflows/definitions', def.id, 'edit']" title="View">&#x1F441;</button>
+                    <button class="btn-sm" (click)="clone(def.id)" title="Clone to Tenant">&#x2398; Clone</button>
+                  } @else {
+                    <button class="btn-sm" [routerLink]="['/workflows/definitions', def.id, 'edit']" title="Edit">&#x270E;</button>
+                    @if (def.status === 'DRAFT') {
+                      <button class="btn-sm btn-success" (click)="publish(def.id)" title="Publish">&#x2713;</button>
+                    }
+                    @if (def.status === 'ACTIVE') {
+                      <button class="btn-sm" (click)="archive(def.id)" title="Archive">&#x2610;</button>
+                    }
+                    <button class="btn-sm" (click)="clone(def.id)" title="Clone">&#x2398;</button>
+                    <button class="btn-sm btn-danger" (click)="remove(def.id)" title="Delete">&#x2715;</button>
                   }
-                  @if (def.status === 'ACTIVE') {
-                    <button class="btn-sm" (click)="archive(def.id)" title="Archive">&#x2610;</button>
-                  }
-                  <button class="btn-sm" (click)="clone(def.id)" title="Clone">&#x2398;</button>
-                  <button class="btn-sm btn-danger" (click)="remove(def.id)" title="Delete">&#x2715;</button>
                 </td>
               </tr>
             } @empty {
@@ -116,14 +123,14 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     </nimbus-layout>
   `,
   styles: [`
-    .page-container { padding: 0; }
+    .page-container { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;
     }
     .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
     .header-actions { display: flex; gap: 8px; }
-    .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; font-family: inherit; }
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem; font-weight: 500; font-family: inherit; }
     .btn-primary { background: #3b82f6; color: #fff; }
     .btn-primary:hover { background: #2563eb; }
     .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; }
@@ -153,7 +160,7 @@ import { LayoutComponent } from '@shared/components/layout/layout.component';
     }
     .search-input:focus { border-color: #3b82f6; }
     .table-container { overflow-x: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
-    .data-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
     .data-table th {
       padding: 0.75rem 1rem; text-align: left; font-size: 0.75rem;
       color: #64748b; border-bottom: 1px solid #f1f5f9; font-weight: 600;
@@ -206,15 +213,16 @@ export class WorkflowListComponent implements OnInit {
 
   definitions = signal<WorkflowDefinition[]>([]);
   activeTab = signal<string | null>(null);
-  activeTypeTab = signal<WorkflowType | null>(null);
+  activeTypeTab = signal<WorkflowType | 'TEMPLATE' | null>(null);
   searchQuery = signal('');
   loading = signal(false);
 
-  typeTabs: { label: string; value: WorkflowType | null }[] = [
+  typeTabs: { label: string; value: WorkflowType | 'TEMPLATE' | null }[] = [
     { label: 'All', value: null },
     { label: 'Automation', value: 'AUTOMATION' },
     { label: 'System', value: 'SYSTEM' },
     { label: 'Deployment', value: 'DEPLOYMENT' },
+    { label: 'Templates', value: 'TEMPLATE' },
   ];
 
   statusTabs = [
@@ -242,16 +250,28 @@ export class WorkflowListComponent implements OnInit {
     this.loadDefinitions();
   }
 
-  setTypeTab(type: WorkflowType | null): void {
+  setTypeTab(type: WorkflowType | 'TEMPLATE' | null): void {
     this.activeTypeTab.set(type);
     this.loadDefinitions();
   }
 
   loadDefinitions(): void {
     this.loading.set(true);
+    const typeTab = this.activeTypeTab();
+
+    if (typeTab === 'TEMPLATE') {
+      // Use dedicated templates query
+      this.workflowService.listTemplates().subscribe({
+        next: defs => { this.definitions.set(defs); this.loading.set(false); },
+        error: () => this.loading.set(false),
+      });
+      return;
+    }
+
     const status = this.activeTab() ?? undefined;
-    const workflowType = this.activeTypeTab() ?? undefined;
-    this.workflowService.listDefinitions({ status, workflowType }).subscribe({
+    const workflowType = typeTab ?? undefined;
+    // Exclude templates from regular listings
+    this.workflowService.listDefinitions({ status, workflowType, isTemplate: false }).subscribe({
       next: defs => { this.definitions.set(defs); this.loading.set(false); },
       error: () => this.loading.set(false),
     });

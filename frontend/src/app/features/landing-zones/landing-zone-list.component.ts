@@ -151,7 +151,7 @@ import { ToastService } from '@shared/services/toast.service';
     </nimbus-layout>
   `,
   styles: [`
-    .list-page { padding: 0; }
+    .list-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: flex-start;
       margin-bottom: 1.5rem;
@@ -213,7 +213,7 @@ import { ToastService } from '@shared/services/toast.service';
     .empty-icon { font-size: 2.5rem; color: #94a3b8; }
 
     .btn {
-      font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+      font-family: inherit; font-size: 0.875rem; font-weight: 500;
       border-radius: 6px; cursor: pointer; border: none;
     }
     .btn-primary { background: #3b82f6; color: #fff; padding: 0.5rem 1rem; }

@@ -28,6 +28,7 @@ class WorkflowTypeGQL(Enum):
     AUTOMATION = "AUTOMATION"
     SYSTEM = "SYSTEM"
     DEPLOYMENT = "DEPLOYMENT"
+    STACK = "STACK"
 
 
 @strawberry.enum
@@ -67,8 +68,12 @@ class WorkflowDefinitionType:
     workflow_type: WorkflowTypeGQL
     source_topology_id: uuid.UUID | None
     is_system: bool
+    is_template: bool
+    template_source_id: uuid.UUID | None
     applicable_semantic_type_id: uuid.UUID | None
     applicable_provider_id: uuid.UUID | None
+    input_schema: strawberry.scalars.JSON | None
+    output_schema: strawberry.scalars.JSON | None
     created_at: datetime
     updated_at: datetime
 
@@ -155,6 +160,8 @@ class WorkflowDefinitionCreateInput:
     workflow_type: str | None = None
     applicable_semantic_type_id: uuid.UUID | None = None
     applicable_provider_id: uuid.UUID | None = None
+    input_schema: strawberry.scalars.JSON | None = None
+    output_schema: strawberry.scalars.JSON | None = None
 
 
 @strawberry.input
@@ -173,6 +180,8 @@ class WorkflowDefinitionUpdateInput:
     max_concurrent: int | None = None
     applicable_semantic_type_id: uuid.UUID | None = strawberry.UNSET
     applicable_provider_id: uuid.UUID | None = strawberry.UNSET
+    input_schema: strawberry.scalars.JSON | None = strawberry.UNSET
+    output_schema: strawberry.scalars.JSON | None = strawberry.UNSET
 
 
 @strawberry.input

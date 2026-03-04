@@ -157,7 +157,7 @@ OR user.level >= 3</pre>
     </nimbus-layout>
   `,
   styles: [`
-    .abac-editor-page { padding: 0; }
+    .abac-editor-page { padding: 0; max-width: 1200px; }
     h1 { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin-bottom: 1.5rem; }
     .editor-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
     .editor-main { flex: 1; min-width: 0; }
@@ -197,7 +197,7 @@ OR user.level >= 3</pre>
       border: 1px solid #fecaca;
     }
     .form-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
-    .btn { font-family: inherit; font-size: 0.8125rem; font-weight: 500; border-radius: 6px; cursor: pointer; transition: background 0.15s; }
+    .btn { font-family: inherit; font-size: 0.875rem; font-weight: 500; border-radius: 6px; cursor: pointer; transition: background 0.15s; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-primary {
       background: #3b82f6; color: #fff; padding: 0.5rem 1.5rem; border: none;

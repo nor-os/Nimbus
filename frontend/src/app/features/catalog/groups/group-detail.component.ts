@@ -290,7 +290,7 @@ interface TenantInfo {
     </nimbus-layout>
   `,
   styles: [`
-    .group-detail-page { padding: 0; max-width: 960px; }
+    .group-detail-page { padding: 0; max-width: 1200px; }
 
     .loading, .empty-state {
       padding: 2rem; text-align: center; color: #64748b; font-size: 0.8125rem;

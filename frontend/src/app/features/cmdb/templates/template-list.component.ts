@@ -107,7 +107,7 @@ import { ToastService } from '@shared/services/toast.service';
     </nimbus-layout>
   `,
   styles: [`
-    .template-list-page { padding: 0; }
+    .template-list-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;
@@ -115,7 +115,7 @@ import { ToastService } from '@shared/services/toast.service';
     .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
     .btn-primary {
       background: #3b82f6; color: #fff; padding: 0.5rem 1rem;
-      border: none; border-radius: 6px; text-decoration: none; font-size: 0.8125rem;
+      border: none; border-radius: 6px; text-decoration: none; font-size: 0.875rem;
       font-weight: 500; cursor: pointer; transition: background 0.15s;
     }
     .btn-primary:hover { background: #2563eb; }
@@ -132,7 +132,7 @@ import { ToastService } from '@shared/services/toast.service';
       overflow-x: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
     }
     .table {
-      width: 100%; border-collapse: collapse; font-size: 0.8125rem;
+      width: 100%; border-collapse: collapse; font-size: 0.875rem;
     }
     .table th, .table td {
       padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #f1f5f9;

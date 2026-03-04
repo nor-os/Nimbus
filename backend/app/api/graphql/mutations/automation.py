@@ -57,13 +57,12 @@ class AutomationMutation:
                 "name": input.name,
                 "slug": input.slug,
                 "description": input.description,
-                "category": input.category,
                 "semantic_activity_type_id": str(input.semantic_activity_type_id) if input.semantic_activity_type_id else None,
                 "semantic_type_id": str(input.semantic_type_id) if input.semantic_type_id else None,
                 "provider_id": str(input.provider_id) if input.provider_id else None,
                 "operation_kind": input.operation_kind,
                 "implementation_type": input.implementation_type,
-                "scope": input.scope,
+                "is_component_activity": input.is_component_activity,
                 "idempotent": input.idempotent,
                 "timeout_seconds": input.timeout_seconds,
             },
@@ -82,8 +81,8 @@ class AutomationMutation:
         from app.services.automation.activity_service import ActivityService
 
         data = {}
-        for field in ("name", "slug", "description", "category", "operation_kind",
-                       "implementation_type", "scope", "idempotent", "timeout_seconds"):
+        for field in ("name", "slug", "description", "operation_kind",
+                       "implementation_type", "idempotent", "timeout_seconds"):
             val = getattr(input, field, None)
             if val is not None:
                 data[field] = val
@@ -136,6 +135,7 @@ class AutomationMutation:
                 "rollback_mutations": input.rollback_mutations,
                 "changelog": input.changelog,
                 "runtime_config": input.runtime_config,
+                "resolver_bindings": input.resolver_bindings,
             },
         )
         await db.commit()
@@ -224,6 +224,22 @@ class AutomationMutation:
         await db.commit()
         await db.refresh(execution, ["activity_version", "config_changes"])
         return execution_to_type(execution)
+
+    @strawberry.mutation
+    async def upgrade_forked_activity(
+        self, info: Info, tenant_id: uuid.UUID, activity_id: uuid.UUID
+    ) -> AutomatedActivityType:
+        """Upgrade a forked activity to the latest library version."""
+        await check_graphql_permission(info, "automation:activity:update", str(tenant_id))
+
+        from app.services.automation.activity_service import ActivityService
+
+        db = await _get_session(info)
+        svc = ActivityService(db)
+        activity = await svc.upgrade_from_library(str(tenant_id), str(activity_id))
+        await db.commit()
+        await db.refresh(activity, ["versions"])
+        return activity_to_type(activity)
 
     @strawberry.mutation
     async def link_activity_template(

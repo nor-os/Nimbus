@@ -218,7 +218,7 @@ const AUTH_TYPES: WebhookAuthType[] = ['NONE', 'API_KEY', 'BASIC', 'BEARER'];
     </nimbus-layout>
   `,
   styles: [`
-    .page { max-width: 56rem; }
+    .page { max-width: 1200px; padding: 0; }
     .page-header {
       display: flex; justify-content: space-between;
       align-items: center; margin-bottom: 0.5rem;

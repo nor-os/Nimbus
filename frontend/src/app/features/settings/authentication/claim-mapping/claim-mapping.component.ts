@@ -115,7 +115,7 @@ import { ToastService } from '@shared/services/toast.service';
     </nimbus-layout>
   `,
   styles: [`
-    .claim-mapping-page { padding: 0; }
+    .claim-mapping-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;

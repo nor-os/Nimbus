@@ -95,7 +95,7 @@ type StatusFilter = 'ALL' | 'PLANNED' | 'ACTIVE' | 'SUSPENDED';
               @for (env of filteredEnvironments(); track env.id) {
                 <tr>
                   <td>
-                    <a [routerLink]="['/environments', env.id]" class="name-link">{{ env.displayName }}</a>
+                    <a [routerLink]="['/deployments/environments', env.id]" class="name-link">{{ env.displayName }}</a>
                     <div class="name-sub">{{ env.name }}</div>
                   </td>
                   <td>
@@ -118,7 +118,7 @@ type StatusFilter = 'ALL' | 'PLANNED' | 'ACTIVE' | 'SUSPENDED';
                   <td>{{ env.createdAt | date:'short' }}</td>
                   <td>
                     <div class="action-btns">
-                      <a [routerLink]="['/environments', env.id]" class="action-btn">View</a>
+                      <a [routerLink]="['/deployments/environments', env.id]" class="action-btn">View</a>
                     </div>
                   </td>
                 </tr>
@@ -245,7 +245,7 @@ type StatusFilter = 'ALL' | 'PLANNED' | 'ACTIVE' | 'SUSPENDED';
     }
     .table td {
       padding: 12px 16px;
-      font-size: 0.8125rem;
+      font-size: 0.875rem;
       color: #374151;
       border-bottom: 1px solid #f1f5f9;
     }

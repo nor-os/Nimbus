@@ -31,8 +31,9 @@ from app.api.graphql.types.component import (
 def _version_to_type(v) -> ComponentVersionType:
     return ComponentVersionType(
         id=v.id, component_id=v.component_id, version=v.version,
-        code=v.code, input_schema=v.input_schema, output_schema=v.output_schema,
-        resolver_bindings=v.resolver_bindings, changelog=v.changelog,
+        code=v.code, input_schema=getattr(v, "input_schema", None),
+        output_schema=getattr(v, "output_schema", None),
+        resolver_bindings=getattr(v, "resolver_bindings", None), changelog=v.changelog,
         published_at=v.published_at, published_by=v.published_by,
     )
 
@@ -59,7 +60,8 @@ def _operation_to_type(op) -> ComponentOperationType:
     return ComponentOperationType(
         id=op.id, component_id=op.component_id, name=op.name,
         display_name=op.display_name, description=op.description,
-        input_schema=op.input_schema, output_schema=op.output_schema,
+        input_schema=getattr(op, "input_schema", None),
+        output_schema=getattr(op, "output_schema", None),
         workflow_definition_id=op.workflow_definition_id,
         workflow_definition_name=wf_name,
         is_destructive=op.is_destructive, requires_approval=op.requires_approval,
@@ -83,8 +85,9 @@ def _component_to_type(c) -> ComponentType:
         id=c.id, tenant_id=c.tenant_id, provider_id=c.provider_id,
         semantic_type_id=c.semantic_type_id, name=c.name, display_name=c.display_name,
         description=c.description, language=ComponentLanguageGQL(c.language.value),
-        code=c.code, input_schema=c.input_schema, output_schema=c.output_schema,
-        resolver_bindings=c.resolver_bindings, version=c.version,
+        code=c.code, input_schema=getattr(c, "input_schema", None),
+        output_schema=getattr(c, "output_schema", None),
+        resolver_bindings=getattr(c, "resolver_bindings", None), version=c.version,
         is_published=c.is_published, is_system=c.is_system,
         upgrade_workflow_id=c.upgrade_workflow_id, created_by=c.created_by,
         created_at=c.created_at, updated_at=c.updated_at,

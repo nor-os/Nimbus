@@ -417,7 +417,7 @@ export class TopologyEditorComponent implements OnInit, OnDestroy {
       }).subscribe({
         next: created => {
           this.topology.set(created);
-          this.router.navigate(['/architecture', created.id, 'edit']);
+          this.router.navigate(['/infrastructure/topologies', created.id, 'edit']);
           this.toast.success('Topology created');
         },
         error: err => this.toast.error(err.message || 'Create failed'),

@@ -185,7 +185,7 @@ import { TIMEZONE_OPTIONS, COUNTRY_CODE_OPTIONS } from '@shared/data/geo-options
     </nimbus-layout>
   `,
   styles: [`
-    .region-form-page { padding: 0; max-width: 680px; }
+    .region-form-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;

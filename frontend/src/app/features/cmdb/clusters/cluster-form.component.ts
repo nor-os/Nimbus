@@ -24,7 +24,7 @@ import { ServiceClusterSlot, StackBlueprintParameter } from '@shared/models/clus
     <nimbus-layout>
       <div class="page-container">
         <div class="breadcrumb">
-          <a routerLink="/architecture/blueprints" class="breadcrumb-link">Stack Blueprints</a>
+          <a routerLink="/infrastructure/stacks" class="breadcrumb-link">Stacks</a>
           <span class="breadcrumb-sep">/</span>
           <span>{{ isEdit() ? 'Edit' : 'New Blueprint' }}</span>
         </div>
@@ -48,9 +48,39 @@ import { ServiceClusterSlot, StackBlueprintParameter } from '@shared/models/clus
               </div>
 
               <div class="form-group">
+                <label class="form-label">Display Name</label>
+                <input type="text" class="form-input" formControlName="displayName"
+                  placeholder="Human-friendly display name" />
+                <span class="form-hint">Optional display name shown in the UI instead of the internal name.</span>
+              </div>
+
+              <div class="form-group">
                 <label class="form-label">Description</label>
                 <textarea class="form-input form-textarea" formControlName="description"
                   placeholder="Optional description..."></textarea>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group flex-fill">
+                  <label class="form-label">Category</label>
+                  <select class="form-input" formControlName="category">
+                    <option value="">None</option>
+                    <option value="WEB">Web</option>
+                    <option value="DATA">Data</option>
+                    <option value="COMPUTE">Compute</option>
+                    <option value="NETWORK">Network</option>
+                    <option value="SECURITY">Security</option>
+                    <option value="STORAGE">Storage</option>
+                    <option value="MESSAGING">Messaging</option>
+                    <option value="MONITORING">Monitoring</option>
+                    <option value="CUSTOM">Custom</option>
+                  </select>
+                </div>
+                <div class="form-group flex-fill">
+                  <label class="form-label">Icon</label>
+                  <input type="text" class="form-input" formControlName="icon"
+                    placeholder="e.g. server, database, cloud" />
+                </div>
               </div>
 
               <div class="form-group">
@@ -368,7 +398,7 @@ import { ServiceClusterSlot, StackBlueprintParameter } from '@shared/models/clus
               <button type="submit" class="btn btn-primary" [disabled]="saving() || form.invalid">
                 {{ saving() ? 'Saving...' : (isEdit() ? 'Update' : 'Create') }}
               </button>
-              <a routerLink="/architecture/blueprints" class="btn btn-outline">Cancel</a>
+              <a routerLink="/infrastructure/stacks" class="btn btn-outline">Cancel</a>
             </div>
           </form>
         }
@@ -376,7 +406,7 @@ import { ServiceClusterSlot, StackBlueprintParameter } from '@shared/models/clus
     </nimbus-layout>
   `,
   styles: [`
-    .page-container { padding: 0; max-width: 860px; }
+    .page-container { padding: 0; max-width: 1200px; }
     .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 8px 0 1.5rem; }
     .breadcrumb { font-size: 0.8rem; color: #64748b; }
     .breadcrumb-link { color: #3b82f6; text-decoration: none; }
@@ -391,6 +421,8 @@ import { ServiceClusterSlot, StackBlueprintParameter } from '@shared/models/clus
     .card-title { font-size: 1rem; font-weight: 600; color: #1e293b; margin: 0 0 16px; }
     .card-header .card-title { margin-bottom: 0; }
 
+    .form-row { display: flex; gap: 12px; }
+    .form-row .form-group { margin-bottom: 14px; }
     .form-group { margin-bottom: 14px; }
     .form-group-sm { max-width: 80px; }
     .form-group-check { display: flex; align-items: flex-end; padding-bottom: 14px; }
@@ -515,6 +547,9 @@ export class ClusterFormComponent implements OnInit {
     name: ['', Validators.required],
     description: [''],
     stackTagKey: [''],
+    displayName: [''],
+    category: [''],
+    icon: [''],
     slots: this.fb.array([]),
   });
 
@@ -546,6 +581,9 @@ export class ClusterFormComponent implements OnInit {
             name: cluster.name,
             description: cluster.description || '',
             stackTagKey: cluster.stackTagKey || '',
+            displayName: cluster.displayName || '',
+            category: cluster.category || '',
+            icon: cluster.icon || '',
           });
           this.clusterSlots.set(cluster.slots || []);
           this.clusterParams.set(cluster.parameters || []);
@@ -603,10 +641,13 @@ export class ClusterFormComponent implements OnInit {
         name: val.name,
         description: val.description || undefined,
         stackTagKey: val.stackTagKey || undefined,
+        displayName: val.displayName || undefined,
+        category: val.category || undefined,
+        icon: val.icon || undefined,
       }).subscribe({
         next: (cluster) => {
           this.saving.set(false);
-          this.router.navigate(['/architecture/blueprints', cluster.id]);
+          this.router.navigate(['/infrastructure/stacks', cluster.id]);
         },
         error: (err) => {
           this.saving.set(false);
@@ -630,11 +671,14 @@ export class ClusterFormComponent implements OnInit {
         name: val.name,
         description: val.description || undefined,
         stackTagKey: val.stackTagKey || undefined,
+        displayName: val.displayName || undefined,
+        category: val.category || undefined,
+        icon: val.icon || undefined,
         slots,
       }).subscribe({
         next: (cluster) => {
           this.saving.set(false);
-          this.router.navigate(['/architecture/blueprints', cluster.id]);
+          this.router.navigate(['/infrastructure/stacks', cluster.id]);
         },
         error: (err) => {
           this.saving.set(false);

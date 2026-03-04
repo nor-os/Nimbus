@@ -21,11 +21,11 @@ depends_on = None
 TEMPLATE_GRAPHS = {
     "deployment:deploy": {
         "nodes": [
-            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "data": {}},
+            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "config": {}},
             {
                 "id": "deploy_activity", "type": "activity", "label": "Deploy Resource",
                 "position": {"x": 350, "y": 200},
-                "data": {
+                "config": {
                     "activity_slug": "deploy-resource",
                     "activity_id": None,
                     "parameter_bindings": {
@@ -40,25 +40,25 @@ TEMPLATE_GRAPHS = {
             {
                 "id": "cmdb_record", "type": "script", "label": "Record Deployment in CMDB",
                 "position": {"x": 600, "y": 200},
-                "data": {"script": "# Record deployment result in CMDB\noutput = {'recorded': True}"},
+                "config": {"script": "# Record deployment result in CMDB\noutput = {'recorded': True}"},
             },
-            {"id": "end", "type": "end", "label": "End", "position": {"x": 850, "y": 200}, "data": {}},
-            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "data": {}},
+            {"id": "end", "type": "end", "label": "End", "position": {"x": 850, "y": 200}, "config": {}},
+            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "config": {}},
         ],
         "connections": [
-            {"id": "c1", "source": "start", "sourceOutput": "out", "target": "deploy_activity", "targetInput": "in"},
-            {"id": "c2", "source": "deploy_activity", "sourceOutput": "out", "target": "cmdb_record", "targetInput": "in"},
-            {"id": "c3", "source": "deploy_activity", "sourceOutput": "error", "target": "end_error", "targetInput": "in"},
-            {"id": "c4", "source": "cmdb_record", "sourceOutput": "out", "target": "end", "targetInput": "in"},
+            {"id": "c1", "source": "start", "sourcePort": "out", "target": "deploy_activity", "targetPort": "in"},
+            {"id": "c2", "source": "deploy_activity", "sourcePort": "out", "target": "cmdb_record", "targetPort": "in"},
+            {"id": "c3", "source": "deploy_activity", "sourcePort": "error", "target": "end_error", "targetPort": "in"},
+            {"id": "c4", "source": "cmdb_record", "sourcePort": "out", "target": "end", "targetPort": "in"},
         ],
     },
     "deployment:decommission": {
         "nodes": [
-            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "data": {}},
+            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "config": {}},
             {
                 "id": "decommission_activity", "type": "activity", "label": "Decommission Resource",
                 "position": {"x": 350, "y": 200},
-                "data": {
+                "config": {
                     "activity_slug": "decommission-resource",
                     "activity_id": None,
                     "parameter_bindings": {
@@ -71,25 +71,25 @@ TEMPLATE_GRAPHS = {
             {
                 "id": "cmdb_record", "type": "script", "label": "Mark Decommissioned in CMDB",
                 "position": {"x": 600, "y": 200},
-                "data": {"script": "# Mark resource as decommissioned in CMDB\noutput = {'decommissioned': True}"},
+                "config": {"script": "# Mark resource as decommissioned in CMDB\noutput = {'decommissioned': True}"},
             },
-            {"id": "end", "type": "end", "label": "End", "position": {"x": 850, "y": 200}, "data": {}},
-            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "data": {}},
+            {"id": "end", "type": "end", "label": "End", "position": {"x": 850, "y": 200}, "config": {}},
+            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "config": {}},
         ],
         "connections": [
-            {"id": "c1", "source": "start", "sourceOutput": "out", "target": "decommission_activity", "targetInput": "in"},
-            {"id": "c2", "source": "decommission_activity", "sourceOutput": "out", "target": "cmdb_record", "targetInput": "in"},
-            {"id": "c3", "source": "decommission_activity", "sourceOutput": "error", "target": "end_error", "targetInput": "in"},
-            {"id": "c4", "source": "cmdb_record", "sourceOutput": "out", "target": "end", "targetInput": "in"},
+            {"id": "c1", "source": "start", "sourcePort": "out", "target": "decommission_activity", "targetPort": "in"},
+            {"id": "c2", "source": "decommission_activity", "sourcePort": "out", "target": "cmdb_record", "targetPort": "in"},
+            {"id": "c3", "source": "decommission_activity", "sourcePort": "error", "target": "end_error", "targetPort": "in"},
+            {"id": "c4", "source": "cmdb_record", "sourcePort": "out", "target": "end", "targetPort": "in"},
         ],
     },
     "deployment:rollback": {
         "nodes": [
-            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "data": {}},
+            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "config": {}},
             {
                 "id": "rollback_activity", "type": "activity", "label": "Rollback Resource",
                 "position": {"x": 350, "y": 200},
-                "data": {
+                "config": {
                     "activity_slug": "rollback-resource",
                     "activity_id": None,
                     "parameter_bindings": {
@@ -99,22 +99,22 @@ TEMPLATE_GRAPHS = {
                     },
                 },
             },
-            {"id": "end", "type": "end", "label": "End", "position": {"x": 600, "y": 200}, "data": {}},
-            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "data": {}},
+            {"id": "end", "type": "end", "label": "End", "position": {"x": 600, "y": 200}, "config": {}},
+            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "config": {}},
         ],
         "connections": [
-            {"id": "c1", "source": "start", "sourceOutput": "out", "target": "rollback_activity", "targetInput": "in"},
-            {"id": "c2", "source": "rollback_activity", "sourceOutput": "out", "target": "end", "targetInput": "in"},
-            {"id": "c3", "source": "rollback_activity", "sourceOutput": "error", "target": "end_error", "targetInput": "in"},
+            {"id": "c1", "source": "start", "sourcePort": "out", "target": "rollback_activity", "targetPort": "in"},
+            {"id": "c2", "source": "rollback_activity", "sourcePort": "out", "target": "end", "targetPort": "in"},
+            {"id": "c3", "source": "rollback_activity", "sourcePort": "error", "target": "end_error", "targetPort": "in"},
         ],
     },
     "deployment:upgrade": {
         "nodes": [
-            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "data": {}},
+            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "config": {}},
             {
                 "id": "upgrade_activity", "type": "activity", "label": "Upgrade Resource",
                 "position": {"x": 350, "y": 200},
-                "data": {
+                "config": {
                     "activity_slug": "upgrade-resource",
                     "activity_id": None,
                     "parameter_bindings": {
@@ -128,25 +128,25 @@ TEMPLATE_GRAPHS = {
             {
                 "id": "cmdb_record", "type": "script", "label": "Update Version in CMDB",
                 "position": {"x": 600, "y": 200},
-                "data": {"script": "# Update resource version in CMDB\noutput = {'version_updated': True}"},
+                "config": {"script": "# Update resource version in CMDB\noutput = {'version_updated': True}"},
             },
-            {"id": "end", "type": "end", "label": "End", "position": {"x": 850, "y": 200}, "data": {}},
-            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "data": {}},
+            {"id": "end", "type": "end", "label": "End", "position": {"x": 850, "y": 200}, "config": {}},
+            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "config": {}},
         ],
         "connections": [
-            {"id": "c1", "source": "start", "sourceOutput": "out", "target": "upgrade_activity", "targetInput": "in"},
-            {"id": "c2", "source": "upgrade_activity", "sourceOutput": "out", "target": "cmdb_record", "targetInput": "in"},
-            {"id": "c3", "source": "upgrade_activity", "sourceOutput": "error", "target": "end_error", "targetInput": "in"},
-            {"id": "c4", "source": "cmdb_record", "sourceOutput": "out", "target": "end", "targetInput": "in"},
+            {"id": "c1", "source": "start", "sourcePort": "out", "target": "upgrade_activity", "targetPort": "in"},
+            {"id": "c2", "source": "upgrade_activity", "sourcePort": "out", "target": "cmdb_record", "targetPort": "in"},
+            {"id": "c3", "source": "upgrade_activity", "sourcePort": "error", "target": "end_error", "targetPort": "in"},
+            {"id": "c4", "source": "cmdb_record", "sourcePort": "out", "target": "end", "targetPort": "in"},
         ],
     },
     "deployment:validate": {
         "nodes": [
-            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "data": {}},
+            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "config": {}},
             {
                 "id": "validate_activity", "type": "activity", "label": "Validate Resource",
                 "position": {"x": 350, "y": 200},
-                "data": {
+                "config": {
                     "activity_slug": "validate-resource",
                     "activity_id": None,
                     "parameter_bindings": {
@@ -155,22 +155,22 @@ TEMPLATE_GRAPHS = {
                     },
                 },
             },
-            {"id": "end", "type": "end", "label": "End", "position": {"x": 600, "y": 200}, "data": {}},
-            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "data": {}},
+            {"id": "end", "type": "end", "label": "End", "position": {"x": 600, "y": 200}, "config": {}},
+            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "config": {}},
         ],
         "connections": [
-            {"id": "c1", "source": "start", "sourceOutput": "out", "target": "validate_activity", "targetInput": "in"},
-            {"id": "c2", "source": "validate_activity", "sourceOutput": "out", "target": "end", "targetInput": "in"},
-            {"id": "c3", "source": "validate_activity", "sourceOutput": "error", "target": "end_error", "targetInput": "in"},
+            {"id": "c1", "source": "start", "sourcePort": "out", "target": "validate_activity", "targetPort": "in"},
+            {"id": "c2", "source": "validate_activity", "sourcePort": "out", "target": "end", "targetPort": "in"},
+            {"id": "c3", "source": "validate_activity", "sourcePort": "error", "target": "end_error", "targetPort": "in"},
         ],
     },
     "deployment:dry-run": {
         "nodes": [
-            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "data": {}},
+            {"id": "start", "type": "start", "label": "Start", "position": {"x": 100, "y": 200}, "config": {}},
             {
                 "id": "dryrun_activity", "type": "activity", "label": "Dry Run",
                 "position": {"x": 350, "y": 200},
-                "data": {
+                "config": {
                     "activity_slug": "dry-run-resource",
                     "activity_id": None,
                     "parameter_bindings": {
@@ -180,13 +180,13 @@ TEMPLATE_GRAPHS = {
                     },
                 },
             },
-            {"id": "end", "type": "end", "label": "End", "position": {"x": 600, "y": 200}, "data": {}},
-            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "data": {}},
+            {"id": "end", "type": "end", "label": "End", "position": {"x": 600, "y": 200}, "config": {}},
+            {"id": "end_error", "type": "end", "label": "Error End", "position": {"x": 600, "y": 400}, "config": {}},
         ],
         "connections": [
-            {"id": "c1", "source": "start", "sourceOutput": "out", "target": "dryrun_activity", "targetInput": "in"},
-            {"id": "c2", "source": "dryrun_activity", "sourceOutput": "out", "target": "end", "targetInput": "in"},
-            {"id": "c3", "source": "dryrun_activity", "sourceOutput": "error", "target": "end_error", "targetInput": "in"},
+            {"id": "c1", "source": "start", "sourcePort": "out", "target": "dryrun_activity", "targetPort": "in"},
+            {"id": "c2", "source": "dryrun_activity", "sourcePort": "out", "target": "end", "targetPort": "in"},
+            {"id": "c3", "source": "dryrun_activity", "sourcePort": "error", "target": "end_error", "targetPort": "in"},
         ],
     },
 }

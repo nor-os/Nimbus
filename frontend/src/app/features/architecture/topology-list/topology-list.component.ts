@@ -28,7 +28,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
           </div>
           <div class="header-actions">
             <button class="btn btn-outline" (click)="onImport()">Import</button>
-            <a routerLink="/architecture/new" class="btn btn-primary">+ New Topology</a>
+            <a routerLink="/infrastructure/topologies/new" class="btn btn-primary">+ New Topology</a>
           </div>
         </div>
 
@@ -89,7 +89,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
               @for (t of topologies(); track t.id) {
                 <tr>
                   <td>
-                    <a [routerLink]="['/architecture', t.id]" class="name-link">{{ t.name }}</a>
+                    <a [routerLink]="['/infrastructure/topologies', t.id]" class="name-link">{{ t.name }}</a>
                   </td>
                   <td>
                     <span class="status-badge" [class]="'badge-' + t.status.toLowerCase()">
@@ -111,7 +111,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
                       @if (t.status === 'DRAFT') {
                         <a [routerLink]="['/architecture', t.id, 'edit']" class="action-btn">Edit</a>
                       } @else {
-                        <a [routerLink]="['/architecture', t.id]" class="action-btn">View</a>
+                        <a [routerLink]="['/infrastructure/topologies', t.id]" class="action-btn">View</a>
                       }
                       <button class="action-btn" (click)="onClone(t)">Clone</button>
                       @if (t.status !== 'ARCHIVED') {
@@ -212,7 +212,7 @@ import { ConfirmService } from '@shared/services/confirm.service';
     }
     .table td {
       padding: 12px 16px;
-      font-size: 0.8125rem;
+      font-size: 0.875rem;
       color: #374151;
       border-bottom: 1px solid #f1f5f9;
     }

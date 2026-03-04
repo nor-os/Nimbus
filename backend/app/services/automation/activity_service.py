@@ -18,7 +18,6 @@ from sqlalchemy.orm import selectinload
 
 from app.models.automated_activity import (
     ActivityExecutionStatus,
-    ActivityScope,
     AutomatedActivity,
     AutomatedActivityVersion,
     ImplementationType,
@@ -73,16 +72,14 @@ class ActivityService:
             name=data["name"],
             slug=slug,
             description=data.get("description"),
-            category=data.get("category"),
             semantic_activity_type_id=data.get("semantic_activity_type_id"),
             semantic_type_id=data.get("semantic_type_id"),
             provider_id=data.get("provider_id"),
             operation_kind=OperationKind(data["operation_kind"]) if data.get("operation_kind") else OperationKind.UPDATE,
             implementation_type=ImplementationType(data["implementation_type"]) if data.get("implementation_type") else ImplementationType.PYTHON_SCRIPT,
-            scope=ActivityScope(data["scope"]) if data.get("scope") else ActivityScope.WORKFLOW,
             idempotent=data.get("idempotent", False),
             timeout_seconds=data.get("timeout_seconds", 300),
-            is_system=data.get("is_system", False),
+            is_component_activity=data.get("is_component_activity", False),
             created_by=created_by,
         )
         self.db.add(activity)
@@ -124,15 +121,15 @@ class ActivityService:
     async def list(
         self,
         tenant_id: str,
-        category: str | None = None,
         operation_kind: str | None = None,
         provider_id: str | None = None,
-        scope: str | None = None,
         search: str | None = None,
+        component_id: str | None = None,
+        is_component_activity: bool | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> list[AutomatedActivity]:
-        """List activities with optional filters (includes system activities)."""
+        """List activities with optional filters."""
         query = select(AutomatedActivity).where(
             or_(
                 AutomatedActivity.tenant_id == tenant_id,
@@ -141,14 +138,14 @@ class ActivityService:
             AutomatedActivity.deleted_at.is_(None),
         )
 
-        if category:
-            query = query.where(AutomatedActivity.category == category)
         if operation_kind:
             query = query.where(AutomatedActivity.operation_kind == OperationKind(operation_kind))
         if provider_id:
             query = query.where(AutomatedActivity.provider_id == provider_id)
-        if scope:
-            query = query.where(AutomatedActivity.scope == ActivityScope(scope))
+        if component_id:
+            query = query.where(AutomatedActivity.component_id == component_id)
+        if is_component_activity is not None:
+            query = query.where(AutomatedActivity.is_component_activity == is_component_activity)
         if search:
             query = query.where(
                 AutomatedActivity.name.ilike(f"%{search}%")
@@ -165,10 +162,7 @@ class ActivityService:
         """Update an activity's metadata."""
         activity = await self._get_or_raise(tenant_id, activity_id)
 
-        if activity.is_system:
-            raise ActivityServiceError("Cannot modify system activities", "SYSTEM_ACTIVITY")
-
-        for field in ("name", "description", "category", "semantic_activity_type_id",
+        for field in ("name", "description", "semantic_activity_type_id",
                        "semantic_type_id", "provider_id", "idempotent", "timeout_seconds"):
             if field in data:
                 setattr(activity, field, data[field])
@@ -177,8 +171,6 @@ class ActivityService:
             activity.operation_kind = OperationKind(data["operation_kind"])
         if "implementation_type" in data:
             activity.implementation_type = ImplementationType(data["implementation_type"])
-        if "scope" in data:
-            activity.scope = ActivityScope(data["scope"])
         if "slug" in data:
             activity.slug = data["slug"]
 
@@ -189,8 +181,11 @@ class ActivityService:
     async def delete(self, tenant_id: str, activity_id: str) -> bool:
         """Soft-delete an activity."""
         activity = await self._get_or_raise(tenant_id, activity_id)
-        if activity.is_system:
-            raise ActivityServiceError("Cannot delete system activities", "SYSTEM_ACTIVITY")
+        if activity.is_mandatory:
+            raise ActivityServiceError(
+                "Cannot delete mandatory activities (deploy, decommission, upgrade)",
+                "MANDATORY_ACTIVITY",
+            )
         activity.deleted_at = datetime.now(UTC)
         await self.db.flush()
         return True
@@ -221,9 +216,15 @@ class ActivityService:
             rollback_mutations=data.get("rollback_mutations"),
             changelog=data.get("changelog"),
             runtime_config=data.get("runtime_config"),
+            resolver_bindings=data.get("resolver_bindings"),
         )
         self.db.add(version)
         await self.db.flush()
+
+        # Bump component version if activity is linked to a component
+        if activity.component_id:
+            await self._bump_component_version(activity.component_id)
+
         return version
 
     async def publish_version(
@@ -296,6 +297,100 @@ class ActivityService:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    # ── Upgrade from Library ─────────────────────────────
+
+    async def check_upgrade_available(
+        self, tenant_id: str, activity_id: str
+    ) -> dict[str, int] | None:
+        """Check if an upgrade is available from the library activity.
+
+        Returns {library_version, forked_at_version} if upgrade exists, else None.
+        """
+        activity = await self._get_or_raise(tenant_id, activity_id)
+        if not activity.template_activity_id:
+            return None
+
+        library_latest = await self.get_latest_published(str(activity.template_activity_id))
+        if not library_latest:
+            return None
+
+        forked_at = activity.forked_at_version or 0
+        if library_latest.version > forked_at:
+            return {
+                "library_version": library_latest.version,
+                "forked_at_version": forked_at,
+            }
+        return None
+
+    async def upgrade_from_library(
+        self, tenant_id: str, activity_id: str
+    ) -> AutomatedActivity:
+        """Upgrade a forked activity to the latest library version.
+
+        Creates a new version on the fork with library code/schemas and updates forked_at_version.
+        """
+        activity = await self._get_or_raise(tenant_id, activity_id)
+        if not activity.template_activity_id:
+            raise ActivityServiceError(
+                "Activity is not a fork — no template_activity_id", "NOT_A_FORK"
+            )
+
+        library_latest = await self.get_latest_published(str(activity.template_activity_id))
+        if not library_latest:
+            raise ActivityServiceError(
+                "No published version found on the library activity", "NO_LIBRARY_VERSION"
+            )
+
+        forked_at = activity.forked_at_version or 0
+        if library_latest.version <= forked_at:
+            raise ActivityServiceError(
+                f"Already at latest library version (v{forked_at})", "ALREADY_CURRENT"
+            )
+
+        # Create a new version on the fork with library code
+        result = await self.db.execute(
+            select(func.coalesce(func.max(AutomatedActivityVersion.version), 0)).where(
+                AutomatedActivityVersion.activity_id == activity_id
+            )
+        )
+        next_version = result.scalar_one() + 1
+
+        new_version = AutomatedActivityVersion(
+            activity_id=activity_id,
+            version=next_version,
+            source_code=library_latest.source_code,
+            input_schema=library_latest.input_schema,
+            output_schema=library_latest.output_schema,
+            config_mutations=library_latest.config_mutations,
+            rollback_mutations=library_latest.rollback_mutations,
+            changelog=f"Upgraded from library v{library_latest.version}",
+            runtime_config=library_latest.runtime_config,
+            resolver_bindings=library_latest.resolver_bindings,
+        )
+        self.db.add(new_version)
+
+        activity.forked_at_version = library_latest.version
+        activity.updated_at = datetime.now(UTC)
+        await self.db.flush()
+
+        # Bump component version if linked
+        if activity.component_id:
+            await self._bump_component_version(activity.component_id)
+
+        return activity
+
+    async def _bump_component_version(self, component_id) -> None:
+        """Increment the version number on the linked component."""
+        from app.models.component import Component
+
+        result = await self.db.execute(
+            select(Component).where(Component.id == component_id)
+        )
+        comp = result.scalar_one_or_none()
+        if comp:
+            comp.version = comp.version + 1
+            await self.db.flush()
 
     # ── Internal ───────────────────────────────────────
 

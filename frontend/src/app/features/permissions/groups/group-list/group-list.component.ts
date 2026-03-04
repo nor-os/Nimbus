@@ -102,7 +102,7 @@ import { createTableSelection } from '@shared/utils/table-selection';
     </nimbus-layout>
   `,
   styles: [`
-    .group-list-page { padding: 0; }
+    .group-list-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;
@@ -110,7 +110,7 @@ import { createTableSelection } from '@shared/utils/table-selection';
     .page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
     .header-actions { display: flex; gap: 0.75rem; align-items: center; }
     .btn {
-      font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+      font-family: inherit; font-size: 0.875rem; font-weight: 500;
       border-radius: 6px; cursor: pointer; transition: background 0.15s;
       text-decoration: none; display: inline-block;
     }
@@ -132,7 +132,7 @@ import { createTableSelection } from '@shared/utils/table-selection';
     .table-container {
       background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
     }
-    .table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    .table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
     .table th, .table td {
       padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #f1f5f9;
     }

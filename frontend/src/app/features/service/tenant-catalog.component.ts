@@ -224,7 +224,7 @@ interface CatalogGroup {
     </nimbus-layout>
   `,
   styles: [`
-    .catalog-page { padding: 0; max-width: 1080px; }
+    .catalog-page { padding: 0; max-width: 1200px; }
 
     /* -- Page header -------------------------------------------------------- */
     .page-header { margin-bottom: 2rem; }

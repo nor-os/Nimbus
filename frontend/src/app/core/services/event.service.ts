@@ -5,7 +5,7 @@
  * Concepts: Event CRUD, subscription management, event log querying, test emission
  */
 import { Injectable, inject } from '@angular/core';
-import { Observable, map } from 'rxjs';
+import { Observable, map, of } from 'rxjs';
 import { ApiService } from './api.service';
 import { TenantContextService } from './tenant-context.service';
 import { environment } from '@env/environment';
@@ -176,6 +176,7 @@ export class EventService {
     limit?: number;
   }): Observable<EventLogEntry[]> {
     const tenantId = this.tenantContext.currentTenantId();
+    if (!tenantId) return of([]);
     return this.gql<{ eventLog: EventLogEntry[] }>(`
       query EventLog(
         $tenantId: UUID!
@@ -201,6 +202,7 @@ export class EventService {
 
   getEventLogEntry(id: string): Observable<EventLogEntry | null> {
     const tenantId = this.tenantContext.currentTenantId();
+    if (!tenantId) return of(null);
     return this.gql<{ eventLogEntry: EventLogEntry | null }>(`
       query EventLogEntry($tenantId: UUID!, $id: UUID!) {
         eventLogEntry(tenantId: $tenantId, id: $id) {

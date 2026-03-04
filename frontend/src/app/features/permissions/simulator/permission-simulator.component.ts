@@ -255,7 +255,7 @@ interface KvPair { key: string; value: string; }
     </nimbus-layout>
   `,
   styles: [`
-    .simulator-page { padding: 0; }
+    .simulator-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 0.5rem;

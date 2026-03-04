@@ -39,9 +39,10 @@ class ResolutionStatusGQL(Enum):
 class DeploymentCIType:
     id: uuid.UUID
     deployment_id: uuid.UUID
-    ci_id: uuid.UUID
+    ci_id: uuid.UUID | None
     component_id: uuid.UUID
     topology_node_id: str | None
+    component_version: int | None
     resolver_outputs: strawberry.scalars.JSON | None
     created_at: datetime
 
@@ -51,7 +52,7 @@ class DeploymentType:
     id: uuid.UUID
     tenant_id: uuid.UUID
     environment_id: uuid.UUID
-    topology_id: uuid.UUID
+    topology_id: uuid.UUID | None
     name: str
     description: str | None
     status: DeploymentStatusGQL
@@ -89,6 +90,18 @@ class ResolveParametersInput:
 
 # ── Input Types ────────────────────────────────────────────────────────
 
+@strawberry.type
+class UpgradableCIType:
+    deployment_ci_id: uuid.UUID
+    ci_id: uuid.UUID
+    component_id: uuid.UUID
+    component_display_name: str
+    deployed_version: int
+    latest_version: int
+    deployment_id: uuid.UUID
+    changelog: str | None
+
+
 @strawberry.input
 class DeploymentCreateInput:
     environment_id: uuid.UUID
@@ -103,4 +116,36 @@ class DeploymentUpdateInput:
     name: str | None = None
     description: str | None = None
     status: DeploymentStatusGQL | None = None
+    parameters: strawberry.scalars.JSON | None = None
+
+
+@strawberry.enum
+class ComponentInstanceSourceTypeGQL(Enum):
+    STANDALONE = "standalone"
+    TOPOLOGY = "topology"
+    STACK = "stack"
+
+
+@strawberry.type
+class ComponentInstanceType:
+    id: uuid.UUID
+    component_id: uuid.UUID
+    component_display_name: str
+    component_version: int | None
+    environment_id: uuid.UUID | None
+    status: str
+    source_type: ComponentInstanceSourceTypeGQL
+    source_id: uuid.UUID
+    source_name: str
+    resolved_parameters: strawberry.scalars.JSON | None
+    outputs: strawberry.scalars.JSON | None
+    deployed_at: datetime | None
+    created_at: datetime
+
+
+@strawberry.input
+class DeployComponentInput:
+    environment_id: uuid.UUID
+    component_id: uuid.UUID
+    component_version: int | None = None
     parameters: strawberry.scalars.JSON | None = None

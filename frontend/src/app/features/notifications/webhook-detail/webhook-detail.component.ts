@@ -115,7 +115,7 @@ type DeliveryStatus = '' | 'PENDING' | 'DELIVERED' | 'FAILED' | 'DEAD_LETTER';
     </nimbus-layout>
   `,
   styles: [`
-    .page { max-width: 56rem; }
+    .page { max-width: 1200px; padding: 0; }
     .page-header {
       display: flex; justify-content: space-between;
       align-items: center; margin-bottom: 1.5rem;

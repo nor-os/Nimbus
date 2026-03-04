@@ -228,7 +228,7 @@ type ActiveTab = 'sessions' | 'request';
     </nimbus-layout>
   `,
   styles: [`
-    .page { padding: 0; }
+    .page { padding: 0; max-width: 1200px; }
     .page-header { margin-bottom: 1.25rem; }
     .page-header h1 { margin: 0 0 0.25rem; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
     .subtitle { margin: 0; font-size: 0.8125rem; color: #64748b; }

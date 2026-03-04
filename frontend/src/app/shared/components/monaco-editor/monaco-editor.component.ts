@@ -19,6 +19,9 @@ import { CommonModule } from '@angular/common';
 
 declare const monaco: any;
 
+/** Module-level promise to prevent loading Monaco multiple times */
+let monacoLoadPromise: Promise<void> | null = null;
+
 @Component({
   selector: 'nimbus-monaco-editor',
   standalone: true,
@@ -129,17 +132,24 @@ export class MonacoEditorComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
-    script.onload = () => {
-      (window as any).require.config({
-        paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
+    // Prevent multiple script tags from being injected (causes _amdLoaderGlobal redeclaration)
+    if (!monacoLoadPromise) {
+      monacoLoadPromise = new Promise<void>((resolve) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
+        script.onload = () => {
+          (window as any).require.config({
+            paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' },
+          });
+          (window as any).require(['vs/editor/editor.main'], () => {
+            resolve();
+          });
+        };
+        document.head.appendChild(script);
       });
-      (window as any).require(['vs/editor/editor.main'], () => {
-        this.initEditor();
-      });
-    };
-    document.head.appendChild(script);
+    }
+
+    monacoLoadPromise.then(() => this.initEditor());
   }
 
   private initEditor(): void {
@@ -169,6 +179,12 @@ export class MonacoEditorComponent implements OnInit, OnDestroy {
       if (!this.preventEmit) {
         this.valueChange.emit(this.editor.getValue());
       }
+    });
+
+    // Force layout after creation — Monaco may not render until its container
+    // is fully measured. A short delay ensures the DOM is settled.
+    requestAnimationFrame(() => {
+      this.editor?.layout();
     });
   }
 

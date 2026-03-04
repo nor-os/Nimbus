@@ -21,8 +21,14 @@ from app.services.workflow.node_types import (
     parallel,
     script,
     ssh_exec,
+    stack_component_action,
     stack_deploy,
     stack_destroy,
+    stack_health_check,
+    stack_reservation_claim,
+    stack_reservation_release,
+    stack_restore_snapshot,
+    stack_snapshot,
     start_end,
     subworkflow,
     switch_node,
@@ -55,6 +61,13 @@ def register_all() -> None:
     stack_destroy.register()
     cmdb_record.register()
     deployment_gate.register()
+    # Stack operation nodes
+    stack_component_action.register()
+    stack_health_check.register()
+    stack_reservation_claim.register()
+    stack_reservation_release.register()
+    stack_snapshot.register()
+    stack_restore_snapshot.register()
     # Activity node
     activity.register()
     # Event trigger node

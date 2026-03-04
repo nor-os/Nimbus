@@ -170,10 +170,9 @@ def _activity_template_to_gql(t) -> ActivityTemplateType:
             id=aa.id,
             name=aa.name,
             slug=aa.slug,
-            category=aa.category,
             operation_kind=aa.operation_kind.value if hasattr(aa.operation_kind, "value") else str(aa.operation_kind),
             implementation_type=aa.implementation_type.value if hasattr(aa.implementation_type, "value") else str(aa.implementation_type),
-            is_system=aa.is_system,
+            is_component_activity=aa.is_component_activity,
         )
     return ActivityTemplateType(
         id=t.id,

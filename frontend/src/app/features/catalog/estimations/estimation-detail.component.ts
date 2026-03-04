@@ -238,7 +238,7 @@ const COVERAGE_LABELS: Record<string, string> = {
     </nimbus-layout>
   `,
   styles: [`
-    .detail-page { padding: 0; max-width: 1100px; }
+    .detail-page { padding: 0; max-width: 1200px; }
 
     .loading, .empty-state {
       padding: 2rem; text-align: center; color: #94a3b8; font-size: 0.8125rem;
@@ -338,7 +338,7 @@ const COVERAGE_LABELS: Record<string, string> = {
 
     /* ── Buttons ────────────────────────────────────────────────────── */
     .btn {
-      font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+      font-family: inherit; font-size: 0.875rem; font-weight: 500;
       border-radius: 6px; cursor: pointer; padding: 0.5rem 1.25rem;
       transition: background 0.15s; border: none;
     }

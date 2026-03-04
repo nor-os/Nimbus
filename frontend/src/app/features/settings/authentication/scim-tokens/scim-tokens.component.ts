@@ -143,7 +143,7 @@ import { createTableSelection } from '@shared/utils/table-selection';
     </nimbus-layout>
   `,
   styles: [`
-    .scim-tokens-page { padding: 0; }
+    .scim-tokens-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 1.5rem;

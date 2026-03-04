@@ -8,6 +8,7 @@ Concepts: Activity queries, version listing, execution monitoring, config change
 import uuid
 
 import strawberry
+import strawberry.scalars
 from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
@@ -41,11 +42,11 @@ class AutomationQuery:
         self,
         info: Info,
         tenant_id: uuid.UUID,
-        category: str | None = None,
         operation_kind: str | None = None,
         provider_id: uuid.UUID | None = None,
-        scope: str | None = None,
         search: str | None = None,
+        component_id: uuid.UUID | None = None,
+        is_component_activity: bool | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> list[AutomatedActivityType]:
@@ -58,11 +59,11 @@ class AutomationQuery:
         svc = ActivityService(db)
         activities = await svc.list(
             str(tenant_id),
-            category=category,
             operation_kind=operation_kind,
             provider_id=str(provider_id) if provider_id else None,
-            scope=scope,
             search=search,
+            component_id=str(component_id) if component_id else None,
+            is_component_activity=is_component_activity,
             offset=offset,
             limit=limit,
         )
@@ -137,6 +138,20 @@ class AutomationQuery:
         svc = ExecutionService(db)
         e = await svc.get(str(tenant_id), str(execution_id))
         return execution_to_type(e) if e else None
+
+    @strawberry.field
+    async def activity_upgrade_status(
+        self, info: Info, tenant_id: uuid.UUID, activity_id: uuid.UUID
+    ) -> strawberry.scalars.JSON | None:
+        """Check if an upgrade is available from the library activity."""
+        await check_graphql_permission(info, "automation:activity:read", str(tenant_id))
+
+        from app.services.automation.activity_service import ActivityService
+
+        db = await _get_session(info)
+        svc = ActivityService(db)
+        result = await svc.check_upgrade_available(str(tenant_id), str(activity_id))
+        return result
 
     @strawberry.field
     async def configuration_changes(

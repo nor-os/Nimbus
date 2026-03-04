@@ -79,7 +79,7 @@ const CHANNELS: NotificationChannel[] = ['EMAIL', 'IN_APP'];
     </nimbus-layout>
   `,
   styles: [`
-    .page { max-width: 40rem; }
+    .page { max-width: 1200px; padding: 0; }
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
     .page-title { font-size: 1.5rem; font-weight: 700; color: #1e293b; margin: 0; }
     .page-description { font-size: 0.8125rem; color: #64748b; margin-bottom: 1.5rem; }

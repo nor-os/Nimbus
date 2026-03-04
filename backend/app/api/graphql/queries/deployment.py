@@ -11,7 +11,14 @@ import strawberry
 from strawberry.types import Info
 
 from app.api.graphql.auth import check_graphql_permission
-from app.api.graphql.types.deployment import DeploymentCIType, DeploymentStatusGQL, DeploymentType
+from app.api.graphql.types.deployment import (
+    ComponentInstanceSourceTypeGQL,
+    ComponentInstanceType,
+    DeploymentCIType,
+    DeploymentStatusGQL,
+    DeploymentType,
+    UpgradableCIType,
+)
 
 
 # ── Converters ─────────────────────────────────────────────────────────
@@ -23,6 +30,7 @@ def _deployment_ci_to_type(dc) -> DeploymentCIType:
         ci_id=dc.ci_id,
         component_id=dc.component_id,
         topology_node_id=dc.topology_node_id,
+        component_version=dc.component_version,
         resolver_outputs=dc.resolver_outputs,
         created_at=dc.created_at,
     )
@@ -52,6 +60,24 @@ def _deployment_to_type(d) -> DeploymentType:
     )
 
 
+def _component_instance_to_type(item: dict) -> ComponentInstanceType:
+    return ComponentInstanceType(
+        id=item["id"],
+        component_id=item["component_id"],
+        component_display_name=item["component_display_name"],
+        component_version=item["component_version"],
+        environment_id=item["environment_id"],
+        status=item["status"],
+        source_type=ComponentInstanceSourceTypeGQL(item["source_type"]),
+        source_id=item["source_id"],
+        source_name=item["source_name"],
+        resolved_parameters=item["resolved_parameters"],
+        outputs=item["outputs"],
+        deployed_at=item["deployed_at"],
+        created_at=item["created_at"],
+    )
+
+
 # ── Queries ────────────────────────────────────────────────────────────
 
 
@@ -71,16 +97,47 @@ class DeploymentQuery:
     async def deployments(
         self, info: Info, tenant_id: uuid.UUID,
         environment_id: uuid.UUID | None = None,
+        has_topology: bool | None = None,
     ) -> list[DeploymentType]:
-        """List deployments for a tenant, optionally filtered by environment."""
+        """List deployments for a tenant, optionally filtered by environment and topology presence."""
         await check_graphql_permission(info, "deployment:deployment:read", str(tenant_id))
 
         from app.services.deployment.deployment_service import DeploymentService
 
         db = await _get_session(info)
         svc = DeploymentService()
-        deployments = await svc.list_by_tenant(db, tenant_id, environment_id)
+        deployments = await svc.list_by_tenant(db, tenant_id, environment_id, has_topology)
         return [_deployment_to_type(d) for d in deployments]
+
+    @strawberry.field
+    async def topology_instances(
+        self, info: Info, tenant_id: uuid.UUID,
+        environment_id: uuid.UUID | None = None,
+    ) -> list[DeploymentType]:
+        """List topology-based deployments (convenience alias for deployments with hasTopology=true)."""
+        await check_graphql_permission(info, "deployment:deployment:read", str(tenant_id))
+
+        from app.services.deployment.deployment_service import DeploymentService
+
+        db = await _get_session(info)
+        svc = DeploymentService()
+        deployments = await svc.list_by_tenant(db, tenant_id, environment_id, has_topology=True)
+        return [_deployment_to_type(d) for d in deployments]
+
+    @strawberry.field
+    async def component_instances(
+        self, info: Info, tenant_id: uuid.UUID,
+        environment_id: uuid.UUID | None = None,
+    ) -> list[ComponentInstanceType]:
+        """List all component instances across deployments and stack instances."""
+        await check_graphql_permission(info, "deployment:deployment:read", str(tenant_id))
+
+        from app.services.deployment.deployment_service import DeploymentService
+
+        db = await _get_session(info)
+        svc = DeploymentService()
+        items = await svc.list_component_instances(db, tenant_id, environment_id)
+        return [_component_instance_to_type(item) for item in items]
 
     @strawberry.field
     async def deployment(
@@ -109,3 +166,29 @@ class DeploymentQuery:
         svc = DeploymentService()
         items = await svc.get_deployment_cis(db, deployment_id)
         return [_deployment_ci_to_type(dc) for dc in items]
+
+    @strawberry.field
+    async def upgradable_deployment_cis(
+        self, info: Info, tenant_id: uuid.UUID, environment_id: uuid.UUID,
+    ) -> list[UpgradableCIType]:
+        """Find deployed CIs in an environment that have newer component versions available."""
+        await check_graphql_permission(info, "deployment:deployment:read", str(tenant_id))
+
+        from app.services.deployment.deployment_service import DeploymentService
+
+        db = await _get_session(info)
+        svc = DeploymentService()
+        items = await svc.check_upgradable_cis(db, environment_id)
+        return [
+            UpgradableCIType(
+                deployment_ci_id=item["deployment_ci_id"],
+                ci_id=item["ci_id"],
+                component_id=item["component_id"],
+                component_display_name=item["component_display_name"],
+                deployed_version=item["deployed_version"],
+                latest_version=item["latest_version"],
+                deployment_id=item["deployment_id"],
+                changelog=item["changelog"],
+            )
+            for item in items
+        ]

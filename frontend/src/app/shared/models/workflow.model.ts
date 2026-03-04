@@ -8,7 +8,7 @@
 export type WorkflowDefinitionStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 export type WorkflowExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type WorkflowNodeExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED' | 'CANCELLED';
-export type WorkflowType = 'AUTOMATION' | 'SYSTEM' | 'DEPLOYMENT';
+export type WorkflowType = 'AUTOMATION' | 'SYSTEM' | 'DEPLOYMENT' | 'STACK';
 
 export interface WorkflowDefinition {
   id: string;
@@ -24,8 +24,12 @@ export interface WorkflowDefinition {
   workflowType: WorkflowType;
   sourceTopologyId: string | null;
   isSystem: boolean;
+  isTemplate: boolean;
+  templateSourceId: string | null;
   applicableSemanticTypeId: string | null;
   applicableProviderId: string | null;
+  inputSchema: Record<string, unknown> | null;
+  outputSchema: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -122,6 +126,8 @@ export interface WorkflowDefinitionCreateInput {
   workflowType?: WorkflowType;
   applicableSemanticTypeId?: string;
   applicableProviderId?: string;
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
 }
 
 export interface GenerateDeploymentWorkflowInput {
@@ -138,6 +144,8 @@ export interface WorkflowDefinitionUpdateInput {
   maxConcurrent?: number;
   applicableSemanticTypeId?: string | null;
   applicableProviderId?: string | null;
+  inputSchema?: Record<string, unknown> | null;
+  outputSchema?: Record<string, unknown> | null;
 }
 
 export interface WorkflowExecutionStartInput {

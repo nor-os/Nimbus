@@ -17,6 +17,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AutomatedActivityService } from '@core/services/automated-activity.service';
+import { ComponentService } from '@core/services/component.service';
 import {
   AutomatedActivity,
   AutomatedActivityVersion,
@@ -24,12 +25,29 @@ import {
   ActivityVersionCreateInput,
   AutomatedActivityCreateInput,
 } from '@shared/models/automated-activity.model';
+import { Resolver } from '@shared/models/component.model';
 import { LayoutComponent } from '@shared/components/layout/layout.component';
 import { HasPermissionDirective } from '@shared/directives/has-permission.directive';
 import { MonacoEditorComponent } from '@shared/components/monaco-editor/monaco-editor.component';
 import { ToastService } from '@shared/services/toast.service';
 
 type TabKey = 'definition' | 'versions' | 'mutations' | 'executions' | 'test';
+
+interface SchemaProperty {
+  name: string;
+  type: 'string' | 'integer' | 'number' | 'boolean' | 'object' | 'array';
+  description: string;
+  required: boolean;
+  defaultValue: string;
+  enumValues: string;
+}
+
+interface ResolverBinding {
+  paramName: string;
+  resolverType: string;
+  resolverParams: Record<string, string>;
+  targetField: string;
+}
 
 @Component({
   selector: 'nimbus-activity-detail',
@@ -74,20 +92,6 @@ type TabKey = 'definition' | 'versions' | 'mutations' | 'executions' | 'test';
                   <label>Description</label>
                   <textarea [ngModel]="createForm.description" (ngModelChange)="createForm.description = $event"
                             placeholder="Describe what this activity does..." rows="3"></textarea>
-                </div>
-                <div class="form-group">
-                  <label>Category</label>
-                  <select [ngModel]="createForm.category" (ngModelChange)="createForm.category = $event">
-                    <option value="">— Select —</option>
-                    <option value="compute">Compute</option>
-                    <option value="storage">Storage</option>
-                    <option value="network">Network</option>
-                    <option value="security">Security</option>
-                    <option value="backup">Backup</option>
-                    <option value="monitoring">Monitoring</option>
-                    <option value="database">Database</option>
-                    <option value="identity">Identity</option>
-                  </select>
                 </div>
                 <div class="form-group">
                   <label>Operation Kind</label>
@@ -188,11 +192,10 @@ type TabKey = 'definition' | 'versions' | 'mutations' | 'executions' | 'test';
                 <div class="header-meta">
                   <span class="badge badge-operation">{{ a.operationKind }}</span>
                   <span class="badge badge-type">{{ a.implementationType.replace('_', ' ') }}</span>
-                  <span class="badge" [class]="a.scope === 'COMPONENT' ? 'badge-component' : 'badge-workflow'">
-                    {{ a.scope === 'COMPONENT' ? 'Component' : 'Workflow' }}
-                  </span>
-                  @if (a.isSystem) {
-                    <span class="badge badge-system">System</span>
+                  @if (a.isComponentActivity) {
+                    <span class="badge badge-component">Component</span>
+                  } @else {
+                    <span class="badge badge-template">Template</span>
                   }
                   <span class="slug-text">{{ a.slug }}</span>
                 </div>
@@ -236,29 +239,197 @@ type TabKey = 'definition' | 'versions' | 'mutations' | 'executions' | 'test';
             @if (activeTab() === 'definition') {
               <div class="definition-tab">
                 @if (selectedVersion(); as v) {
-                  <div class="editor-header">
-                    <span class="editor-label">Source Code ({{ a.implementationType === 'PYTHON_SCRIPT' ? 'Python' : a.implementationType === 'SHELL_SCRIPT' ? 'Shell' : 'Text' }})</span>
-                    @if (!v.publishedAt) {
-                      <button class="btn btn-sm btn-primary" *nimbusHasPermission="'automation:activity:update'"
-                              (click)="saveSourceCode()">Save</button>
-                    }
-                  </div>
-                  <nimbus-monaco-editor
-                    [value]="v.sourceCode || ''"
-                    [language]="editorLanguage()"
-                    [readOnly]="!!v.publishedAt"
-                    [height]="'500px'"
-                    (valueChange)="draftSourceCode.set($event)"
-                  />
-                  <!-- Input/Output Schema -->
-                  <div class="schema-panels">
-                    <div class="schema-panel">
-                      <h3>Input Schema</h3>
-                      <pre class="schema-json">{{ v.inputSchema | json }}</pre>
+                  <div class="split-pane">
+                    <!-- Left: Source Code Editor -->
+                    <div class="editor-pane">
+                      <div class="editor-header">
+                        <span class="editor-label">Source Code ({{ a.implementationType === 'PYTHON_SCRIPT' ? 'Python' : a.implementationType === 'SHELL_SCRIPT' ? 'Shell' : 'Text' }})</span>
+                        @if (!v.publishedAt) {
+                          <button class="btn btn-sm btn-primary" *nimbusHasPermission="'automation:activity:update'"
+                                  (click)="saveAllChanges()">Save All</button>
+                        }
+                      </div>
+                      <nimbus-monaco-editor
+                        [value]="v.sourceCode || ''"
+                        [language]="editorLanguage()"
+                        [readOnly]="!!v.publishedAt"
+                        [height]="'calc(100vh - 340px)'"
+                        (valueChange)="draftSourceCode.set($event)"
+                      />
                     </div>
-                    <div class="schema-panel">
-                      <h3>Output Schema</h3>
-                      <pre class="schema-json">{{ v.outputSchema | json }}</pre>
+
+                    <!-- Right: Config Panel -->
+                    <div class="config-pane">
+                      <div class="config-tabs">
+                        <button class="config-tab" [class.active]="configTab() === 'inputs'" (click)="configTab.set('inputs')">Inputs</button>
+                        <button class="config-tab" [class.active]="configTab() === 'outputs'" (click)="configTab.set('outputs')">Outputs</button>
+                      </div>
+                      <div class="config-body">
+                        <!-- Inputs sub-tab -->
+                        @if (configTab() === 'inputs') {
+                          <div class="schema-builder">
+                            <div class="schema-builder-header">
+                              <h3>Input Parameters</h3>
+                              <div style="display:flex;gap:6px">
+                                @if (!v.publishedAt) {
+                                  <button class="btn btn-sm" (click)="addInputProperty()">+ Add</button>
+                                }
+                                @if (inputProperties().length > 0) {
+                                  <button class="btn btn-sm" (click)="validateBindings()">Validate</button>
+                                }
+                              </div>
+                            </div>
+                            @if (bindingWarnings().length > 0) {
+                              <div class="binding-warnings">
+                                @for (w of bindingWarnings(); track w) {
+                                  <div class="warning-item">&#9888; {{ w }}</div>
+                                }
+                              </div>
+                            }
+                            @if (inputProperties().length === 0) {
+                              <div class="empty-schema">No input parameters defined.</div>
+                            }
+                            @for (prop of inputProperties(); track prop.name; let i = $index) {
+                              <div class="input-card" [class.resolver-bound]="hasBinding(prop.name)">
+                                <div class="schema-row-top">
+                                  <div class="schema-field">
+                                    <label>Name</label>
+                                    <input type="text" [(ngModel)]="prop.name" placeholder="param_name" [disabled]="!!v.publishedAt" />
+                                  </div>
+                                  <div class="schema-field type-field">
+                                    <label>Type</label>
+                                    <select [(ngModel)]="prop.type" [disabled]="!!v.publishedAt">
+                                      <option value="string">String</option>
+                                      <option value="integer">Integer</option>
+                                      <option value="number">Number</option>
+                                      <option value="boolean">Boolean</option>
+                                      <option value="object">Object</option>
+                                      <option value="array">Array</option>
+                                    </select>
+                                  </div>
+                                  <div class="schema-field check-field">
+                                    <label>
+                                      <input type="checkbox" [(ngModel)]="prop.required" [disabled]="!!v.publishedAt" /> Req
+                                    </label>
+                                  </div>
+                                  @if (!v.publishedAt) {
+                                    <button class="btn-icon btn-remove" (click)="removeInputProperty(i)" title="Remove">&times;</button>
+                                  }
+                                </div>
+                                <div class="schema-field">
+                                  <label>Description</label>
+                                  <input type="text" [(ngModel)]="prop.description" placeholder="Description" [disabled]="!!v.publishedAt" />
+                                </div>
+
+                                <!-- Source toggle: Manual vs Resolver -->
+                                @if (!v.publishedAt) {
+                                  <div class="source-row">
+                                    <label class="source-label">Source</label>
+                                    <div class="source-toggle">
+                                      <button class="source-btn" [class.active]="!hasBinding(prop.name)" (click)="removeBinding(prop.name)">Manual</button>
+                                      <button class="source-btn" [class.active]="hasBinding(prop.name)" (click)="enableBinding(prop.name, prop.type)">Resolver</button>
+                                    </div>
+                                  </div>
+                                }
+
+                                @if (!hasBinding(prop.name)) {
+                                  <!-- Manual: default value + enum -->
+                                  <div class="schema-row-top">
+                                    <div class="schema-field">
+                                      <label>Default</label>
+                                      <input type="text" [(ngModel)]="prop.defaultValue" placeholder="Default value" [disabled]="!!v.publishedAt" />
+                                    </div>
+                                    <div class="schema-field">
+                                      <label>Enum (comma-sep)</label>
+                                      <input type="text" [(ngModel)]="prop.enumValues" placeholder="a, b, c" [disabled]="!!v.publishedAt" />
+                                    </div>
+                                  </div>
+                                } @else {
+                                  <!-- Resolver binding config -->
+                                  @if (getBinding(prop.name); as binding) {
+                                    @if (getSuggestions(prop.name).length > 0 && !binding.resolverType) {
+                                      <div class="suggestions">
+                                        <span class="suggestions-label">Suggested:</span>
+                                        @for (s of getSuggestions(prop.name); track s.resolver_type) {
+                                          <button class="suggestion-chip" (click)="applySuggestion(binding, s)">
+                                            {{ s.display_name }}
+                                            @if (s.matching_fields.length) {
+                                              <span class="match-hint">&rarr; {{ s.matching_fields[0] }}</span>
+                                            }
+                                          </button>
+                                        }
+                                      </div>
+                                    }
+                                    <div class="binding-row">
+                                      <div class="schema-field">
+                                        <label>Resolver</label>
+                                        <select [(ngModel)]="binding.resolverType" (ngModelChange)="onBindingResolverChange(binding)" [disabled]="!!v.publishedAt">
+                                          <option value="">-- Select --</option>
+                                          @for (r of resolvers(); track r.id) {
+                                            <option [value]="r.resolverType">{{ r.displayName }}</option>
+                                          }
+                                        </select>
+                                      </div>
+                                      <div class="schema-field">
+                                        <label>Output Field</label>
+                                        <input type="text" [(ngModel)]="binding.targetField" placeholder="e.g. cidr, name" [disabled]="!!v.publishedAt" />
+                                      </div>
+                                    </div>
+                                    @if (binding.resolverType) {
+                                      @if (getResolverByType(binding.resolverType); as r) {
+                                        <span class="resolver-hint">{{ r.description }}</span>
+                                      }
+                                    }
+                                  }
+                                }
+                              </div>
+                            }
+                          </div>
+                        }
+
+                        <!-- Outputs sub-tab -->
+                        @if (configTab() === 'outputs') {
+                          <div class="schema-builder">
+                            <div class="schema-builder-header">
+                              <h3>Output Values</h3>
+                              @if (!v.publishedAt) {
+                                <button class="btn btn-sm" (click)="addOutputProperty()">+ Add</button>
+                              }
+                            </div>
+                            @if (outputProperties().length === 0) {
+                              <div class="empty-schema">No outputs defined.</div>
+                            }
+                            @for (prop of outputProperties(); track prop.name; let i = $index) {
+                              <div class="schema-row stacked">
+                                <div class="schema-row-top">
+                                  <div class="schema-field">
+                                    <label>Name</label>
+                                    <input type="text" [(ngModel)]="prop.name" placeholder="output_name" [disabled]="!!v.publishedAt" />
+                                  </div>
+                                  <div class="schema-field type-field">
+                                    <label>Type</label>
+                                    <select [(ngModel)]="prop.type" [disabled]="!!v.publishedAt">
+                                      <option value="string">String</option>
+                                      <option value="integer">Integer</option>
+                                      <option value="number">Number</option>
+                                      <option value="boolean">Boolean</option>
+                                      <option value="object">Object</option>
+                                      <option value="array">Array</option>
+                                    </select>
+                                  </div>
+                                  @if (!v.publishedAt) {
+                                    <button class="btn-icon btn-remove" (click)="removeOutputProperty(i)" title="Remove">&times;</button>
+                                  }
+                                </div>
+                                <div class="schema-field">
+                                  <label>Description</label>
+                                  <input type="text" [(ngModel)]="prop.description" placeholder="Description" [disabled]="!!v.publishedAt" />
+                                </div>
+                              </div>
+                            }
+                          </div>
+                        }
+                      </div>
                     </div>
                   </div>
                 } @else {
@@ -427,7 +598,7 @@ type TabKey = 'definition' | 'versions' | 'mutations' | 'executions' | 'test';
     </nimbus-layout>
   `,
   styles: [`
-    .detail-page { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    .detail-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: flex-start;
       margin-bottom: 20px;
@@ -553,8 +724,8 @@ type TabKey = 'definition' | 'versions' | 'mutations' | 'executions' | 'test';
     }
     .badge-operation { background: #dbeafe; color: #1d4ed8; }
     .badge-type { background: #fef3c7; color: #92400e; }
-    .badge-system { background: #e0e7ff; color: #3730a3; }
     .badge-component { background: #fff7ed; color: #c2410c; }
+    .badge-template { background: #e0e7ff; color: #3730a3; }
     .badge-workflow { background: #eff6ff; color: #1d4ed8; }
     .badge-published { background: #dcfce7; color: #166534; }
     .badge-draft { background: #fef3c7; color: #92400e; }
@@ -574,6 +745,85 @@ type TabKey = 'definition' | 'versions' | 'mutations' | 'executions' | 'test';
     .mutation-value { font-size: 13px; color: #64748b; }
     .error-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ef4444; }
 
+    /* ── Split pane layout ── */
+    .split-pane { display: flex; gap: 0; min-height: calc(100vh - 340px); }
+    .editor-pane { flex: 3; min-width: 0; }
+    .config-pane {
+      flex: 2; min-width: 300px; display: flex; flex-direction: column;
+      border-left: 1px solid #e2e8f0;
+    }
+    .config-tabs {
+      display: flex; gap: 0; border-bottom: 1px solid #e2e8f0; background: #f8fafc;
+    }
+    .config-tab {
+      padding: 8px 14px; border: none; border-bottom: 2px solid transparent;
+      background: none; cursor: pointer; font-size: 13px; font-weight: 500; color: #64748b;
+    }
+    .config-tab:hover { color: #1e293b; }
+    .config-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+    .config-body { flex: 1; overflow-y: auto; max-height: calc(100vh - 400px); padding: 12px; }
+
+    /* ── Schema builder ── */
+    .schema-builder { display: flex; flex-direction: column; gap: 12px; }
+    .schema-builder-header { display: flex; justify-content: space-between; align-items: center; }
+    .schema-builder-header h3 { font-size: 15px; font-weight: 600; color: #1e293b; margin: 0; }
+    .empty-schema { color: #94a3b8; font-size: 14px; padding: 24px; text-align: center; }
+    .schema-row, .binding-row {
+      display: flex; gap: 8px; align-items: flex-end;
+      padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;
+    }
+    .schema-row.stacked {
+      flex-direction: column; align-items: stretch; gap: 8px;
+    }
+    .schema-row-top { display: flex; gap: 8px; align-items: flex-end; }
+    .schema-field { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .schema-field.type-field { flex: 0.8; }
+    .schema-field.check-field { flex: 0 0 auto; align-self: center; }
+    .schema-field label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
+    .schema-field input, .schema-field select {
+      padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 4px;
+      font-size: 13px; color: #1e293b; background: #fff;
+    }
+    .schema-field input:focus, .schema-field select:focus {
+      outline: none; border-color: #3b82f6;
+    }
+    .schema-field input[type="checkbox"] { width: auto; margin-right: 4px; }
+    .btn-icon { background: none; border: none; cursor: pointer; font-size: 20px; padding: 4px; line-height: 1; color: #94a3b8; }
+    .btn-remove:hover { color: #dc2626; }
+
+    /* ── Input card with integrated source toggle ── */
+    .input-card {
+      padding: 12px; background: #f8fafc; border-radius: 6px;
+      border: 1px solid #e2e8f0; margin-bottom: 8px;
+      display: flex; flex-direction: column; gap: 8px; transition: border-color 0.15s;
+    }
+    .input-card.resolver-bound { border-color: #93c5fd; background: #f0f7ff; }
+    .source-row { display: flex; align-items: center; gap: 8px; }
+    .source-label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
+    .source-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .source-btn {
+      padding: 4px 10px; font-size: 11px; font-weight: 500; border: none;
+      background: #fff; color: #64748b; cursor: pointer; font-family: inherit;
+    }
+    .source-btn:first-child { border-right: 1px solid #e2e8f0; }
+    .source-btn.active { background: #3b82f6; color: #fff; }
+    .source-btn:hover:not(.active) { background: #f1f5f9; }
+    .binding-row { display: flex; gap: 8px; }
+    .binding-row .schema-field { flex: 1; }
+    .suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .suggestions-label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
+    .suggestion-chip {
+      padding: 3px 10px; border-radius: 12px; border: 1px solid #93c5fd; background: #eff6ff;
+      color: #1e40af; font-size: 11px; font-weight: 500; cursor: pointer; font-family: inherit;
+    }
+    .suggestion-chip:hover { background: #dbeafe; border-color: #3b82f6; }
+    .match-hint { color: #64748b; font-weight: 400; }
+    .resolver-hint { font-size: 12px; color: #64748b; font-style: italic; display: block; margin-top: 4px; }
+    .binding-warnings { margin: 8px 0; padding: 8px 12px; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; }
+    .warning-item { font-size: 13px; color: #92400e; padding: 2px 0; }
+
+    .section-desc { font-size: 13px; color: #64748b; margin: 0 0 12px; }
+
     .test-tab h3 { font-size: 16px; font-weight: 600; color: #1e293b; margin: 0 0 8px; }
     .test-desc { font-size: 14px; color: #64748b; margin: 0 0 16px; }
     .test-form label { display: block; font-size: 14px; font-weight: 500; color: #334155; margin-bottom: 8px; }
@@ -591,6 +841,7 @@ export class ActivityDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private activityService = inject(AutomatedActivityService);
+  private componentService = inject(ComponentService);
   private toast = inject(ToastService);
 
   isCreateMode = signal(false);
@@ -606,7 +857,6 @@ export class ActivityDetailComponent implements OnInit {
     name: '',
     slug: '',
     description: '',
-    category: '',
     operationKind: 'UPDATE',
     implementationType: 'PYTHON_SCRIPT',
     timeoutSeconds: 300,
@@ -622,6 +872,15 @@ export class ActivityDetailComponent implements OnInit {
 
   // Editor
   draftSourceCode = signal('');
+  configTab = signal<'inputs' | 'outputs'>('inputs');
+
+  // Structured schema editing
+  inputProperties = signal<SchemaProperty[]>([]);
+  outputProperties = signal<SchemaProperty[]>([]);
+  resolverBindings = signal<ResolverBinding[]>([]);
+  bindingWarnings = signal<string[]>([]);
+  resolvers = signal<Resolver[]>([]);
+  private suggestionsCache = signal<Record<string, Array<{ resolver_id: string; resolver_type: string; display_name: string; matching_fields: string[] }>>>({});
 
   // Test
   testInput = signal('{}');
@@ -647,13 +906,24 @@ export class ActivityDetailComponent implements OnInit {
     return 'plaintext';
   });
 
+  // Component context (when accessed from component editor)
+  private componentId = '';
+  private componentBasePath = '';
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
+    this.componentId = this.route.snapshot.paramMap.get('componentId') || '';
+    if (this.componentId) {
+      // Determine base path from URL (provider vs tenant components)
+      const url = this.router.url;
+      this.componentBasePath = url.includes('/provider/components') ? '/provider/components' : '/components';
+    }
     if (!id || id === 'new') {
       this.isCreateMode.set(true);
     } else {
       this.loadActivity(id);
     }
+    this.loadResolvers();
   }
 
   // ── Create Mode ──
@@ -662,15 +932,16 @@ export class ActivityDetailComponent implements OnInit {
     if (!this.createForm.name.trim()) return;
     this.saving.set(true);
 
-    const scope = (this.router.url.includes('/provider/activities') || this.router.url.startsWith('/activities')) ? 'COMPONENT' : 'WORKFLOW';
+    const queryComponentId = this.route.snapshot.queryParamMap.get('componentId');
+    const queryIsComponentActivity = this.route.snapshot.queryParamMap.get('isComponentActivity');
     const input: AutomatedActivityCreateInput = {
       name: this.createForm.name.trim(),
       slug: this.createForm.slug.trim() || undefined,
       description: this.createForm.description.trim() || undefined,
-      category: this.createForm.category || undefined,
       operationKind: this.createForm.operationKind,
       implementationType: this.createForm.implementationType,
-      scope,
+      isComponentActivity: queryIsComponentActivity === 'true' || !!queryComponentId,
+      componentId: queryComponentId || undefined,
       timeoutSeconds: this.createForm.timeoutSeconds,
       idempotent: this.createForm.idempotent,
     };
@@ -695,17 +966,12 @@ export class ActivityDetailComponent implements OnInit {
         this.activityService.createVersion(created.id, versionInput).subscribe({
           next: () => {
             this.saving.set(false);
-            // Navigate to the new activity's detail view
-            const url = this.router.url.split('?')[0];
-            const base = url.includes('/provider/activities') ? '/provider/activities' : url.startsWith('/activities') ? '/activities' : '/workflows/activities';
-            this.router.navigate([base, created.id]);
+            this.navigateToActivity(created.id);
           },
           error: () => {
             this.saving.set(false);
             // Activity was created but version failed — navigate anyway
-            const url = this.router.url.split('?')[0];
-            const base = url.includes('/provider/activities') ? '/provider/activities' : url.startsWith('/activities') ? '/activities' : '/workflows/activities';
-            this.router.navigate([base, created.id]);
+            this.navigateToActivity(created.id);
           },
         });
       },
@@ -714,6 +980,16 @@ export class ActivityDetailComponent implements OnInit {
         this.toast.error(err?.message || 'Failed to create activity');
       },
     });
+  }
+
+  private navigateToActivity(activityId: string): void {
+    if (this.componentId && this.componentBasePath) {
+      this.router.navigate([this.componentBasePath, this.componentId, 'activities', activityId]);
+      return;
+    }
+    const url = this.router.url.split('?')[0];
+    const base = url.includes('/provider/activities') ? '/provider/activities' : url.startsWith('/activities') ? '/activities' : '/workflows/activities';
+    this.router.navigate([base, activityId]);
   }
 
   // ── Edit/View Mode ──
@@ -727,7 +1003,7 @@ export class ActivityDetailComponent implements OnInit {
           const sorted = [...a.versions].sort((x, y) => y.version - x.version);
           this.versions.set(sorted);
           this.selectedVersionId.set(sorted[0].id);
-          this.draftSourceCode.set(sorted[0].sourceCode || '');
+          this.syncDraftFromVersion(sorted[0]);
         }
         this.loading.set(false);
       },
@@ -738,10 +1014,27 @@ export class ActivityDetailComponent implements OnInit {
   selectVersion(versionId: string): void {
     this.selectedVersionId.set(versionId);
     const v = this.versions().find(ver => ver.id === versionId);
-    if (v) this.draftSourceCode.set(v.sourceCode || '');
+    if (v) this.syncDraftFromVersion(v);
+  }
+
+  private syncDraftFromVersion(v: AutomatedActivityVersion): void {
+    this.draftSourceCode.set(v.sourceCode || '');
+    this.inputProperties.set(this.schemaToProperties(v.inputSchema));
+    this.outputProperties.set(this.schemaToProperties(v.outputSchema));
+    this.resolverBindings.set(this.parseResolverBindings(v.resolverBindings));
+    this.bindingWarnings.set([]);
   }
 
   goBack(): void {
+    const returnTo = this.route.snapshot.queryParamMap.get('returnTo');
+    if (returnTo) {
+      this.router.navigateByUrl(returnTo);
+      return;
+    }
+    if (this.componentId && this.componentBasePath) {
+      this.router.navigate([this.componentBasePath, this.componentId, 'edit']);
+      return;
+    }
     const url = this.router.url.split('?')[0];
     const base = url.includes('/provider/activities') ? '/provider/activities' : url.startsWith('/activities') ? '/activities' : '/workflows/activities';
     this.router.navigate([base]);
@@ -757,13 +1050,14 @@ export class ActivityDetailComponent implements OnInit {
       outputSchema: latestVersion?.outputSchema || null,
       configMutations: latestVersion?.configMutations || null,
       rollbackMutations: latestVersion?.rollbackMutations || null,
+      resolverBindings: latestVersion?.resolverBindings || null,
       changelog: '',
     };
     this.activityService.createVersion(a.id, input).subscribe({
       next: (v) => {
         this.versions.update(list => [v, ...list]);
         this.selectedVersionId.set(v.id);
-        this.draftSourceCode.set(v.sourceCode || '');
+        this.syncDraftFromVersion(v);
         this.toast.success('New version created');
       },
       error: () => this.toast.error('Failed to create version'),
@@ -785,25 +1079,31 @@ export class ActivityDetailComponent implements OnInit {
     });
   }
 
-  saveSourceCode(): void {
+  saveAllChanges(): void {
     const a = this.activity();
     const v = this.selectedVersion();
     if (!a || !v || v.publishedAt) return;
     this.activityService.createVersion(a.id, {
       sourceCode: this.draftSourceCode(),
-      inputSchema: v.inputSchema,
-      outputSchema: v.outputSchema,
+      inputSchema: this.propertiesToSchema(this.inputProperties()),
+      outputSchema: this.propertiesToSchema(this.outputProperties()),
+      resolverBindings: this.resolverBindingsToJson(this.resolverBindings()),
       configMutations: v.configMutations,
       rollbackMutations: v.rollbackMutations,
-      changelog: 'Source code update',
+      changelog: 'Updated source, schemas, and bindings',
     }).subscribe({
       next: (newV) => {
         this.versions.update(list => [newV, ...list]);
         this.selectedVersionId.set(newV.id);
+        this.syncDraftFromVersion(newV);
         this.toast.success('Saved as new version');
       },
       error: () => this.toast.error('Failed to save'),
     });
+  }
+
+  saveSourceCode(): void {
+    this.saveAllChanges();
   }
 
   loadExecutions(): void {
@@ -850,5 +1150,188 @@ export class ActivityDetailComponent implements OnInit {
   asMutationArray(mutations: unknown): Record<string, unknown>[] {
     if (Array.isArray(mutations)) return mutations;
     return [];
+  }
+
+  // ── Resolver loading ──
+
+  private loadResolvers(): void {
+    this.componentService.listResolvers().subscribe({
+      next: (r) => this.resolvers.set(r),
+    });
+  }
+
+  // ── Schema ↔ Properties conversion ──
+
+  private schemaToProperties(schema: Record<string, unknown> | null): SchemaProperty[] {
+    if (!schema) return [];
+    const props = (schema['properties'] || {}) as Record<string, Record<string, unknown>>;
+    const required = ((schema['required'] || []) as string[]);
+    return Object.entries(props).map(([name, def]) => ({
+      name,
+      type: (def['type'] as SchemaProperty['type']) || 'string',
+      description: (def['description'] as string) || '',
+      required: required.includes(name),
+      defaultValue: def['default'] !== undefined ? String(def['default']) : '',
+      enumValues: Array.isArray(def['enum']) ? (def['enum'] as string[]).join(', ') : '',
+    }));
+  }
+
+  private propertiesToSchema(properties: SchemaProperty[]): Record<string, unknown> | null {
+    if (properties.length === 0) return null;
+    const props: Record<string, Record<string, unknown>> = {};
+    const required: string[] = [];
+    for (const p of properties) {
+      if (!p.name.trim()) continue;
+      const def: Record<string, unknown> = { type: p.type };
+      if (p.description) def['description'] = p.description;
+      if (p.defaultValue) {
+        if (p.type === 'integer' || p.type === 'number') {
+          def['default'] = Number(p.defaultValue);
+        } else if (p.type === 'boolean') {
+          def['default'] = p.defaultValue === 'true';
+        } else {
+          def['default'] = p.defaultValue;
+        }
+      }
+      if (p.enumValues.trim()) {
+        def['enum'] = p.enumValues.split(',').map(v => v.trim()).filter(Boolean);
+      }
+      props[p.name] = def;
+      if (p.required) required.push(p.name);
+    }
+    const schema: Record<string, unknown> = { type: 'object', properties: props };
+    if (required.length > 0) schema['required'] = required;
+    return schema;
+  }
+
+  private parseResolverBindings(bindings: Record<string, unknown> | null): ResolverBinding[] {
+    if (!bindings) return [];
+    return Object.entries(bindings).map(([paramName, def]) => {
+      const d = def as Record<string, unknown>;
+      return {
+        paramName,
+        resolverType: (d['resolver_type'] as string) || '',
+        resolverParams: (d['params'] as Record<string, string>) || {},
+        targetField: (d['target'] as string) || paramName,
+      };
+    });
+  }
+
+  private resolverBindingsToJson(bindings: ResolverBinding[]): Record<string, unknown> | null {
+    if (bindings.length === 0) return null;
+    const result: Record<string, unknown> = {};
+    for (const b of bindings) {
+      if (!b.paramName || !b.resolverType) continue;
+      result[b.paramName] = {
+        resolver_type: b.resolverType,
+        params: b.resolverParams,
+        target: b.targetField || b.paramName,
+      };
+    }
+    return Object.keys(result).length > 0 ? result : null;
+  }
+
+  // ── Schema builders ──
+
+  addInputProperty(): void {
+    this.inputProperties.update(props => [
+      ...props,
+      { name: '', type: 'string', description: '', required: false, defaultValue: '', enumValues: '' },
+    ]);
+  }
+
+  removeInputProperty(index: number): void {
+    const name = this.inputProperties()[index]?.name;
+    this.inputProperties.update(props => props.filter((_, i) => i !== index));
+    if (name) {
+      this.resolverBindings.update(bindings => bindings.filter(b => b.paramName !== name));
+    }
+  }
+
+  addOutputProperty(): void {
+    this.outputProperties.update(props => [
+      ...props,
+      { name: '', type: 'string', description: '', required: false, defaultValue: '', enumValues: '' },
+    ]);
+  }
+
+  removeOutputProperty(index: number): void {
+    this.outputProperties.update(props => props.filter((_, i) => i !== index));
+  }
+
+  // ── Per-parameter binding helpers ──
+
+  hasBinding(paramName: string): boolean {
+    return this.resolverBindings().some(b => b.paramName === paramName);
+  }
+
+  getBinding(paramName: string): ResolverBinding | undefined {
+    return this.resolverBindings().find(b => b.paramName === paramName);
+  }
+
+  enableBinding(paramName: string, fieldType: string): void {
+    if (this.hasBinding(paramName)) return;
+    this.resolverBindings.update(bindings => [
+      ...bindings,
+      { paramName, resolverType: '', resolverParams: {}, targetField: paramName },
+    ]);
+    this.loadSuggestions(paramName, fieldType);
+  }
+
+  removeBinding(paramName: string): void {
+    if (!this.hasBinding(paramName)) return;
+    this.resolverBindings.update(bindings => bindings.filter(b => b.paramName !== paramName));
+  }
+
+  loadSuggestions(paramName: string, fieldType: string): void {
+    this.componentService.suggestResolversForField(fieldType).subscribe({
+      next: (suggestions) => {
+        this.suggestionsCache.update(cache => ({ ...cache, [paramName]: suggestions }));
+      },
+    });
+  }
+
+  getSuggestions(paramName: string): Array<{ resolver_id: string; resolver_type: string; display_name: string; matching_fields: string[] }> {
+    return this.suggestionsCache()[paramName] || [];
+  }
+
+  applySuggestion(binding: ResolverBinding, suggestion: { resolver_type: string; matching_fields: string[] }): void {
+    binding.resolverType = suggestion.resolver_type;
+    binding.resolverParams = {};
+    if (suggestion.matching_fields.length > 0) {
+      binding.targetField = suggestion.matching_fields[0];
+    }
+  }
+
+  getResolverByType(type: string): Resolver | undefined {
+    return this.resolvers().find(r => r.resolverType === type);
+  }
+
+  onBindingResolverChange(binding: ResolverBinding): void {
+    binding.resolverParams = {};
+  }
+
+  validateBindings(): void {
+    const a = this.activity();
+    if (!a) return;
+    const bindingsJson = this.resolverBindingsToJson(this.resolverBindings());
+    if (!bindingsJson) {
+      this.toast.success('No bindings to validate');
+      return;
+    }
+    // Use a simple local validation since activities don't have a component-level validate endpoint
+    const warnings: string[] = [];
+    for (const b of this.resolverBindings()) {
+      if (!b.resolverType) {
+        warnings.push(`Parameter "${b.paramName}" has Resolver source but no resolver selected`);
+      }
+      if (!b.targetField) {
+        warnings.push(`Parameter "${b.paramName}" has no output field mapping`);
+      }
+    }
+    this.bindingWarnings.set(warnings);
+    if (warnings.length === 0) {
+      this.toast.success('All bindings are valid');
+    }
   }
 }

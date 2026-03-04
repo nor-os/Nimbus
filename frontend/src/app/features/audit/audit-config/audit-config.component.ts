@@ -342,7 +342,7 @@ interface CategoryRow {
     </nimbus-layout>
   `,
   styles: [`
-    .config-page { padding: 0; }
+    .config-page { padding: 0; max-width: 1200px; }
     h1 { margin: 0 0 1rem; font-size: 1.5rem; font-weight: 700; color: #1e293b; }
     h2 { margin: 0 0 1rem; font-size: 1.125rem; font-weight: 600; color: #1e293b; }
     h3 { margin: 0 0 0.75rem; font-size: 0.9375rem; font-weight: 600; color: #334155; }
@@ -383,7 +383,7 @@ interface CategoryRow {
     .btn-primary:hover { background: #2563eb; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-sm { padding: 0.375rem 0.75rem; }
-    .btn { padding: 0.375rem 0.75rem; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.8125rem; font-family: inherit; }
+    .btn { padding: 0.375rem 0.75rem; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.875rem; font-family: inherit; }
     .btn:hover { background: #f8fafc; }
     .btn-link {
       background: none; border: none; color: #3b82f6; cursor: pointer;

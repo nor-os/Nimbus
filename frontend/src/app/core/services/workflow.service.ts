@@ -24,7 +24,9 @@ import {
 const DEFINITION_FIELDS = `
   id tenantId name description version graph status createdBy
   timeoutSeconds maxConcurrent workflowType sourceTopologyId isSystem
+  isTemplate templateSourceId
   applicableSemanticTypeId applicableProviderId
+  inputSchema outputSchema
   createdAt updatedAt
 `;
 
@@ -50,6 +52,7 @@ export class WorkflowService {
   listDefinitions(params: {
     status?: string;
     workflowType?: WorkflowType;
+    isTemplate?: boolean;
     offset?: number;
     limit?: number;
     applicableSemanticTypeId?: string;
@@ -58,12 +61,12 @@ export class WorkflowService {
     const tenantId = this.tenantContext.currentTenantId();
     return this.gql<{ workflowDefinitions: WorkflowDefinition[] }>(`
       query WorkflowDefinitions(
-        $tenantId: UUID!, $status: String, $workflowType: String,
+        $tenantId: UUID!, $status: String, $workflowType: String, $isTemplate: Boolean,
         $offset: Int, $limit: Int,
         $applicableSemanticTypeId: UUID, $applicableProviderId: UUID
       ) {
         workflowDefinitions(
-          tenantId: $tenantId, status: $status, workflowType: $workflowType,
+          tenantId: $tenantId, status: $status, workflowType: $workflowType, isTemplate: $isTemplate,
           offset: $offset, limit: $limit,
           applicableSemanticTypeId: $applicableSemanticTypeId, applicableProviderId: $applicableProviderId
         ) {
@@ -72,6 +75,19 @@ export class WorkflowService {
       }
     `, { tenantId, ...params }).pipe(
       map(data => data.workflowDefinitions),
+    );
+  }
+
+  listTemplates(workflowType?: string): Observable<WorkflowDefinition[]> {
+    const tenantId = this.tenantContext.currentTenantId();
+    return this.gql<{ workflowTemplates: WorkflowDefinition[] }>(`
+      query WorkflowTemplates($tenantId: UUID!, $workflowType: String) {
+        workflowTemplates(tenantId: $tenantId, workflowType: $workflowType) {
+          ${DEFINITION_FIELDS}
+        }
+      }
+    `, { tenantId, workflowType }).pipe(
+      map(data => data.workflowTemplates),
     );
   }
 

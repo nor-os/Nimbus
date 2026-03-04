@@ -307,7 +307,7 @@ interface CalculatorLine {
     </nimbus-layout>
   `,
   styles: [`
-    .calculator-page { padding: 0; max-width: 960px; }
+    .calculator-page { padding: 0; max-width: 1200px; }
     .page-header {
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 0.5rem;
